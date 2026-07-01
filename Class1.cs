@@ -4,7 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(CampOfficeOverhaul.CampOfficeMod), "Camp Office Overhaul", "Deneme", "HamsiBuglama")]
+[assembly: MelonInfo(typeof(CampOfficeOverhaul.CampOfficeMod), "Seamless-CampOffice", "Deneme", "HamsiBuglama")]
 [assembly: MelonGame("Hinterland", "TheLongDark")]
 
 namespace CampOfficeOverhaul
