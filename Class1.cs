@@ -1,4 +1,4 @@
-﻿using Il2Cpp;
+using Il2Cpp;
 using MelonLoader;
 using System.Collections;
 using System.Collections.Generic;
@@ -17,6 +17,10 @@ namespace CampOfficeOverhaul
         public static bool s_RunCompleted = false;
         public static bool s_IsCloningRoutineActive = false;
         public static GameObject s_ExteriorShell = null;
+        public static GameObject s_MasterInterior = null;
+
+        // Odadaki rüzgarı kesmek için kullanacağımız hayali sınır kutusu
+        public static Bounds s_CabinBounds;
 
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
@@ -33,6 +37,7 @@ namespace CampOfficeOverhaul
             {
                 s_RunCompleted = false;
                 s_ExteriorShell = null;
+                s_MasterInterior = null;
                 GameObject old = GameObject.Find("Master_CampOffice_Interior");
                 if (old != null) UnityEngine.Object.Destroy(old);
             }
@@ -67,6 +72,7 @@ namespace CampOfficeOverhaul
 
             UnityEngine.SceneManagement.Scene lakeRegion = UnityEngine.SceneManagement.SceneManager.GetSceneByName(EXTERIOR);
             GameObject master = new GameObject("Master_CampOffice_Interior");
+            s_MasterInterior = master;
             UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(master, lakeRegion);
 
             List<Transform> partsToMove = new List<Transform>();
@@ -86,6 +92,15 @@ namespace CampOfficeOverhaul
 
             foreach (Transform t in partsToMove) t.SetParent(master.transform, false);
 
+            Transform[] masterChildren = master.GetComponentsInChildren<Transform>(true);
+            foreach (Transform t in masterChildren)
+            {
+                if (t != null && t.name.Contains("OBJ_LakeCabinInteriorWindow"))
+                {
+                    UnityEngine.Object.DestroyImmediate(t.gameObject);
+                }
+            }
+
             s_ExteriorShell = GameObject.Find("STRSPAWN_CampOffice_Prefab");
             if (s_ExteriorShell == null)
             {
@@ -101,29 +116,63 @@ namespace CampOfficeOverhaul
 
             if (s_ExteriorShell != null)
             {
-                float extScale = 1.51f;
-                s_ExteriorShell.transform.localScale = new Vector3(extScale, extScale, extScale);
-
-                master.transform.position = new Vector3(1020.938f, 26.7883f, 440.6331f);
+                master.transform.position = new Vector3(1019.738f, 26.7883f, 440.6331f);
                 master.transform.rotation = s_ExteriorShell.transform.rotation;
-                master.transform.localScale = Vector3.one;
+                master.transform.localScale = new Vector3(1.05f, 0.98f, 1.05f);
             }
             else
             {
-                master.transform.position = new Vector3(1020.938f, 26.7883f, 440.6331f);
+                master.transform.position = new Vector3(1019.738f, 26.7883f, 440.6331f);
                 master.transform.rotation = Quaternion.identity;
-                master.transform.localScale = Vector3.one;
+                master.transform.localScale = new Vector3(1.05f, 0.98f, 1.05f);
             }
 
-            GameObject customTriggerBoxObj = new GameObject("CampOffice_CustomIndoorTrigger");
-            customTriggerBoxObj.transform.SetParent(master.transform, false);
-            customTriggerBoxObj.transform.localPosition = new Vector3(0f, 2.5f, 0f);
+            // --- OTOMATİK BOYUT HESAPLAMA VE KAR KALKANI ---
+            GameObject particleKillerObj = new GameObject("ParticleKiller");
+            particleKillerObj.transform.SetParent(master.transform, false);
+            particleKillerObj.transform.localPosition = Vector3.zero;
+            particleKillerObj.layer = LayerMask.NameToLayer("TriggerIgnoreRaycast");
 
-            BoxCollider triggerBox = customTriggerBoxObj.AddComponent<BoxCollider>();
+            Renderer[] allRenderers = master.GetComponentsInChildren<Renderer>(false);
+            Bounds dynamicBounds = new Bounds(master.transform.position, Vector3.zero);
+            bool hasBounds = false;
+
+            foreach (Renderer r in allRenderers)
+            {
+                if (!hasBounds)
+                {
+                    dynamicBounds = r.bounds;
+                    hasBounds = true;
+                }
+                else
+                {
+                    dynamicBounds.Encapsulate(r.bounds);
+                }
+            }
+
+            dynamicBounds.Expand(1.5f);
+
+            // Harmony Yamasının kullanabilmesi için bu boyutları global değişkene kaydediyoruz
+            s_CabinBounds = dynamicBounds;
+
+            BoxCollider triggerBox = particleKillerObj.AddComponent<BoxCollider>();
             triggerBox.isTrigger = true;
-            triggerBox.size = new Vector3(30f, 25f, 30f);
+            triggerBox.size = dynamicBounds.size;
+            triggerBox.center = particleKillerObj.transform.InverseTransformPoint(dynamicBounds.center);
 
-            IndoorSpaceTrigger spaceTrigger = customTriggerBoxObj.AddComponent<IndoorSpaceTrigger>();
+            var pki = new Il2CppTLD.WeatherParticle.WeatherParticleManager.ParticleKillerInstance();
+            pki.m_OwnerGameObject = particleKillerObj;
+            pki.m_Bounds = dynamicBounds;
+            pki.m_KillsFallingSnow = true;
+            pki.m_KillsBlowingSnow = true;
+
+            var uniStorm = UnityEngine.Object.FindObjectOfType<Il2Cpp.UniStormWeatherSystem>();
+            if (uniStorm != null && uniStorm.m_WeatherParticleManager != null)
+            {
+                uniStorm.m_WeatherParticleManager.m_AllParticleKillers.Add(pki);
+            }
+
+            IndoorSpaceTrigger spaceTrigger = particleKillerObj.AddComponent<IndoorSpaceTrigger>();
             spaceTrigger.m_UseOutdoorLighting = true;
             spaceTrigger.m_UseOutdoorTemperature = false;
             spaceTrigger.m_AllowCampfires = true;
@@ -132,46 +181,10 @@ namespace CampOfficeOverhaul
             spaceTrigger.m_DontCountAsInterior = true;
             spaceTrigger.m_IgnoreCabinFever = false;
             spaceTrigger.m_TriggerID = "CustomCampOffice_Trigger";
-
-            try
-            {
-                Weather w = GameManager.GetWeatherComponent();
-                if (w != null)
-                {
-                    Il2CppTLD.WeatherParticle.WeatherParticleManager wpm = null;
-                    foreach (var p in typeof(Weather).GetProperties())
-                    {
-                        if (p.PropertyType == typeof(Il2CppTLD.WeatherParticle.WeatherParticleManager))
-                        {
-                            wpm = p.GetValue(w) as Il2CppTLD.WeatherParticle.WeatherParticleManager;
-                            break;
-                        }
-                    }
-
-                    if (wpm != null)
-                    {
-                        Bounds safeBounds = new Bounds(master.transform.position, new Vector3(30f, 25f, 30f));
-                        var killer = new Il2CppTLD.WeatherParticle.WeatherParticleManager.ParticleKillerInstance();
-                        killer.m_Bounds = safeBounds;
-                        killer.m_KillsFallingSnow = true;
-                        killer.m_KillsBlowingSnow = true;
-                        wpm.m_AllParticleKillers.Add(killer);
-                    }
-                }
-            }
-            catch { }
+            // ----------------------------------------------
 
             master.SetActive(true);
             yield return null;
-
-            MonoBehaviour[] tldScripts = master.GetComponentsInChildren<MonoBehaviour>(true);
-            foreach (var script in tldScripts)
-            {
-                if (script == null) continue;
-                if (script.GetIl2CppType().Name == "LoadScene") continue;
-
-                UnityEngine.Object.DestroyImmediate(script);
-            }
 
             MeshFilter[] mFilters = master.GetComponentsInChildren<MeshFilter>(true);
             foreach (var mf in mFilters) if (mf.sharedMesh != null) mf.sharedMesh = UnityEngine.Object.Instantiate(mf.sharedMesh);
@@ -195,21 +208,12 @@ namespace CampOfficeOverhaul
                 r.sharedMaterials = mats;
             }
 
-            MeshRenderer[] extRenderers = UnityEngine.Object.FindObjectsOfType<MeshRenderer>();
-            foreach (var mr in extRenderers)
-            {
-                if (mr == null) continue;
-                string objName = mr.gameObject.name.ToLower();
-                if ((objName.Contains("window") || objName.Contains("glass")) && Vector3.Distance(mr.transform.position, master.transform.position) < 30f)
-                {
-                    mr.enabled = false;
-                }
-            }
-
             yield return null;
 
-            var unloadOp = UnityEngine.SceneManagement.SceneManager.UnloadSceneAsync(interior);
-            while (!unloadOp.isDone) yield return null;
+            foreach (GameObject rootObj in interior.GetRootGameObjects())
+            {
+                UnityEngine.Object.Destroy(rootObj);
+            }
 
             Weather wFinal = GameManager.GetWeatherComponent();
             if (wFinal != null) wFinal.ForceOutdoorEnvironment();
@@ -221,6 +225,11 @@ namespace CampOfficeOverhaul
 
             s_IsCloningRoutineActive = false;
             s_RunCompleted = true;
+
+            if (s_MasterInterior != null)
+            {
+                s_MasterInterior.SetActive(false);
+            }
         }
     }
 
@@ -236,12 +245,10 @@ namespace CampOfficeOverhaul
 
             if (targetScene == CampOfficeMod.INTERIOR)
             {
-                pm.TeleportPlayer(new Vector3(1018.888f, 26.8318f, 444.2298f), Quaternion.identity);
+                pm.TeleportPlayer(new Vector3(1019.048f, 26.4147f, 444.2578f), Quaternion.identity);
 
-                if (CampOfficeMod.s_ExteriorShell != null)
-                {
-                    CampOfficeMod.s_ExteriorShell.SetActive(false);
-                }
+                if (CampOfficeMod.s_MasterInterior != null) CampOfficeMod.s_MasterInterior.SetActive(true);
+                if (CampOfficeMod.s_ExteriorShell != null) CampOfficeMod.s_ExteriorShell.SetActive(false);
 
                 LightingManager.m_LevelLoadComplete = true;
                 LightingManager.OnLevelLoadComplete();
@@ -253,12 +260,10 @@ namespace CampOfficeOverhaul
 
             if (targetScene == CampOfficeMod.EXTERIOR)
             {
-                pm.TeleportPlayer(new Vector3(1018.497f, 27.0182f, 445.81f), Quaternion.identity);
+                pm.TeleportPlayer(new Vector3(1019.048f, 26.4147f, 444.2578f), Quaternion.identity);
 
-                if (CampOfficeMod.s_ExteriorShell != null)
-                {
-                    CampOfficeMod.s_ExteriorShell.SetActive(true);
-                }
+                if (CampOfficeMod.s_MasterInterior != null) CampOfficeMod.s_MasterInterior.SetActive(false);
+                if (CampOfficeMod.s_ExteriorShell != null) CampOfficeMod.s_ExteriorShell.SetActive(true);
 
                 LightingManager.m_LevelLoadComplete = true;
                 LightingManager.OnLevelLoadComplete();
@@ -283,6 +288,45 @@ namespace CampOfficeOverhaul
                 return false;
             }
             return true;
+        }
+    }
+
+    // ==============================================================================
+    // --- YENİ RÜZGAR KESİCİ HARMONY YAMALARI (WIND CHILL İPTALİ) ---
+    // ==============================================================================
+
+    // 1. Yama: Oyuncu karakterinin rüzgar yemesini (Wind Chill cezasını) iptal eder
+    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Wind), nameof(Il2Cpp.Wind.PlayerShelteredFromWind))]
+    public class PlayerWindShelterPatch
+    {
+        public static bool Prefix(ref bool __result)
+        {
+            if (CampOfficeMod.s_RunCompleted)
+            {
+                Transform playerTransform = GameManager.GetPlayerTransform();
+                if (playerTransform != null && CampOfficeMod.s_CabinBounds.Contains(playerTransform.position))
+                {
+                    __result = true; // Oyuncu "korunuyor" sayılır
+                    return false;    // Orijinal metodu iptal et
+                }
+            }
+            return true; // Kulübede değilse oyunun normal sistemini çalıştır
+        }
+    }
+
+    // 2. Yama: İçeride yakılan kamp ateşlerinin veya bırakılan eşyaların rüzgardan sönmesini/uçmasını engeller
+    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Wind), nameof(Il2Cpp.Wind.IsPositionOccludedFromWind))]
+    public class WindOcclusionPatch
+    {
+        // DÜZELTME: "position" parametresinin adını oyunun orijinal koduyla eşleşecek şekilde "pos" yaptık
+        public static bool Prefix(Vector3 pos, ref bool __result)
+        {
+            if (CampOfficeMod.s_RunCompleted && CampOfficeMod.s_CabinBounds.Contains(pos))
+            {
+                __result = true; // O pozisyon rüzgardan "korunuyor" sayılır
+                return false;    // Orijinal metodu iptal et
+            }
+            return true; // Kulübede değilse oyunun normal sistemini çalıştır
         }
     }
 }
