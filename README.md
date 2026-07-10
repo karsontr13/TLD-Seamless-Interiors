@@ -8,11 +8,11 @@
 
 ### ✨ Key Features
 
-*   **Additive Scene Integration:** Directly loads and merges interior scenes into their respective exterior environments[cite: 1]. This bypasses traditional loading screens, creating a strictly unified instance across the map[cite: 1].
-*   **Dynamic Weather Culling:** Uses mathematically calculated interior bounds to deploy custom `ParticleKillerInstance` zones[cite: 1]. This instantly culls outdoor snow and wind particles inside structures without relying on hard scene transitions[cite: 1].
-*   **Real-Time Audio Occlusion:** Hooks into the game's `GameAudioManager` to dynamically apply `HeavyOcclusion` upon entering a building[cite: 1], ensuring realistic acoustic dampening of exterior weather and wildlife[cite: 1].
-*   **Strict AI Pathfinding & Collision Boundaries:** Generates a precise, hollow `BoxCollider` perimeter combined with custom `NavMeshObstacle` components around interiors[cite: 1]. This physically prevents wildlife from clipping through walls during high-velocity flee or scent-tracking behaviors[cite: 1].
-*   **Deterministic Loot Synchronization:** Automatically handles spatial deduplication and PDID generation for gear items upon the first load[cite: 1], ensuring containers and originally spawned items transition flawlessly into the merged exterior space[cite: 1].
+*   **Additive Scene Integration:** Directly loads and merges interior scenes into their respective exterior environments. This bypasses traditional loading screens, creating a strictly unified instance across the map.
+*   **Dynamic Weather Culling:** Uses mathematically calculated interior bounds to deploy custom `ParticleKillerInstance` zones. This instantly culls outdoor snow and wind particles inside structures without relying on hard scene transitions.
+*   **Real-Time Audio Occlusion:** Hooks into the game's `GameAudioManager` to dynamically apply `HeavyOcclusion` upon entering a building, ensuring realistic acoustic dampening of exterior weather and wildlife.
+*   **Strict AI Pathfinding & Collision Boundaries:** Generates a precise, hollow `BoxCollider` perimeter combined with custom `NavMeshObstacle` components around interiors. This physically prevents wildlife from clipping through walls during high-velocity flee or scent-tracking behaviors.
+*   **Deterministic Loot Synchronization:** Automatically handles spatial deduplication and PDID generation for gear items upon the first load, ensuring containers and originally spawned items transition flawlessly into the merged exterior space.
 
 ### ⚙️ Installation Guide
 
