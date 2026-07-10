@@ -1,4 +1,4 @@
-using HarmonyLib;
+﻿using HarmonyLib;
 using Il2Cpp;
 using MelonLoader;
 using System.Collections;
@@ -6,10 +6,10 @@ using System.Collections.Generic;
 using UnityEngine;
 using Il2CppTLD.Audio;
 
-[assembly: MelonInfo(typeof(CampOfficeOverhaul.CampOfficeMod), "Seamless-CampOffice", "Deneme", "Emir")]
+[assembly: MelonInfo(typeof(SeamlessInteriors.CampOfficeMod), "SeamlessInteriors", "v1.0.0", "Hamsi Buglama")]
 [assembly: MelonGame("Hinterland", "TheLongDark")]
 
-namespace CampOfficeOverhaul
+namespace SeamlessInteriors
 {
     public class CampOfficeMod : MelonMod
     {
