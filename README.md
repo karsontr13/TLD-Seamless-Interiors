@@ -6,8 +6,6 @@
 
 ---
 
-## 🇬🇧 English
-
 ### ✨ Key Features
 
 *   **Additive Scene Integration:** Directly loads and merges interior scenes into their respective exterior environments[cite: 1]. This bypasses traditional loading screens, creating a strictly unified instance across the map[cite: 1].
