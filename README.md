@@ -1,3 +1,5 @@
+![Seamless Interiors Kapak Fotoğrafı](CoverImage.png)
+
 # The Long Dark - Seamless Interiors
 
 > A massive overhaul mod developed for **The Long Dark** that aims to integrate all interior buildings directly into the open world without any loading screens. Walk through doors seamlessly and experience the interior and exterior as one unified environment.
