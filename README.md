@@ -12,15 +12,6 @@
 > 
 > **Compatibility:** There is a high risk of conflict with other mods that modify the structure or interior of buildings. This has not been tested with other custom interior mods yet.
 
----
-
-### ⚠️ Uyarı: Erken Geliştirme Aşaması
-
-> **⚠️ UYARI: ERKEN GELİŞTİRME AŞAMASI**
-> Bu mod henüz çok erken geliştirme aşamasındadır. Gerekli testler yapılsa dahi henüz fark edilmemiş hatalara sebep olabilir! **Lütfen ana kayıt dosyalarınızda (save) kullanmayın.** Riskleri alırken lütfen iyi düşünün.
->
-> **Uyumluluk:** Binanın iç yapısını veya mimarisini değiştiren diğer modlarla çakışma riski çok yüksektir. Henüz bu tür modlarla test edilmemiştir.
-
 
 ---
 
