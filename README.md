@@ -2,7 +2,7 @@
 
 > A massive overhaul mod developed for **The Long Dark** that aims to integrate all interior buildings directly into the open world without any loading screens. Walk through doors seamlessly and experience the interior and exterior as one unified environment.
 
-*(Note: This project is in active development. Currently supported locations are listed in the updates, starting with the Camp Office!)*
+*(Note: This project is in active development. Currently, only the camp office is included.)*
 
 ---
 
