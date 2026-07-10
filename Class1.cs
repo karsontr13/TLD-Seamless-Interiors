@@ -1,4 +1,4 @@
-﻿using HarmonyLib;
+using HarmonyLib;
 using Il2Cpp;
 using MelonLoader;
 using System.Collections;
@@ -13,37 +13,42 @@ namespace SeamlessInteriors
 {
     public class CampOfficeMod : MelonMod
     {
+        // Scene names for The Long Dark
         public const string EXTERIOR = "LakeRegion";
         public const string INTERIOR = "CampOffice";
 
+        // Global state flags for the cloning and integration process
         public static bool s_RunCompleted = false;
         public static bool s_IsCloningRoutineActive = false;
+        
+        // References to the main game objects
         public static GameObject s_ExteriorShell = null;
         public static GameObject s_MasterInterior = null;
+        
+        // List to hold custom snow/weather particle killers inside the cabin
         public static List<Il2CppTLD.WeatherParticle.WeatherParticleManager.ParticleKillerInstance> s_CustomKillers = new List<Il2CppTLD.WeatherParticle.WeatherParticleManager.ParticleKillerInstance>();
 
-        // İç kısmın zeminden ne kadar yukarı kaldırılacağı (kar sızıntısını önlemek için).
+        // How much the interior should be lifted from the ground to prevent snow bleeding through the floor
         public const float INTERIOR_Y_OFFSET = 1.5f;
 
-        // Gerçek görünürlük/pozisyon kontrolü için TEK kaynak: bu collider.
+        // The single source of truth for visibility/position checking
         public static BoxCollider s_InteriorTrigger = null;
 
-        // Kapı geçişi sonrası watchdog'un araya girmesini engelleyen "soğuma" penceresi.
+        // Cooldown window to prevent the watchdog from interfering immediately after using a door portal
         public static float s_LastPortalUseTime = -10f;
-        public const float PORTAL_SUPPRESS_WINDOW = 2f; // saniye
+        public const float PORTAL_SUPPRESS_WINDOW = 2f; // in seconds
 
-        // Teşhis logları. Sorun kesin çözülünce false yapabilirsin.
+        // Toggle for diagnostic logs in the MelonLoader console
         public static bool s_DebugBounds = true;
 
-        // YENİ EKLENDİ:
         public static bool s_WatchdogStarted = false;
-
         public static bool s_IsAudioOccluded = false;
 
         public static Il2CppTLD.WeatherParticle.WeatherParticleManager.ParticleKillerInstance s_ParticleKiller = null;
 
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
+            // Only trigger the merging routine when the exterior region loads
             if (sceneName == EXTERIOR)
             {
                 if (s_RunCompleted) return;
@@ -53,13 +58,14 @@ namespace SeamlessInteriors
 
         public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
         {
+            // Clean up static references to avoid memory leaks or issues on subsequent loads
             if (sceneName == EXTERIOR)
             {
                 s_RunCompleted = false;
                 s_ExteriorShell = null;
                 s_MasterInterior = null;
                 s_InteriorTrigger = null;
-                s_WatchdogStarted = false; // YENİ EKLENDİ
+                s_WatchdogStarted = false; 
 
                 if (s_ParticleKiller != null)
                 {
@@ -82,12 +88,12 @@ namespace SeamlessInteriors
             foreach (var c in containers)
             {
                 if (c == null) continue;
-                c.m_DisableSerialization = true;
+                c.m_DisableSerialization = true; // Prevent double-saving of items
                 count++;
             }
 
             if (s_DebugBounds)
-                MelonLogger.Msg($"[SERIALIZE-BLOCK] {count} interior container'ın serialize edilmesi engellendi.");
+                MelonLogger.Msg($"[SERIALIZE-BLOCK] Prevented {count} interior containers from serializing.");
         }
 
         private static void InvalidateInteriorPlaceables(GameObject interiorRoot)
@@ -99,32 +105,31 @@ namespace SeamlessInteriors
             foreach (var p in placeables)
             {
                 if (p == null) continue;
-                p.m_Invalidated = true;
+                p.m_Invalidated = true; // Forces the game to ignore these during regular spawn routines
                 count++;
             }
 
             if (s_DebugBounds)
-                MelonLogger.Msg($"[PLACEABLE-BLOCK] {count} interior Placeable invalidate edildi.");
+                MelonLogger.Msg($"[PLACEABLE-BLOCK] Invalidated {count} interior Placeables.");
         }
 
-        // Ses boğuklaştırmasını güvenle açıp kapatan metod
+        // Safely toggles audio occlusion to simulate being indoors
         public static void SetAudioOcclusion(bool occlude)
         {
             if (GameAudioManager.Instance == null) return;
 
             if (occlude && !s_IsAudioOccluded)
             {
-                // Medium (Orta) boğukluk Dağcı Kulübesi hissiyatı için en idealidir. 
-                // İstersen Heavy (Ağır) veya Mild (Hafif) olarak değiştirebilirsin.
+                // Heavy Occlusion provides the best "Mountaineer's Hut" sound isolation feel
                 GameAudioManager.Instance.EnterOcclusionTrigger(Il2Cpp.AudioOcclusionLevel.HeavyOcclusion);
                 s_IsAudioOccluded = true;
-                if (s_DebugBounds) MelonLogger.Msg("[AUDIO] Ses boğuklaştırma (Occlusion) AÇILDI.");
+                if (s_DebugBounds) MelonLogger.Msg("[AUDIO] Audio Occlusion ENABLED.");
             }
             else if (!occlude && s_IsAudioOccluded)
             {
                 GameAudioManager.Instance.ExitOcclusionTrigger(Il2Cpp.AudioOcclusionLevel.HeavyOcclusion);
                 s_IsAudioOccluded = false;
-                if (s_DebugBounds) MelonLogger.Msg("[AUDIO] Ses boğuklaştırma (Occlusion) KAPATILDI.");
+                if (s_DebugBounds) MelonLogger.Msg("[AUDIO] Audio Occlusion DISABLED.");
             }
         }
 
@@ -146,7 +151,7 @@ namespace SeamlessInteriors
             }
 
             if (s_DebugBounds)
-                MelonLogger.Msg($"[PLACEABLE-GUIDS] {PlaceableFindOrCreatePatch.s_InteriorPlaceableGuids.Count} interior Placeable GUID'i kaydedildi.");
+                MelonLogger.Msg($"[PLACEABLE-GUIDS] Saved {PlaceableFindOrCreatePatch.s_InteriorPlaceableGuids.Count} interior Placeable GUIDs.");
         }
 
         private static void CleanupOrphanPlaceables()
@@ -162,12 +167,14 @@ namespace SeamlessInteriors
                 if (p == null || p.gameObject == null) continue;
                 if (!p.gameObject.name.Contains(suffix)) continue;
 
+                // Skip items belonging to our master interior
                 if (s_MasterInterior != null && p.transform.IsChildOf(s_MasterInterior.transform))
                     continue;
 
                 string sceneName = p.gameObject.scene.name;
                 bool isOrphan = (sceneName == "DontDestroyOnLoad" || sceneName == null || sceneName == "");
 
+                // Catch placeables accidentally parented to the player during scene transitions
                 Transform root = p.transform.root;
                 if (root != null && root.name.Contains("CHARACTER_FPSPlayer"))
                     isOrphan = true;
@@ -175,14 +182,14 @@ namespace SeamlessInteriors
                 if (!isOrphan) continue;
 
                 if (s_DebugBounds)
-                    MelonLogger.Msg($"[ORPHAN-CLEANUP] Siliniyor: {p.gameObject.name} | Scene: {sceneName} | Root: {root?.name}");
+                    MelonLogger.Msg($"[ORPHAN-CLEANUP] Destroying: {p.gameObject.name} | Scene: {sceneName} | Root: {root?.name}");
 
                 UnityEngine.Object.Destroy(p.gameObject);
                 destroyed++;
             }
 
             if (s_DebugBounds)
-                MelonLogger.Msg($"[ORPHAN-CLEANUP] Toplam {destroyed} orphan Placeable temizlendi.");
+                MelonLogger.Msg($"[ORPHAN-CLEANUP] Cleared {destroyed} orphan Placeables.");
         }
 
         private static void GenerateDeterministicPDIDs(GameObject interiorRoot)
@@ -202,6 +209,8 @@ namespace SeamlessInteriors
                     guidComponent = gear.gameObject.AddComponent<Il2Cpp.ObjectGuid>();
                 }
 
+                // If a gear item lacks a Persistent Data ID, generate one based on its exact local position
+                // This ensures save stability between sessions
                 if (string.IsNullOrEmpty(guidComponent.m_Guid))
                 {
                     Vector3 localPos = interiorRoot.transform.InverseTransformPoint(gear.transform.position);
@@ -214,7 +223,7 @@ namespace SeamlessInteriors
             }
 
             if (s_DebugBounds)
-                MelonLogger.Msg($"[PDID-FIX] {generatedCount} adet eksik PDID'li objeye deterministik kimlik atandi.");
+                MelonLogger.Msg($"[PDID-FIX] Assigned deterministic identities to {generatedCount} objects missing PDIDs.");
         }
 
         private static void SpatialDeduplication(GameObject interiorRoot)
@@ -234,6 +243,7 @@ namespace SeamlessInteriors
 
             int deletedCount = 0;
 
+            // Remove duplicated items by comparing their world positions
             foreach (var insideGear in allGearInside)
             {
                 if (insideGear == null) continue;
@@ -256,7 +266,7 @@ namespace SeamlessInteriors
             }
 
             if (s_DebugBounds)
-                MelonLogger.Msg($"[SPATIAL-DEDUPE] {deletedCount} adet obje konumsal eslesme ile silindi.");
+                MelonLogger.Msg($"[SPATIAL-DEDUPE] Deleted {deletedCount} duplicate objects via spatial matching.");
         }
 
         private IEnumerator WaitForPlayerThenRun()
@@ -264,6 +274,7 @@ namespace SeamlessInteriors
             float timeout = 10f;
             float elapsed = 0f;
 
+            // Wait until the player is fully initialized in the scene
             while (elapsed < timeout)
             {
                 Transform playerT = GameManager.GetPlayerTransform();
@@ -280,11 +291,9 @@ namespace SeamlessInteriors
         {
             s_IsCloningRoutineActive = true;
 
-            // --- YENİ EKLENEN: YENİ OYUN KONTROLÜ VE LOOT KİLİDİ SIFIRLAMA ---
-            // Eğer aynı save slotu (örneğin sandbox1) silinip tekrar açıldıysa, 
-            // eski PlayerPrefs kilidi yüzünden eşyalar spawn olmaz.
-            // Oyunun henüz çok başında olduğumuzu (0.05 saat = 3 dakikadan az oynandığını) 
-            // tespit edersek eski kilidi kırıyoruz!
+            // NEW GAME DETECTION: 
+            // If the same save slot is overwritten, old PlayerPrefs locks prevent gear from spawning.
+            // If playtime is < 3 minutes (0.05 hours), reset the spawn lock for this slot.
             var tod = GameManager.GetTimeOfDayComponent();
             if (tod != null && tod.GetHoursPlayedNotPaused() < 0.05f)
             {
@@ -293,10 +302,10 @@ namespace SeamlessInteriors
                 UnityEngine.PlayerPrefs.Save();
 
                 if (s_DebugBounds)
-                    MelonLogger.Msg("[NEW GAME DETECTED] Eski loot üretim kilidi kırıldı! Ganimetler spawn edilecek.");
+                    MelonLogger.Msg("[NEW GAME DETECTED] Broke old loot generation lock! Gear will spawn.");
             }
-            // ----------------------------------------------------------------
 
+            // Asynchronously load the interior scene and its sub-scenes additively
             var opMain = UnityEngine.AddressableAssets.Addressables.LoadSceneAsync(INTERIOR, UnityEngine.SceneManagement.LoadSceneMode.Additive);
             while (!opMain.IsDone) yield return null;
             UnityEngine.SceneManagement.Scene s_InteriorMain = opMain.Result.Scene;
@@ -309,6 +318,7 @@ namespace SeamlessInteriors
             while (!opDLC.IsDone) yield return null;
             UnityEngine.SceneManagement.Scene s_InteriorDLC = opDLC.Result.Scene;
 
+            // Create a single master container for all interior objects
             GameObject master = new GameObject("Master_CampOffice_Interior");
             s_MasterInterior = master;
             master.SetActive(false);
@@ -318,6 +328,7 @@ namespace SeamlessInteriors
 
             List<UnityEngine.SceneManagement.Scene> loadedScenes = new List<UnityEngine.SceneManagement.Scene>() { s_InteriorMain, s_InteriorSandbox, s_InteriorDLC };
 
+            // Consolidate all root objects from the loaded interior scenes into the master object
             foreach (var scn in loadedScenes)
             {
                 if (!scn.isLoaded) continue;
@@ -328,6 +339,7 @@ namespace SeamlessInteriors
                 }
             }
 
+            // Strip redundant interior-specific lighting and fake windows
             Transform[] masterChildren = master.GetComponentsInChildren<Transform>(true);
             foreach (Transform t in masterChildren)
             {
@@ -349,6 +361,7 @@ namespace SeamlessInteriors
                 }
             }
 
+            // Find the exterior cabin model to match its position
             s_ExteriorShell = GameObject.Find("STRSPAWN_CampOffice_Prefab");
             if (s_ExteriorShell == null)
             {
@@ -362,6 +375,7 @@ namespace SeamlessInteriors
                 }
             }
 
+            // Align the master interior exactly with the exterior shell
             if (s_ExteriorShell != null)
             {
                 Vector3 shellPos = s_ExteriorShell.transform.position;
@@ -371,7 +385,7 @@ namespace SeamlessInteriors
                 master.transform.localScale = new Vector3(1.05f, 0.98f, 1.05f);
 
                 if (s_DebugBounds)
-                    MelonLogger.Msg($"[DEBUG-SHELL] ExteriorShell bulundu. Position: {s_ExteriorShell.transform.position} (Offset uygulandi: {shellPos})");
+                    MelonLogger.Msg($"[DEBUG-SHELL] ExteriorShell found. Position: {s_ExteriorShell.transform.position} (Offset applied: {shellPos})");
             }
             else
             {
@@ -380,15 +394,15 @@ namespace SeamlessInteriors
                 master.transform.localScale = new Vector3(1.05f, 0.98f, 1.05f);
 
                 if (s_DebugBounds)
-                    MelonLogger.Msg("[DEBUG-SHELL] ExteriorShell bulunamadi, hardcoded konum kullaniliyor.");
+                    MelonLogger.Msg("[DEBUG-SHELL] ExteriorShell not found, using hardcoded fallback coordinates.");
             }
 
-            //DisableInteriorContainerSerialization(master);
             InvalidateInteriorPlaceables(master);
             CollectInteriorPlaceableGuids(master);
 
             yield return new WaitForSeconds(0.5f);
 
+            // Handle Random Spawn Objects (RSO) for loot tables
             string currentSaveName = SaveGameSystem.m_CurrentSaveName;
             string saveKey = "CampOfficeGen_" + currentSaveName;
             bool isAlreadyGenerated = UnityEngine.PlayerPrefs.GetInt(saveKey, 0) == 1;
@@ -411,7 +425,7 @@ namespace SeamlessInteriors
                 }
 
                 if (s_DebugBounds)
-                    MelonLogger.Msg($"[Rogue-Cleanup] {deletedRogueCount} adet kacak/yeni RSO objesi zorla temizlendi.");
+                    MelonLogger.Msg($"[Rogue-Cleanup] Force cleared {deletedRogueCount} rogue/new RSO objects.");
             }
             else
             {
@@ -423,11 +437,13 @@ namespace SeamlessInteriors
                     UnityEngine.PlayerPrefs.Save();
 
                     if (s_DebugBounds)
-                        MelonLogger.Msg($"[RSO-FLAG] {saveKey} icin loot uretimi tamamlandi, RSO'lar kalici olarak susturuldu.");
+                        MelonLogger.Msg($"[RSO-FLAG] Loot generation complete for {saveKey}, RSOs permanently silenced.");
                 }
             }
 
             SpatialDeduplication(master);
+            
+            // Global deduplication by GUID to prevent identical items from persisting
             var allGuids = UnityEngine.Object.FindObjectsOfType<Il2Cpp.ObjectGuid>(true);
             Dictionary<string, List<Il2Cpp.ObjectGuid>> guidDict = new Dictionary<string, List<Il2Cpp.ObjectGuid>>();
 
@@ -462,7 +478,7 @@ namespace SeamlessInteriors
                 }
             }
 
-            // --- ADIM 4: Konteynerlerin doğru yüklenmesi için EXTERIOR yapıldı ---
+            // CRITICAL: Load save data using EXTERIOR to properly deserialize containers and items
             if (!string.IsNullOrEmpty(currentSaveName))
             {
                 var interiorGearBefore = new HashSet<string>();
@@ -475,15 +491,15 @@ namespace SeamlessInteriors
                         interiorGearBefore.Add(og.m_Guid);
                 }
 
-                // [DEĞİŞTİRİLDİ] Container fix için INTERIOR yerine EXTERIOR okutuldu
                 SaveGameSystem.LoadSceneDataAdditive(currentSaveName, EXTERIOR);
 
                 if (s_DebugBounds)
-                    MelonLogger.Msg($"[GEAR-RESTORE] CampOffice save datasi uygulandi. Interior'da {interiorGearBefore.Count} GearItem vardi.");
+                    MelonLogger.Msg($"[GEAR-RESTORE] CampOffice save data applied. Had {interiorGearBefore.Count} GearItems in interior.");
             }
 
             yield return null;
 
+            // Setup particle killers to stop snow and wind effects from rendering inside the cabin
             GameObject particleKillerObj = new GameObject("ParticleKiller");
             particleKillerObj.transform.SetParent(master.transform, false);
             particleKillerObj.transform.localPosition = Vector3.zero;
@@ -499,52 +515,49 @@ namespace SeamlessInteriors
 
             s_InteriorTrigger = triggerBox;
 
-            s_InteriorTrigger = triggerBox;
-
-            // --- YENİ EKLENEN: GÖRÜNMEZ FİZİKSEL KAFES VE AI ENGELLEYİCİ ---
-            // Bu objeyi ayrı oluşturuyoruz ki Layer'ı Default kalsın ve fizikleri tam çalışsın.
+            // INVISIBLE PHYSICAL PERIMETER AND AI BLOCKER
+            // Keeps its layer as Default so physics work perfectly (players pass through, animals collide).
             GameObject solidPerimeter = new GameObject("SolidPerimeter_Blocker");
             solidPerimeter.transform.SetParent(master.transform, false);
             solidPerimeter.transform.localPosition = Vector3.zero;
             solidPerimeter.transform.localRotation = Quaternion.identity;
-            // Bu objeyi sadece AI/NPC katmanına atar. Oyuncu içinden hayalet gibi geçer, hayvanlar duvara toslar.
-            // Not: "NPC" katmanı The Long Dark'ta genellikle 17 veya 12'dir, ama NameToLayer kullanmak en güvenlisidir.
+            
+            // Assign to NPC layer to prevent wolves/bears from clipping into the cabin
             solidPerimeter.layer = LayerMask.NameToLayer("NPC");
 
-            float wT = 0.5f; // Görünmez duvarın kalınlığı (Yarım metre yeterli)
+            float wT = 0.5f; // Invisible wall thickness (Half a meter)
 
-            // 1. Ön Duvar (+Z)
+            // Front Wall (+Z)
             BoxCollider wallFront = solidPerimeter.AddComponent<BoxCollider>();
             wallFront.center = new Vector3(localBounds.center.x, localBounds.center.y, localBounds.max.z + (wT / 2f));
             wallFront.size = new Vector3(localBounds.size.x, localBounds.size.y, wT);
 
-            // 2. Arka Duvar (-Z)
+            // Back Wall (-Z)
             BoxCollider wallBack = solidPerimeter.AddComponent<BoxCollider>();
             wallBack.center = new Vector3(localBounds.center.x, localBounds.center.y, localBounds.min.z - (wT / 2f));
             wallBack.size = new Vector3(localBounds.size.x, localBounds.size.y, wT);
 
-            // 3. Sağ Duvar (+X)
+            // Right Wall (+X) - Extending Z to cover corners
             BoxCollider wallRight = solidPerimeter.AddComponent<BoxCollider>();
             wallRight.center = new Vector3(localBounds.max.x + (wT / 2f), localBounds.center.y, localBounds.center.z);
-            // Köşelerde açık kalmaması için Z boyutunu duvar kalınlığı kadar uzatıyoruz:
             wallRight.size = new Vector3(wT, localBounds.size.y, localBounds.size.z + (wT * 2));
 
-            // 4. Sol Duvar (-X)
+            // Left Wall (-X) - Extending Z to cover corners
             BoxCollider wallLeft = solidPerimeter.AddComponent<BoxCollider>();
             wallLeft.center = new Vector3(localBounds.min.x - (wT / 2f), localBounds.center.y, localBounds.center.z);
             wallLeft.size = new Vector3(wT, localBounds.size.y, localBounds.size.z + (wT * 2));
 
-            // 5. Yapay Zeka Engeli (NavMeshObstacle)
-            // Hayvanların bu duvarlara sürekli kafa atıp titreşmesini (glitch) engeller, etrafından dolandırır.
+            // NavMeshObstacle
+            // Prevents animal AI from glitching against the walls by forcing them to path around it
             UnityEngine.AI.NavMeshObstacle aiObstacle = solidPerimeter.AddComponent<UnityEngine.AI.NavMeshObstacle>();
             aiObstacle.shape = UnityEngine.AI.NavMeshObstacleShape.Box;
             aiObstacle.center = localBounds.center;
             aiObstacle.size = localBounds.size;
             aiObstacle.carving = true;
-            // ----------------------------------------------------------------
 
             s_CustomKillers.Clear();
 
+            // Slice the particle killer bounds into smaller chunks for better optimization with UniStorm
             var uniStorm = UnityEngine.Object.FindObjectOfType<Il2Cpp.UniStormWeatherSystem>();
             if (uniStorm != null && uniStorm.m_WeatherParticleManager != null)
             {
@@ -563,15 +576,15 @@ namespace SeamlessInteriors
                     Vector3 sliceExtents = new Vector3(localBounds.size.x / 2f, localBounds.size.y / 2f, sliceZ / 2f);
 
                     Vector3[] corners = new Vector3[8] {
-            sliceLocalCenter + new Vector3( sliceExtents.x,  sliceExtents.y,  sliceExtents.z),
-            sliceLocalCenter + new Vector3( sliceExtents.x,  sliceExtents.y, -sliceExtents.z),
-            sliceLocalCenter + new Vector3( sliceExtents.x, -sliceExtents.y,  sliceExtents.z),
-            sliceLocalCenter + new Vector3( sliceExtents.x, -sliceExtents.y, -sliceExtents.z),
-            sliceLocalCenter + new Vector3(-sliceExtents.x,  sliceExtents.y,  sliceExtents.z),
-            sliceLocalCenter + new Vector3(-sliceExtents.x,  sliceExtents.y, -sliceExtents.z),
-            sliceLocalCenter + new Vector3(-sliceExtents.x, -sliceExtents.y,  sliceExtents.z),
-            sliceLocalCenter + new Vector3(-sliceExtents.x, -sliceExtents.y, -sliceExtents.z)
-        };
+                        sliceLocalCenter + new Vector3( sliceExtents.x,  sliceExtents.y,  sliceExtents.z),
+                        sliceLocalCenter + new Vector3( sliceExtents.x,  sliceExtents.y, -sliceExtents.z),
+                        sliceLocalCenter + new Vector3( sliceExtents.x, -sliceExtents.y,  sliceExtents.z),
+                        sliceLocalCenter + new Vector3( sliceExtents.x, -sliceExtents.y, -sliceExtents.z),
+                        sliceLocalCenter + new Vector3(-sliceExtents.x,  sliceExtents.y,  sliceExtents.z),
+                        sliceLocalCenter + new Vector3(-sliceExtents.x,  sliceExtents.y, -sliceExtents.z),
+                        sliceLocalCenter + new Vector3(-sliceExtents.x, -sliceExtents.y,  sliceExtents.z),
+                        sliceLocalCenter + new Vector3(-sliceExtents.x, -sliceExtents.y, -sliceExtents.z)
+                    };
 
                     Vector3 min = particleKillerObj.transform.TransformPoint(corners[0]);
                     Vector3 max = min;
@@ -591,6 +604,7 @@ namespace SeamlessInteriors
                 }
             }
 
+            // Register area as an Indoor Space so the temperature rises and campfires function properly
             IndoorSpaceTrigger spaceTrigger = particleKillerObj.AddComponent<IndoorSpaceTrigger>();
             spaceTrigger.m_UseOutdoorLighting = true;
             spaceTrigger.m_UseOutdoorTemperature = false;
@@ -603,6 +617,7 @@ namespace SeamlessInteriors
 
             yield return null;
 
+            // Strip baked lightmaps to prevent glowing objects during the night in the exterior scene
             Renderer[] allRenderersAfter = master.GetComponentsInChildren<Renderer>(true);
             foreach (var r in allRenderersAfter)
             {
@@ -623,6 +638,7 @@ namespace SeamlessInteriors
 
             yield return null;
 
+            // Force global lighting/weather updates to recognize the merged environment
             Weather wFinal = GameManager.GetWeatherComponent();
             if (wFinal != null) wFinal.ForceOutdoorEnvironment();
 
@@ -636,27 +652,26 @@ namespace SeamlessInteriors
 
             CleanupOrphanPlaceables();
 
+            // Perform initial synchronization of visibility based on player's load-in position
             PlayerManager pmInit = GameManager.GetPlayerManagerComponent();
             if (pmInit != null && pmInit.transform.position.sqrMagnitude > 1f)
             {
                 if (s_DebugBounds)
-                    MelonLogger.Msg($"[DEBUG-INIT] pm.transform ile ilk gorunurluk senkronizasyonu. Pos: {pmInit.transform.position}");
+                    MelonLogger.Msg($"[DEBUG-INIT] Initial visibility sync using pm.transform. Pos: {pmInit.transform.position}");
 
                 ApplyInitialSyncState(pmInit.transform.position);
             }
             else
             {
                 if (s_DebugBounds)
-                    MelonLogger.Msg("[DEBUG-INIT] pm.transform henuz gecersiz (0,0,0 veya null), GetPlayerTransform ile devam ediliyor.");
+                    MelonLogger.Msg("[DEBUG-INIT] pm.transform invalid (0,0,0 or null), falling back to GetPlayerTransform.");
 
                 ApplyInitialSyncState();
             }
 
             MelonCoroutines.Start(DelayedInitialVisibilityCheck());
 
-            // EKLENDİ: Watchdog hiç başlatılmıyordu, bu yüzden particle killer'lar
-            // sadece mod yüklenirken bir kez senkronize ediliyordu ve kapıdan
-            // girip çıkarken hiç güncellenmiyordu -> içeri kar/rüzgar sızması.
+            // Start the watchdog to track position for weather occlusion updates
             if (!s_WatchdogStarted)
             {
                 s_WatchdogStarted = true;
@@ -674,12 +689,13 @@ namespace SeamlessInteriors
             if (playerT != null)
             {
                 if (s_DebugBounds)
-                    MelonLogger.Msg($"[DEBUG-INIT-DELAYED] 10sn gecikmeli tek seferlik dogrulama. Pos: {playerT.position}");
+                    MelonLogger.Msg($"[DEBUG-INIT-DELAYED] 10-second delayed validation. Pos: {playerT.position}");
 
                 ApplyInitialSyncState(playerT.position);
             }
         }
 
+        // Calculates the bounding box of the interior to construct accurate colliders and particle killers
         private static Bounds ComputeLocalInteriorBounds(GameObject root)
         {
             Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
@@ -691,13 +707,12 @@ namespace SeamlessInteriors
             {
                 if (r == null) continue;
 
-                // YENİ EKLENDİ: Shadow_Caster proxy mesh'leri devasa boyutlu ve gerçek
-                // geometriyi temsil etmiyor (sadece gölge render optimizasyonu içindir).
-                // Bounds hesabına dahil edilmemeli.
+                // Shadow_Caster proxy meshes are massive and distort actual geometry bounds
                 if (r.gameObject.name.Contains("Shadow_Caster")) continue;
 
                 Bounds wb = r.bounds;
 
+                // Filter out massive objects (like terrain remnants) that skew the bounds
                 if (wb.size.x > 40f || wb.size.y > 40f || wb.size.z > 40f) continue;
 
                 Vector3 localCenterCheck = root.transform.InverseTransformPoint(wb.center);
@@ -711,11 +726,11 @@ namespace SeamlessInteriors
                 Vector3 c = wb.center;
                 Vector3 e = wb.extents;
                 Vector3[] corners = new Vector3[8] {
-            c + new Vector3( e.x,  e.y,  e.z), c + new Vector3( e.x,  e.y, -e.z),
-            c + new Vector3( e.x, -e.y,  e.z), c + new Vector3( e.x, -e.y, -e.z),
-            c + new Vector3(-e.x,  e.y,  e.z), c + new Vector3(-e.x,  e.y, -e.z),
-            c + new Vector3(-e.x, -e.y,  e.z), c + new Vector3(-e.x, -e.y, -e.z)
-        };
+                    c + new Vector3( e.x,  e.y,  e.z), c + new Vector3( e.x,  e.y, -e.z),
+                    c + new Vector3( e.x, -e.y,  e.z), c + new Vector3( e.x, -e.y, -e.z),
+                    c + new Vector3(-e.x,  e.y,  e.z), c + new Vector3(-e.x,  e.y, -e.z),
+                    c + new Vector3(-e.x, -e.y,  e.z), c + new Vector3(-e.x, -e.y, -e.z)
+                };
 
                 foreach (var corner in corners)
                 {
@@ -725,12 +740,13 @@ namespace SeamlessInteriors
                 }
             }
 
+            // Fallback bounds just in case the calculation fails
             if (first) return new Bounds(new Vector3(0, 2f, 0), new Vector3(25f, 18f, 25f));
             Bounds result = new Bounds();
             result.SetMinMax(min, max);
 
             if (s_DebugBounds)
-                MelonLogger.Msg($"[BOUNDS-DEBUG] SONUÇ -> min={min} max={max} center={result.center} size={result.size}");
+                MelonLogger.Msg($"[BOUNDS-DEBUG] RESULT -> min={min} max={max} center={result.center} size={result.size}");
 
             return result;
         }
@@ -745,11 +761,8 @@ namespace SeamlessInteriors
             return b.Contains(localPos);
         }
 
-        // YENİ EKLENDİ: Sahne/save yüklendiğinde BİR KEZ çalışır. Oyuncu save anında
-        // fiziksel olarak iç mekandaysa (veya dışarıdaysa), mesh durumunu buna göre
-        // doğru şekilde senkronize eder. Bu, "kapıya yaklaşınca açılma" davranışından
-        // FARKLIDIR -- watchdog artık mesh'e hiç dokunmuyor, sadece bu ilk senkronizasyon
-        // ve gerçek kapı tıklaması (PortalMagicPatch) mesh'i değiştirebilir.
+        // Runs ONCE when scene/save is loaded. Syncs meshes correctly if player is inside or outside.
+        // This is separate from the door interaction logic.
         public static void ApplyInitialSyncState(Vector3? overridePos = null)
         {
             Vector3 pos;
@@ -789,13 +802,15 @@ namespace SeamlessInteriors
                 SetInteriorItemsVisible(false);
             }
 
-            // YENİ EKLENEN SATIR: Oyun ilk açıldığında veya save yüklendiğinde sesi duruma göre ayarla
+            // Adjust sound isolation depending on load position
             SetAudioOcclusion(isInside);
 
             if (s_DebugBounds)
-                MelonLogger.Msg($"[INITIAL-SYNC] Pos: {pos} | isInside={isInside} | Mesh durumu senkronize edildi.");
+                MelonLogger.Msg($"[INITIAL-SYNC] Pos: {pos} | isInside={isInside} | Mesh states synchronized.");
         }
 
+        // Only updates wind/snow particle occlusion based on proximity.
+        // Mesh visibility swapping is handled EXCLUSIVELY by PortalMagicPatch.
         public static void ApplyVisibilityState(Vector3? overridePos = null)
         {
             Vector3 pos;
@@ -811,10 +826,6 @@ namespace SeamlessInteriors
             if (s_MasterInterior == null || s_ExteriorShell == null) return;
 
             bool isInside = IsPositionInsideCabin(pos);
-
-            // NOT: Mesh/eşya görünürlük takası buradan KALDIRILDI.
-            // Artık SADECE kapı etkileşiminde (PortalMagicPatch) değişiyor.
-            // Bu metod artık sadece rüzgar/kar parçacık occlusion'ını proximity'e göre günceller.
 
             var uniStorm = UnityEngine.Object.FindObjectOfType<Il2Cpp.UniStormWeatherSystem>();
             if (uniStorm != null && uniStorm.m_WeatherParticleManager != null && s_CustomKillers != null)
@@ -885,6 +896,8 @@ namespace SeamlessInteriors
         }
     }
 
+    // Intercepts door interactions. Instead of loading scenes, it teleports the player locally 
+    // and swaps the active state of the interior and exterior meshes.
     [HarmonyLib.HarmonyPatch(typeof(LoadScene), nameof(LoadScene.PerformInteraction))]
     public class PortalMagicPatch
     {
@@ -899,7 +912,7 @@ namespace SeamlessInteriors
 
             if (CampOfficeMod.s_DebugBounds)
             {
-                MelonLogger.Msg($"[DEBUG-PORTAL] Kapı: {__instance.gameObject.name} | Root: {__instance.transform.root.name} | belongsToCampOffice={belongsToCampOffice} | targetScene={__instance.m_SceneToLoad}");
+                MelonLogger.Msg($"[DEBUG-PORTAL] Door: {__instance.gameObject.name} | Root: {__instance.transform.root.name} | belongsToCampOffice={belongsToCampOffice} | targetScene={__instance.m_SceneToLoad}");
             }
 
             if (!belongsToCampOffice) return true;
@@ -919,12 +932,12 @@ namespace SeamlessInteriors
                 UnityEngine.DynamicGI.UpdateEnvironment();
 
                 CampOfficeMod.SetInteriorItemsVisible(true);
+                // Push the player forward slightly so they don't get stuck in the door collider
                 pm.transform.position = pm.transform.position + (GameManager.GetVpFPSCamera().transform.forward * 2f);
 
-                // YENİ EKLENEN SATIR: İçeri girince sesi boğuklaştır
                 CampOfficeMod.SetAudioOcclusion(true);
 
-                return false;
+                return false; // Skip original method
             }
 
             if (targetScene == CampOfficeMod.EXTERIOR)
@@ -938,18 +951,19 @@ namespace SeamlessInteriors
                 UnityEngine.DynamicGI.UpdateEnvironment();
 
                 CampOfficeMod.SetInteriorItemsVisible(false);
+                // Push the player forward slightly
                 pm.transform.position = pm.transform.position + (GameManager.GetVpFPSCamera().transform.forward * 2f);
 
-                // YENİ EKLENEN SATIR: Dışarı çıkınca sesi normale döndür
                 CampOfficeMod.SetAudioOcclusion(false);
 
-                return false;
+                return false; // Skip original method
             }
 
             return true;
         }
     }
 
+    // Prevents the game from instantiating duplicate GameManagers while we additively load interior scenes
     [HarmonyLib.HarmonyPatch(typeof(GameManager), "Awake")]
     public class PreventFakeManagerPatch
     {
@@ -964,6 +978,7 @@ namespace SeamlessInteriors
         }
     }
 
+    // Fakes the wind shelter status when the player's coordinates are inside the cabin bounds
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Wind), nameof(Il2Cpp.Wind.PlayerShelteredFromWind))]
     public class PlayerWindShelterPatch
     {
@@ -982,6 +997,7 @@ namespace SeamlessInteriors
         }
     }
 
+    // Ensures fires/torches don't blow out while inside the cabin
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Wind), nameof(Il2Cpp.Wind.IsPositionOccludedFromWind))]
     public class WindOcclusionPatch
     {
@@ -996,6 +1012,7 @@ namespace SeamlessInteriors
         }
     }
 
+    // Destroys random spawn objects during the cloning routine to prevent double-spawning
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.RandomSpawnObject), "Start")]
     public class RandomSpawnBlockerPatch
     {
@@ -1015,6 +1032,7 @@ namespace SeamlessInteriors
         }
     }
 
+    // Intercepts placeables to prevent duplications from loading interior data over the exterior
     [HarmonyLib.HarmonyPatch(typeof(Il2CppTLD.Placement.Placeable), nameof(Il2CppTLD.Placement.Placeable.FindOrCreateAndDeserialize))]
     public class PlaceableFindOrCreatePatch
     {
@@ -1025,7 +1043,7 @@ namespace SeamlessInteriors
             if (!CampOfficeMod.s_RunCompleted && s_InteriorPlaceableGuids.Contains(guid))
             {
                 if (CampOfficeMod.s_DebugBounds)
-                    MelonLogger.Msg($"[PLACEABLE-SKIP] FindOrCreateAndDeserialize engellendi. GUID: {guid}");
+                    MelonLogger.Msg($"[PLACEABLE-SKIP] Blocked FindOrCreateAndDeserialize for GUID: {guid}");
 
                 __result = null;
                 return false;
@@ -1036,10 +1054,10 @@ namespace SeamlessInteriors
     }
 
     // =====================================================================================
-    // [EKLENDİ] AŞAĞIDAKİLER SADECE KONTEYNER VE ITEM DUPLICATE ÇÖZÜMLERİ İÇİN EKLENMİŞTİR
+    // SPECIFIC PATCHES FOR CONTAINER CRASHES AND ITEM DUPLICATION
     // =====================================================================================
 
-    // 1. Eşya çoğalmasını (Dupe) engelleyen yama
+    // 1. Prevents global gear duplication during the additive scene load
     [HarmonyLib.HarmonyPatch]
     public class PreventGearManagerDuplicationPatch
     {
@@ -1058,13 +1076,13 @@ namespace SeamlessInteriors
         {
             if (CampOfficeMod.s_IsCloningRoutineActive)
             {
-                return false;
+                return false; // Block deserialization while cloning is active
             }
             return true;
         }
     }
 
-    // 2. Silinmiş konteynerlerin "FindContainerByPosition" aramasında oyunu çökertmesini engelleyen yama (Finalizer)
+    // 2. Suppresses crashes caused by deleted containers being queried by position (Finalizer handles exceptions quietly)
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.ContainerManager), nameof(Il2Cpp.ContainerManager.FindContainerByPosition))]
     public class FixContainerManagerCrashPatch
     {
@@ -1079,7 +1097,7 @@ namespace SeamlessInteriors
         }
     }
 
-    // 3. Konteyner içi loot üretimi sırasında (PopulateWithRandomGear) oluşan seri çökmeleri engelleyen yama
+    // 3. Prevents serial crashes when populating invalid/cloned containers with random gear
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Container), nameof(Il2Cpp.Container.PopulateWithRandomGear))]
     public class FixContainerPopulateCrashPatch
     {
