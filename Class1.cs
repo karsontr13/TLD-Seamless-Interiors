@@ -6,30 +6,30 @@ using System.Collections.Generic;
 using UnityEngine;
 using Il2CppTLD.Audio;
 
-[assembly: MelonInfo(typeof(SeamlessInteriors.CampOfficeMod), "SeamlessInteriors", "v1.0.0", "Hamsi Buglama")]
+[assembly: MelonInfo(typeof(SeamlessInteriors.CampOfficeMod), "SeamlessInteriors", "v1.1.0", "Hamsi Buglama")]
 [assembly: MelonGame("Hinterland", "TheLongDark")]
 
 namespace SeamlessInteriors
 {
     public class CampOfficeMod : MelonMod
     {
-        // Scene names for The Long Dark
+        // Base scene names for The Long Dark
         public const string EXTERIOR = "LakeRegion";
         public const string INTERIOR = "CampOffice";
 
         // Global state flags for the cloning and integration process
         public static bool s_RunCompleted = false;
         public static bool s_IsCloningRoutineActive = false;
-        
+
         // References to the main game objects
         public static GameObject s_ExteriorShell = null;
         public static GameObject s_MasterInterior = null;
-        
+
         // List to hold custom snow/weather particle killers inside the cabin
         public static List<Il2CppTLD.WeatherParticle.WeatherParticleManager.ParticleKillerInstance> s_CustomKillers = new List<Il2CppTLD.WeatherParticle.WeatherParticleManager.ParticleKillerInstance>();
 
         // How much the interior should be lifted from the ground to prevent snow bleeding through the floor
-        public const float INTERIOR_Y_OFFSET = 1.5f;
+        public const float INTERIOR_Y_OFFSET = 2f;
 
         // The single source of truth for visibility/position checking
         public static BoxCollider s_InteriorTrigger = null;
@@ -65,7 +65,13 @@ namespace SeamlessInteriors
                 s_ExteriorShell = null;
                 s_MasterInterior = null;
                 s_InteriorTrigger = null;
-                s_WatchdogStarted = false; 
+                s_WatchdogStarted = false;
+
+                // The old UniStorm/GameAudioManager instances are destroyed when this scene unloads.
+                // If these flags/lists aren't cleared, the new instances in the loaded scene
+                // will try to sync using the old, invalid data, causing wind audio to break entirely.
+                s_IsAudioOccluded = false;
+                if (s_CustomKillers != null) s_CustomKillers.Clear();
 
                 if (s_ParticleKiller != null)
                 {
@@ -216,8 +222,8 @@ namespace SeamlessInteriors
                     Vector3 localPos = interiorRoot.transform.InverseTransformPoint(gear.transform.position);
                     string cleanName = gear.gameObject.name.Replace("(Clone)", "").Trim();
 
-                    string yeniPdid = $"CampOffice_{cleanName}_{localPos.x:F2}_{localPos.y:F2}_{localPos.z:F2}";
-                    guidComponent.m_Guid = yeniPdid;
+                    string newPdid = $"CampOffice_{cleanName}_{localPos.x:F2}_{localPos.y:F2}_{localPos.z:F2}";
+                    guidComponent.m_Guid = newPdid;
                     generatedCount++;
                 }
             }
@@ -442,7 +448,7 @@ namespace SeamlessInteriors
             }
 
             SpatialDeduplication(master);
-            
+
             // Global deduplication by GUID to prevent identical items from persisting
             var allGuids = UnityEngine.Object.FindObjectsOfType<Il2Cpp.ObjectGuid>(true);
             Dictionary<string, List<Il2Cpp.ObjectGuid>> guidDict = new Dictionary<string, List<Il2Cpp.ObjectGuid>>();
@@ -490,11 +496,19 @@ namespace SeamlessInteriors
                     if (og != null && !string.IsNullOrEmpty(og.m_Guid))
                         interiorGearBefore.Add(og.m_Guid);
                 }
+                
+                // ==== NEW SECTION: FIRE SYNCHRONIZATION ====
+                if (!string.IsNullOrEmpty(FireManagerStealerPatch.s_StolenFireData))
+                {
+                    MelonCoroutines.Start(DelayedFireRestore());
+                }
+                // ==========================================================
 
+                // [CHANGED] Loaded EXTERIOR instead of INTERIOR to fix container deserialization issues
                 SaveGameSystem.LoadSceneDataAdditive(currentSaveName, EXTERIOR);
 
                 if (s_DebugBounds)
-                    MelonLogger.Msg($"[GEAR-RESTORE] CampOffice save data applied. Had {interiorGearBefore.Count} GearItems in interior.");
+                    MelonLogger.Msg($"[GEAR-RESTORE] CampOffice save data applied. There were {interiorGearBefore.Count} GearItems in the interior.");
             }
 
             yield return null;
@@ -521,7 +535,7 @@ namespace SeamlessInteriors
             solidPerimeter.transform.SetParent(master.transform, false);
             solidPerimeter.transform.localPosition = Vector3.zero;
             solidPerimeter.transform.localRotation = Quaternion.identity;
-            
+
             // Assign to NPC layer to prevent wolves/bears from clipping into the cabin
             solidPerimeter.layer = LayerMask.NameToLayer("NPC");
 
@@ -609,7 +623,7 @@ namespace SeamlessInteriors
             spaceTrigger.m_UseOutdoorLighting = true;
             spaceTrigger.m_UseOutdoorTemperature = false;
             spaceTrigger.m_AllowCampfires = true;
-            spaceTrigger.m_TemperatureDeltaCelsius = 15f;
+            spaceTrigger.m_TemperatureDeltaCelsius = 25f;
             spaceTrigger.m_ValidSafehouse = true;
             spaceTrigger.m_DontCountAsInterior = true;
             spaceTrigger.m_IgnoreCabinFever = false;
@@ -868,6 +882,54 @@ namespace SeamlessInteriors
             }
         }
 
+        public static IEnumerator DelayedFireRestore()
+        {
+            yield return null;
+            yield return null;
+            yield return null;
+
+            if (!string.IsNullOrEmpty(FireManagerStealerPatch.s_StolenFireData) && s_MasterInterior != null)
+            {
+                // 1. Forcibly register stoves and fires into the game's native FireManager
+                var allFires = s_MasterInterior.GetComponentsInChildren<Il2Cpp.Fire>(true);
+                foreach (var f in allFires) if (f != null && !Il2Cpp.FireManager.m_Fires.Contains(f)) Il2Cpp.FireManager.AddFire(f);
+
+                var allWoodStoves = s_MasterInterior.GetComponentsInChildren<Il2Cpp.WoodStove>(true);
+                foreach (var ws in allWoodStoves) if (ws != null && !Il2Cpp.FireManager.m_WoodStoves.Contains(ws)) Il2Cpp.FireManager.AddWoodStove(ws);
+
+                var allCampfires = s_MasterInterior.GetComponentsInChildren<Il2Cpp.Campfire>(true);
+                foreach (var cf in allCampfires) if (cf != null && !Il2Cpp.FireManager.m_Campfires.Contains(cf)) Il2Cpp.FireManager.AddCampfire(cf);
+
+                // 2. Wait in the background for the native Start() method to execute and reset the fire
+                // [CRASH FIX] If the player enters an original interior while we are waiting, our cloned interior is destroyed. We use a null check here to prevent crashes!
+                while (s_MasterInterior != null && !s_MasterInterior.activeInHierarchy)
+                {
+                    yield return null;
+                }
+
+                // Safely abort the routine if the player left the scene and the custom interior was destroyed
+                if (s_MasterInterior == null) yield break;
+
+                yield return null;
+                yield return null;
+
+                // 3. THE NATIVE START() HAS FINISHED! NOW WE ACTIVATE THE PROTECTION SHIELD
+                PreventFireDestructionPatch.s_ProtectInterior = true;
+
+                // 4. We permanently stamp our fire data for a SECOND TIME (Stoves will begin to burn)
+                // Because our shield is active, the game CANNOT DELETE the unlit stoves (nor our house)!
+                Il2Cpp.FireManager.Deserialize(FireManagerStealerPatch.s_StolenFireData);
+
+                // 5. DANGER HAS PASSED, DEACTIVATE THE PROTECTION SHIELD:
+                PreventFireDestructionPatch.s_ProtectInterior = false;
+                FireManagerStealerPatch.s_StolenFireData = "";
+
+                if (s_DebugBounds)
+                    MelonLogger.Msg("[FIRE-RESTORE-PERFECT] Start() was overridden, shield deployed, fire successfully restored!");
+            }
+        }
+
+
         public static void SetInteriorItemsVisible(bool visible)
         {
             if (s_MasterInterior == null) return;
@@ -915,7 +977,25 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[DEBUG-PORTAL] Door: {__instance.gameObject.name} | Root: {__instance.transform.root.name} | belongsToCampOffice={belongsToCampOffice} | targetScene={__instance.m_SceneToLoad}");
             }
 
-            if (!belongsToCampOffice) return true;
+            if (!belongsToCampOffice)
+            {
+                // The player is entering an ORIGINAL interior -> The EXTERIOR scene will actually be unloaded.
+                // Right before the scene is destroyed, the game creates a "transition" save state.
+                // In this state, only objects with activeSelf=true are serialized. Because our master interior
+                // is often disabled (SetActive(false)), the items inside it are excluded from this save,
+                // causing them to permanently disappear when we return.
+                // Fix: Just BEFORE the original method (and the resulting save/scene-unload) triggers,
+                // we temporarily activate the interior so the game detects and saves its contents.
+                if (CampOfficeMod.s_MasterInterior != null && !CampOfficeMod.s_MasterInterior.activeSelf)
+                {
+                    CampOfficeMod.s_MasterInterior.SetActive(true);
+
+                    if (CampOfficeMod.s_DebugBounds)
+                        MelonLogger.Msg("[SAVE-FIX] Entering an original interior. Temporarily activating our custom interior to prevent save data loss.");
+                }
+
+                return true;
+            }
 
             string targetScene = __instance.m_SceneToLoad;
 
@@ -1106,6 +1186,53 @@ namespace SeamlessInteriors
             if (__instance == null || __instance.gameObject == null)
             {
                 return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.FireManager), nameof(Il2Cpp.FireManager.Deserialize))]
+    public class FireManagerStealerPatch
+    {
+        public static string s_StolenFireData = "";
+
+        public static void Prefix(string text)
+        {
+            // We intercept while the game loads (or saves) fire data on its own.
+            // If our interior cloning routine is NOT active (i.e., this is the main game load), steal the data.
+            if (!string.IsNullOrEmpty(text) && !CampOfficeMod.s_IsCloningRoutineActive)
+            {
+                s_StolenFireData = text;
+
+                if (CampOfficeMod.s_DebugBounds)
+                    MelonLogger.Msg($"[FIRE-STEAL] Fire data successfully copied ({text.Length} characters).");
+            }
+        }
+    }
+
+    // Prevents our custom interior from being destroyed when TLD's FireManager ruthlessly attempts to delete unlit fires/stoves
+    [HarmonyLib.HarmonyPatch(typeof(UnityEngine.Object), nameof(UnityEngine.Object.Destroy), new System.Type[] { typeof(UnityEngine.Object) })]
+    public class PreventFireDestructionPatch
+    {
+        public static bool s_ProtectInterior = false;
+
+        public static bool Prefix(UnityEngine.Object obj)
+        {
+            // CANCEL the deletion ONLY if we activated the shield AND the target object is inside our custom interior
+            if (s_ProtectInterior && obj != null && CampOfficeMod.s_MasterInterior != null)
+            {
+                GameObject go = obj.TryCast<GameObject>();
+                if (go == null)
+                {
+                    Component comp = obj.TryCast<Component>();
+                    if (comp != null) go = comp.gameObject;
+                }
+
+                if (go != null && go.transform.IsChildOf(CampOfficeMod.s_MasterInterior.transform))
+                {
+                    // If the object being destroyed is part of our custom interior, stop the destruction!
+                    return false;
+                }
             }
             return true;
         }
