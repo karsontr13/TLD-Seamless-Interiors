@@ -56,6 +56,7 @@ namespace SeamlessInteriors
             }
         }
 
+
         private IEnumerator WaitForPlayerThenRun()
         {
             float timeout = 10f;

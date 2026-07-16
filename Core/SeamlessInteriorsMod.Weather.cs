@@ -93,6 +93,8 @@ namespace SeamlessInteriors
             }
 
             MelonCoroutines.Start(DelayedInitialVisibilityCheck());
+            // ↓ YENİ SATIR
+            MelonCoroutines.Start(DelayedSaveLoadVisibilityFix());
 
             if (!s_WatchdogStarted)
             {
@@ -101,7 +103,32 @@ namespace SeamlessInteriors
             }
         }
 
+        private static float s_lastCabinCheckLog = -999f;
+
+        // Oyuncunun portal/watchdog kararı için — daraltılmış bounds (duvar geçişini önler)
         public static bool IsPositionInsideCabin(Vector3 pos)
+        {
+            if (s_MasterInterior == null || s_InteriorTrigger == null) return false;
+            Vector3 localPos = s_MasterInterior.transform.InverseTransformPoint(pos);
+
+            float shrink = 1.5f;
+            Bounds b = new Bounds(s_InteriorTrigger.center, s_InteriorTrigger.size);
+
+            bool insideX = localPos.x >= b.min.x + shrink && localPos.x <= b.max.x - shrink;
+            bool insideZ = localPos.z >= b.min.z + shrink && localPos.z <= b.max.z - shrink;
+            bool insideY = localPos.y >= b.min.y - 2f && localPos.y <= b.max.y;
+            bool result = insideX && insideY && insideZ;
+
+            if (s_DebugBounds && Time.time - s_lastCabinCheckLog > 5f)
+            {
+                s_lastCabinCheckLog = Time.time;
+                MelonLogger.Msg($"[CABIN-CHECK] worldPos={pos} localPos={localPos} boundsCenter={b.center} boundsSize={b.size} isInside={result}");
+            }
+            return result;
+        }
+
+        // Gear gizleme/gösterme için — orijinal tam bounds (shrink yok)
+        public static bool IsPositionInsideCabinFull(Vector3 pos)
         {
             if (s_MasterInterior == null || s_InteriorTrigger == null) return false;
             Vector3 localPos = s_MasterInterior.transform.InverseTransformPoint(pos);

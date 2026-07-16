@@ -100,7 +100,7 @@ namespace SeamlessInteriors
         {
             if (interiorRoot == null) return;
             var allGear = interiorRoot.GetComponentsInChildren<Il2Cpp.GearItem>(true);
-            
+
             foreach (var gear in allGear)
             {
                 if (gear == null) continue;
@@ -197,7 +197,7 @@ namespace SeamlessInteriors
                 if (gear == null || gear.gameObject == null) continue;
                 if (gear.transform.IsChildOf(s_MasterInterior.transform)) continue;
 
-                if (IsPositionInsideCabin(gear.transform.position))
+                if (IsPositionInsideCabinFull(gear.transform.position))
                 {
                     foreach (var r in gear.GetComponentsInChildren<MeshRenderer>(true)) if (r != null) r.enabled = visible;
                     foreach (var c in gear.GetComponentsInChildren<Collider>(true)) if (c != null) c.enabled = visible;
