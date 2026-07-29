@@ -16,6 +16,7 @@ namespace SeamlessInteriors
 
         public static bool s_RunCompleted = false;
         public static bool s_IsCloningRoutineActive = false;
+        public static bool s_InteriorPersisted = false;
 
         public static GameObject s_ExteriorShell = null;
         public static GameObject s_MasterInterior = null;
@@ -31,10 +32,17 @@ namespace SeamlessInteriors
         public static bool s_WatchdogStarted = false;
         public static bool s_IsAudioOccluded = false;
 
+        public static System.Collections.Generic.List<Il2CppTLD.Placement.Placeable> s_PendingCampOfficePlaceables = new System.Collections.Generic.List<Il2CppTLD.Placement.Placeable>();
+
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
             if (sceneName == EXTERIOR)
             {
+                if (s_InteriorPersisted && s_MasterInterior != null)
+                {
+                    MelonCoroutines.Start(ReattachPersistedInterior());
+                    return;
+                }
                 if (s_RunCompleted) return;
                 MelonCoroutines.Start(WaitForPlayerThenRun());
             }
@@ -44,12 +52,30 @@ namespace SeamlessInteriors
         {
             if (sceneName == EXTERIOR)
             {
+                if (s_RunCompleted && s_MasterInterior != null)
+                {
+                    UnityEngine.Object.DontDestroyOnLoad(s_MasterInterior);
+                    s_MasterInterior.SetActive(false);
+                    s_InteriorPersisted = true;
+
+                    if (s_DebugBounds)
+                        MelonLogger.Msg("[PERSIST] Klon interior DontDestroyOnLoad'a tasindi, korunuyor.");
+
+                    s_ExteriorShell = null;
+                    s_WatchdogStarted = false;
+                    s_IsAudioOccluded = false;
+                    if (s_CustomKillers != null) s_CustomKillers.Clear();
+                    ResetWeatherParticles();
+                    return;
+                }
+
                 s_RunCompleted = false;
                 s_ExteriorShell = null;
                 s_MasterInterior = null;
                 s_InteriorTrigger = null;
                 s_WatchdogStarted = false;
                 s_IsAudioOccluded = false;
+                s_InteriorPersisted = false;
 
                 if (s_CustomKillers != null) s_CustomKillers.Clear();
                 ResetWeatherParticles();
@@ -74,51 +100,111 @@ namespace SeamlessInteriors
             MelonCoroutines.Start(Run());
         }
 
-        // İŞTE YENİ, TERTEMİZ RUN METODUMUZ!
+        // Reattaches a previously persisted (DontDestroyOnLoad) cloned interior back into
+        // the freshly loaded LakeRegion scene. This path runs instead of the full Run()
+        // routine once the clone already exists, since we don't want to rebuild it from
+        // scratch (and duplicate/regenerate loot, placeables, etc.) every time the player
+        // re-enters LakeRegion.
+        private IEnumerator ReattachPersistedInterior()
+        {
+            float timeout = 10f;
+            float elapsed = 0f;
+            while (elapsed < timeout)
+            {
+                Transform playerT = GameManager.GetPlayerTransform();
+                if (playerT != null && playerT.position.sqrMagnitude > 1f) break;
+                yield return null;
+                elapsed += 0.5f;
+            }
+
+            var exteriorScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(EXTERIOR);
+            if (exteriorScene.isLoaded && s_MasterInterior != null)
+            {
+                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(s_MasterInterior, exteriorScene);
+            }
+
+            s_ExteriorShell = GameObject.Find("STRSPAWN_CampOffice_Prefab");
+            if (s_ExteriorShell == null)
+            {
+                foreach (var go in UnityEngine.Object.FindObjectsOfType<GameObject>())
+                {
+                    if (go.name.Contains("CampOffice") && go.name.Contains("Prefab"))
+                    {
+                        s_ExteriorShell = go; break;
+                    }
+                }
+            }
+
+            if (s_ExteriorShell != null)
+            {
+                Vector3 shellPos = s_ExteriorShell.transform.position;
+                shellPos.y += INTERIOR_Y_OFFSET;
+                s_MasterInterior.transform.position = shellPos;
+                s_MasterInterior.transform.rotation = s_ExteriorShell.transform.rotation;
+            }
+
+            if (s_InteriorTrigger == null && s_MasterInterior != null)
+            {
+                var killer = s_MasterInterior.transform.Find("ParticleKiller");
+                if (killer != null)
+                    s_InteriorTrigger = killer.GetComponent<BoxCollider>();
+            }
+
+            Bounds interiorBounds = ComputeLocalInteriorBounds(s_MasterInterior);
+            SetupWeatherParticleKillersOnly(interiorBounds);
+
+            ApplySafehouseCustomizationFix();
+
+            s_InteriorPersisted = false;
+            InitializeVisibilityAndWatchdog();
+
+            if (s_DebugBounds)
+                MelonLogger.Msg("[PERSIST] Klon interior LakeRegion'a geri baglandi.");
+        }
+
+        // Main cloning routine: loads the interior scene, merges it into the exterior world,
+        // sets up spawning/dedup/weather/collision, and restores any previously saved state.
+        // Runs once per fresh load of LakeRegion (see WaitForPlayerThenRun / OnSceneWasInitialized).
         private IEnumerator Run()
         {
             s_IsCloningRoutineActive = true;
 
-            // 1. Spawning Sistemi: Yeni oyun ganimet kilitlerini kontrol et
             CheckNewGameLootLock();
 
-            // 2. Çevre/Environment Sistemi: Sahneleri yükle ve birleştir
             yield return LoadInteriorScenes();
             PrepareMasterInterior();
             AlignWithExteriorShell();
 
-            // 3. Spawning Sistemi: Yerleştirilebilir eşyaları (Placeables) hazırla
             HandleInitialPlaceables();
             yield return new WaitForSeconds(0.5f);
 
-            // 4. Spawning Sistemi: Rastgele eşyalar (RSO) ve obje kopyalarını temizle
             ProcessSpawnsAndDeduplication();
 
-            // 5. Kayıt Sistemi: Önceki kayıt verilerini yükle (Ateş vb.)
+            DisableInteriorContainerSerialization(s_MasterInterior);
             RestoreSceneSaveData();
             yield return null;
 
-            // Çevre koordinatlarını hesapla
             Bounds interiorBounds = ComputeLocalInteriorBounds(s_MasterInterior);
 
-            // 6. Hava Durumu Sistemi: Kar ve rüzgar engelleyicileri kur
             SetupWeatherAndParticles(interiorBounds);
 
-            // 7. Çevre Sistemi: Hayvanlar için NavMesh ve görünmez duvarları çek
             SetupSolidPerimeter(interiorBounds);
             yield return null;
 
-            // 8. Çevre Sistemi: Işık haritalarını temizle ve dış mekana entegre et
             StripBakedLightmaps();
             yield return null;
             UpdateGlobalEnvironment();
 
-            // İşlemler Bitti
             s_IsCloningRoutineActive = false;
             s_RunCompleted = true;
 
-            // Son rötuşlar
             CleanupOrphanPlaceables();
+            CleanupLostAndFoundBoxes();
+
+            ApplySafehouseCustomizationFix();
+
+            RestorePlaceablePositions();
+
             InitializeVisibilityAndWatchdog();
         }
     }

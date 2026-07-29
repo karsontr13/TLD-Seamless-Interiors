@@ -8,6 +8,11 @@ namespace SeamlessInteriors
 {
     public partial class SeamlessInteriorsMod
     {
+        // Loads the interior scene (plus its sandbox/DLC variants) additively, then
+        // reparents every root object from those scenes under one "Master_CampOffice_Interior"
+        // container. That container is what gets moved into the exterior scene and
+        // positioned on top of the exterior shell, which is the core trick behind
+        // the seamless interior/exterior transition.
         private IEnumerator LoadInteriorScenes()
         {
             var opMain = UnityEngine.AddressableAssets.Addressables.LoadSceneAsync(INTERIOR, UnityEngine.SceneManagement.LoadSceneMode.Additive);
@@ -25,6 +30,9 @@ namespace SeamlessInteriors
             s_MasterInterior = new GameObject("Master_CampOffice_Interior");
             s_MasterInterior.SetActive(false);
 
+            // Parking the container in the exterior scene now (instead of after all
+            // reparenting is done) avoids cross-scene reference issues while we move
+            // children into it below.
             var exteriorScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(EXTERIOR);
             UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(s_MasterInterior, exteriorScene);
 
@@ -41,6 +49,10 @@ namespace SeamlessInteriors
             }
         }
 
+        // Removes/disables objects from the cloned interior that only make sense in the
+        // original, self-contained interior scene (daytime-only light shafts, the interior's
+        // own lighting manager, the game's own "inaccessible gear" lost-and-found container,
+        // and the interior window prop, which would look wrong once merged into the exterior).
         private void PrepareMasterInterior()
         {
             Transform[] masterChildren = s_MasterInterior.GetComponentsInChildren<Transform>(true);
@@ -63,6 +75,12 @@ namespace SeamlessInteriors
             }
         }
 
+        // Positions the cloned interior on top of the exterior "shell" building so the
+        // two visually line up. Tries to find the real exterior prefab by name first,
+        // then falls back to a hardcoded world position if it can't be found (e.g. if
+        // Hinterland ever renames the prefab). The non-uniform scale (1.05, 0.98, 1.05)
+        // is a manual fudge factor to make the interior geometry match the exterior shell's
+        // real-world footprint, since the two were never built to align automatically.
         private void AlignWithExteriorShell()
         {
             s_ExteriorShell = GameObject.Find("STRSPAWN_CampOffice_Prefab");
@@ -95,6 +113,10 @@ namespace SeamlessInteriors
             }
         }
 
+        // Builds invisible collider walls around the interior bounds plus a NavMesh
+        // obstacle, so wildlife AI won't wander through the "walls" of the cloned
+        // interior (which has no real architectural collision once merged into the
+        // open exterior world).
         private void SetupSolidPerimeter(Bounds localBounds)
         {
             GameObject solidPerimeter = new GameObject("SolidPerimeter_Blocker");
@@ -128,6 +150,12 @@ namespace SeamlessInteriors
             aiObstacle.carving = true;
         }
 
+        // The interior scene ships with baked lightmaps meant for its own isolated
+        // lighting setup. Those would look wrong (or pitch black) once the geometry is
+        // merged into the outdoor scene's real-time lighting, so we clear the lightmap
+        // index on every renderer and strip the LIGHTMAP_ON shader keyword from any
+        // material that has it (cloning the material first so we don't affect the
+        // original asset shared by other instances).
         private void StripBakedLightmaps()
         {
             Renderer[] allRenderersAfter = s_MasterInterior.GetComponentsInChildren<Renderer>(true);
@@ -149,6 +177,8 @@ namespace SeamlessInteriors
             }
         }
 
+        // Forces the outdoor weather/lighting system to refresh so the merged interior
+        // geometry picks up correct real-time lighting instead of stale baked values.
         private void UpdateGlobalEnvironment()
         {
             Weather wFinal = GameManager.GetWeatherComponent();
@@ -160,6 +190,16 @@ namespace SeamlessInteriors
             UnityEngine.DynamicGI.UpdateEnvironment();
         }
 
+        // Computes an axis-aligned bounding box (in the interior root's local space)
+        // that tightly wraps the interior's actual geometry, by sampling every renderer's
+        // world-space bounds corners and transforming them into local space.
+        // Renderers larger than 40 units, or whose local center sits implausibly far
+        // from the root (>30 units), are treated as outliers/false-positives (e.g. huge
+        // skybox-style meshes or props that got parented incorrectly) and skipped so
+        // they don't blow up the computed bounds. "Shadow_Caster" objects are also
+        // ignored since they don't represent real interior geometry.
+        // If no valid renderer is found at all, a reasonable default box is returned
+        // instead of an empty/zero bounds.
         public static Bounds ComputeLocalInteriorBounds(GameObject root)
         {
             Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);

@@ -1,12 +1,17 @@
 ﻿using Il2Cpp;
 using MelonLoader;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 namespace SeamlessInteriors
 {
     public partial class SeamlessInteriorsMod
     {
+        // Detects a brand-new game (very low hours played) and clears our "gear already
+        // generated" lock plus any leftover placeable-position JSON from a previous save
+        // that happened to reuse the same save name, so the new game doesn't inherit stale
+        // loot/positions from an old playthrough.
         private void CheckNewGameLootLock()
         {
             var tod = GameManager.GetTimeOfDayComponent();
@@ -15,6 +20,13 @@ namespace SeamlessInteriors
                 string keyToReset = "CampOfficeGen_" + SaveGameSystem.m_CurrentSaveName;
                 UnityEngine.PlayerPrefs.SetInt(keyToReset, 0);
                 UnityEngine.PlayerPrefs.Save();
+                string jsonPath = GetPlaceableSavePath();
+                if (jsonPath != null && File.Exists(jsonPath))
+                {
+                    File.Delete(jsonPath);
+                    if (s_DebugBounds)
+                        MelonLogger.Msg($"[NEW GAME] Eski Placeable JSON silindi: {jsonPath}");
+                }
 
                 if (s_DebugBounds)
                     MelonLogger.Msg("[NEW GAME DETECTED] Broke old loot generation lock! Gear will spawn.");
@@ -27,6 +39,14 @@ namespace SeamlessInteriors
             CollectInteriorPlaceableGuids(s_MasterInterior);
         }
 
+        // Handles two different situations depending on whether loot for this save was
+        // already generated once before:
+        //  - First time ever: assign deterministic PDIDs to gear so it can be tracked/saved.
+        //  - Every time after: any gear without a matching GUID component is a "rogue" spawn
+        //    (e.g. the game's own random-spawn system trying to re-populate the interior)
+        //    and gets destroyed, since our clone already has its items locked in place.
+        // Also runs spatial + GUID-based deduplication so the same physical item can't exist
+        // both inside the clone and in the original scene at once.
         private void ProcessSpawnsAndDeduplication()
         {
             string currentSaveName = SaveGameSystem.m_CurrentSaveName;
@@ -96,6 +116,31 @@ namespace SeamlessInteriors
             }
         }
 
+        public void CleanupLostAndFoundBoxes()
+        {
+            // Root cause: the base game creates a box named "CONTAINER_InaccessibleGear"
+            // for items it thinks got lost (e.g. displaced by our cloning). We destroy the
+            // whole container object (not just clear it) so any gear stuck inside it is
+            // removed too, rather than leaving an inaccessible lost-and-found box behind.
+            var containers = UnityEngine.Object.FindObjectsOfType<Il2Cpp.Container>(true);
+            int count = 0;
+            foreach (var c in containers)
+            {
+                if (c == null || c.gameObject == null) continue;
+                if (c.gameObject.name.IndexOf("CONTAINER_InaccessibleGear", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    c.gameObject.name.IndexOf("LostAndFound", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    UnityEngine.Object.Destroy(c.gameObject);
+                    count++;
+                }
+            }
+            if (s_DebugBounds) MelonLogger.Msg($"[L&F-CLEANUP] Destroyed {count} InaccessibleGear / Lost and Found boxes.");
+        }
+
+        // Gives gear items that don't already have a GUID a stable, deterministic ID derived
+        // from their name + local position. This means the same physical loot spawn gets the
+        // same ID across sessions (instead of a random one), so our save/restore and
+        // deduplication logic can reliably recognize "the same item" again later.
         private static void GenerateDeterministicPDIDs(GameObject interiorRoot)
         {
             if (interiorRoot == null) return;
@@ -116,6 +161,10 @@ namespace SeamlessInteriors
             }
         }
 
+        // Because both the cloned interior and the original interior scene can contain the
+        // same gear item (same name, same relative position), this removes the clone's copy
+        // whenever a matching item is found just outside the clone at (almost) the same
+        // world position - preventing visible duplicate items.
         private static void SpatialDeduplication(GameObject interiorRoot)
         {
             if (interiorRoot == null) return;
@@ -167,6 +216,10 @@ namespace SeamlessInteriors
             }
         }
 
+        // Cleans up placed decoration objects that have ended up orphaned - either sitting in
+        // the DontDestroyOnLoad scene with no real parent, or attached under the player's own
+        // transform - which can happen from odd re-parenting edge cases and would otherwise
+        // leave a stray, permanently-placed object with the "(PLACED)" name suffix.
         private static void CleanupOrphanPlaceables()
         {
             string suffix = Il2CppTLD.Placement.Placeable.SPAWNED_NAME_SUFFIX;
@@ -187,6 +240,10 @@ namespace SeamlessInteriors
             }
         }
 
+        // Shows/hides gear items that are physically inside the cabin bounds but live outside
+        // the clone hierarchy (i.e. gear belonging to the "real" interior scene). This keeps
+        // them hidden while the player is looking at the exterior-side view of the building,
+        // and visible once the clone (and thus this gear's real counterpart) is shown.
         public static void SetInteriorItemsVisible(bool visible)
         {
             if (s_MasterInterior == null) return;

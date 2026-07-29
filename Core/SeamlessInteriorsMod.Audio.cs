@@ -6,6 +6,9 @@ namespace SeamlessInteriors
 {
     public partial class SeamlessInteriorsMod
     {
+        // Toggles heavy audio occlusion on/off depending on whether the player
+        // is inside the cloned interior. This is what makes outdoor wind/ambience
+        // sound muffled while indoors, matching the game's normal indoor audio feel.
         public static void SetAudioOcclusion(bool occlude)
         {
             if (GameAudioManager.Instance == null) return;

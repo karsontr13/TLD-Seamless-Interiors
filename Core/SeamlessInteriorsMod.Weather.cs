@@ -7,6 +7,72 @@ namespace SeamlessInteriors
 {
     public partial class SeamlessInteriorsMod
     {
+        // Used only on the "reattach after persistence" path: recreates the weather particle
+        // killer instances for a bounds we already have, without creating a new ParticleKiller
+        // GameObject (it already exists inside the persisted clone, so we just re-derive its
+        // slice bounds and re-register the killer instances with the weather system).
+        private void SetupWeatherParticleKillersOnly(Bounds localBounds)
+        {
+            if (s_MasterInterior == null) return;
+
+            var particleKillerT = s_MasterInterior.transform.Find("ParticleKiller");
+            if (particleKillerT == null) return;
+
+            GameObject particleKillerObj = particleKillerT.gameObject;
+            s_CustomKillers.Clear();
+
+            var uniStorm = UnityEngine.Object.FindObjectOfType<Il2Cpp.UniStormWeatherSystem>();
+            if (uniStorm != null && uniStorm.m_WeatherParticleManager != null)
+            {
+                int sliceCount = 6;
+                float sliceZ = localBounds.size.z / sliceCount;
+                float startZ = localBounds.center.z - (localBounds.size.z / 2f) + (sliceZ / 2f);
+
+                for (int i = 0; i < sliceCount; i++)
+                {
+                    var pki = new Il2CppTLD.WeatherParticle.WeatherParticleManager.ParticleKillerInstance();
+                    pki.m_OwnerGameObject = particleKillerObj;
+                    pki.m_KillsFallingSnow = true;
+                    pki.m_KillsBlowingSnow = true;
+
+                    Vector3 sliceLocalCenter = new Vector3(localBounds.center.x, localBounds.center.y, startZ + (i * sliceZ));
+                    Vector3 sliceExtents = new Vector3(localBounds.size.x / 2f, localBounds.size.y / 2f, sliceZ / 2f);
+
+                    Vector3[] corners = new Vector3[8] {
+                        sliceLocalCenter + new Vector3( sliceExtents.x,  sliceExtents.y,  sliceExtents.z),
+                        sliceLocalCenter + new Vector3( sliceExtents.x,  sliceExtents.y, -sliceExtents.z),
+                        sliceLocalCenter + new Vector3( sliceExtents.x, -sliceExtents.y,  sliceExtents.z),
+                        sliceLocalCenter + new Vector3( sliceExtents.x, -sliceExtents.y, -sliceExtents.z),
+                        sliceLocalCenter + new Vector3(-sliceExtents.x,  sliceExtents.y,  sliceExtents.z),
+                        sliceLocalCenter + new Vector3(-sliceExtents.x,  sliceExtents.y, -sliceExtents.z),
+                        sliceLocalCenter + new Vector3(-sliceExtents.x, -sliceExtents.y,  sliceExtents.z),
+                        sliceLocalCenter + new Vector3(-sliceExtents.x, -sliceExtents.y, -sliceExtents.z)
+                    };
+
+                    Vector3 min = particleKillerObj.transform.TransformPoint(corners[0]);
+                    Vector3 max = min;
+                    for (int j = 1; j < 8; j++)
+                    {
+                        Vector3 wp = particleKillerObj.transform.TransformPoint(corners[j]);
+                        min = Vector3.Min(min, wp);
+                        max = Vector3.Max(max, wp);
+                    }
+
+                    Bounds sliceAABB = new Bounds();
+                    sliceAABB.SetMinMax(min, max);
+                    sliceAABB.Expand(0.2f);
+
+                    pki.m_Bounds = sliceAABB;
+                    s_CustomKillers.Add(pki);
+                }
+            }
+        }
+
+        // Creates the ParticleKiller GameObject (the trigger volume used both as the interior
+        // bounds reference and as the anchor for weather-particle-killing zones) and slices the
+        // interior bounds into 6 segments along Z. Slicing instead of using one single big box
+        // is a workaround for the weather particle killer's own bounds/culling behavior working
+        // more reliably with several smaller boxes than one large one.
         private void SetupWeatherAndParticles(Bounds localBounds)
         {
             GameObject particleKillerObj = new GameObject("ParticleKiller");
@@ -93,7 +159,7 @@ namespace SeamlessInteriors
             }
 
             MelonCoroutines.Start(DelayedInitialVisibilityCheck());
-            // ↓ YENİ SATIR
+            // Extra safety pass for the save/load visibility edge case (see SaveLoadVisibilityFix.cs).
             MelonCoroutines.Start(DelayedSaveLoadVisibilityFix());
 
             if (!s_WatchdogStarted)
@@ -105,7 +171,10 @@ namespace SeamlessInteriors
 
         private static float s_lastCabinCheckLog = -999f;
 
-        // Oyuncunun portal/watchdog kararı için — daraltılmış bounds (duvar geçişini önler)
+        // Used for the player's portal/watchdog decisions - a shrunken bounds check
+        // (1.5 units smaller on X/Z) so the player is only considered "inside" once they've
+        // actually stepped a bit past the wall, rather than the moment they touch it. This
+        // prevents the interior/exterior swap from flickering right at the wall boundary.
         public static bool IsPositionInsideCabin(Vector3 pos)
         {
             if (s_MasterInterior == null || s_InteriorTrigger == null) return false;
@@ -127,7 +196,9 @@ namespace SeamlessInteriors
             return result;
         }
 
-        // Gear gizleme/gösterme için — orijinal tam bounds (shrink yok)
+        // Used for gear show/hide decisions - the original, full bounds with no shrink,
+        // since we want gear to disappear/reappear exactly at the wall rather than with
+        // the same margin used for the player's own inside/outside state.
         public static bool IsPositionInsideCabinFull(Vector3 pos)
         {
             if (s_MasterInterior == null || s_InteriorTrigger == null) return false;
@@ -211,6 +282,11 @@ namespace SeamlessInteriors
             if (playerT != null) ApplyInitialSyncState(playerT.position);
         }
 
+        // Continuously re-checks and applies interior/exterior visibility state every 0.3s,
+        // so the player switching sides doesn't rely on any single trigger/collision event
+        // (which can be unreliable across teleports, scene reloads, etc.). Suppressed briefly
+        // right after using a portal door, since PortalPatches.cs already handles that
+        // transition explicitly and we don't want this loop fighting with it.
         private IEnumerator VisibilityWatchdog()
         {
             while (s_RunCompleted)
