@@ -142,9 +142,12 @@
     <Compile Include="Patches\ContainerPatches.cs" />
     <Compile Include="Patches\FirePatches.cs" />
     <Compile Include="Patches\PortalPatches.cs" />
+    <Compile Include="Patches\SafehouseFixes.cs" />
+    <Compile Include="Patches\SaveLoadVisibilityFix.cs" />
     <Compile Include="Patches\SpawningPatches.cs" />
     <Compile Include="Patches\SystemPatches.cs" />
     <Compile Include="Patches\WeatherPatches.cs" />
+    <Compile Include="Patches\WindInstanceFix.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
