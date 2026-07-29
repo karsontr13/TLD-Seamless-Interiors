@@ -1,4 +1,4 @@
-using Il2Cpp;
+﻿using Il2Cpp;
 using MelonLoader;
 using System.Collections;
 using UnityEngine;
@@ -7,6 +7,12 @@ namespace SeamlessInteriors
 {
     public partial class SeamlessInteriorsMod
     {
+        // Fixes a specific save/load edge case: if the player saves and reloads while
+        // standing inside the cloned interior, the clone/shell active-state and the
+        // player's Y position can end up out of sync with where they actually are
+        // (e.g. the exterior shell shows instead of the interior, or the player is
+        // clipped slightly below the floor). This runs shortly after a load to detect
+        // and correct both problems.
         public static IEnumerator DelayedSaveLoadVisibilityFix()
         {
             yield return new WaitForSeconds(0.1f);
@@ -20,7 +26,6 @@ namespace SeamlessInteriors
             if (s_DebugBounds)
                 MelonLogger.Msg($"[SAVE-LOAD-FIX] isInside={isInside} | pos={playerT.position}");
 
-            // Görünürlük yanlışsa düzelt
             bool shellActiveWrong = s_ExteriorShell != null && s_ExteriorShell.activeSelf == isInside;
             bool interiorActiveWrong = s_MasterInterior != null && s_MasterInterior.activeSelf != isInside;
             if (shellActiveWrong || interiorActiveWrong)
@@ -30,7 +35,6 @@ namespace SeamlessInteriors
                 ApplyInitialSyncState(playerT.position);
             }
 
-            // Y düzeltmesi — görünürlükten bağımsız, her zaman kontrol et
             if (isInside && s_InteriorTrigger != null && s_MasterInterior != null)
             {
                 Vector3 localPos = s_MasterInterior.transform.InverseTransformPoint(playerT.position);

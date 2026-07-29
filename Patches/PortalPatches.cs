@@ -5,6 +5,15 @@ using UnityEngine;
 
 namespace SeamlessInteriors
 {
+    // Intercepts every door/portal interaction in the game (LoadScene.PerformInteraction).
+    // If the door doesn't belong to the CampOffice building at all, we let the game handle it
+    // normally (real scene load), but we first make sure the interior is visible and its
+    // placeable positions are saved so nothing is lost if the player is about to enter the
+    // "real" (non-cloned) version of the interior through a different door/trigger.
+    // If the door DOES belong to CampOffice, we take over completely: instead of loading a
+    // separate scene, we just toggle the clone/shell visibility and audio occlusion and
+    // teleport the player to the matching spawn point - this is what makes the transition
+    // instant and seamless instead of showing a loading screen.
     [HarmonyLib.HarmonyPatch(typeof(LoadScene), nameof(LoadScene.PerformInteraction))]
     public class PortalMagicPatch
     {
@@ -31,6 +40,18 @@ namespace SeamlessInteriors
                     if (SeamlessInteriorsMod.s_DebugBounds)
                         MelonLogger.Msg("[SAVE-FIX] Orijinal ic mekana giriliyor, save kaybini onlemek icin interior gecici olarak aktif edildi.");
                 }
+
+                try
+                {
+                    SeamlessInteriorsMod.SavePlaceablePositions();
+                    if (SeamlessInteriorsMod.s_DebugBounds)
+                        MelonLogger.Msg("[PORTAL-SAVE] Orijinal ic mekana gecis oncesi Placeable pozisyonlari kaydedildi.");
+                }
+                catch (System.Exception ex)
+                {
+                    MelonLogger.Warning($"[PORTAL-SAVE] Hata: {ex.Message}");
+                }
+
                 return true;
             }
 
@@ -48,8 +69,12 @@ namespace SeamlessInteriors
                 UnityEngine.DynamicGI.UpdateEnvironment();
 
                 SeamlessInteriorsMod.SetInteriorItemsVisible(true);
-                pm.transform.position = pm.transform.position + (GameManager.GetVpFPSCamera().transform.forward * 2f);
+
                 SeamlessInteriorsMod.SetAudioOcclusion(true);
+
+                Vector3 spawnPos = __instance.transform.Find("SpawnPoint") != null ? __instance.transform.Find("SpawnPoint").position : __instance.transform.position;
+                GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
+                GameManager.GetPlayerManagerComponent().StickPlayerToGround();
 
                 return false;
             }
@@ -65,8 +90,12 @@ namespace SeamlessInteriors
                 UnityEngine.DynamicGI.UpdateEnvironment();
 
                 SeamlessInteriorsMod.SetInteriorItemsVisible(false);
-                pm.transform.position = pm.transform.position + (GameManager.GetVpFPSCamera().transform.forward * 2f);
+
                 SeamlessInteriorsMod.SetAudioOcclusion(false);
+
+                Vector3 spawnPos = __instance.transform.Find("SpawnPoint") != null ? __instance.transform.Find("SpawnPoint").position : __instance.transform.position;
+                GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
+                GameManager.GetPlayerManagerComponent().StickPlayerToGround();
 
                 return false;
             }
