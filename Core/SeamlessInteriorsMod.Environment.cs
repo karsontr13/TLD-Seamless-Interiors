@@ -29,10 +29,7 @@ namespace SeamlessInteriors
 
             s_MasterInterior = new GameObject("Master_CampOffice_Interior");
             s_MasterInterior.SetActive(false);
-
-            // Parking the container in the exterior scene now (instead of after all
-            // reparenting is done) avoids cross-scene reference issues while we move
-            // children into it below.
+            
             var exteriorScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(EXTERIOR);
             UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(s_MasterInterior, exteriorScene);
 
