@@ -29,7 +29,10 @@ namespace SeamlessInteriors
 
             s_MasterInterior = new GameObject("Master_CampOffice_Interior");
             s_MasterInterior.SetActive(false);
-            
+
+            // Parking the container in the exterior scene now (instead of after all
+            // reparenting is done) avoids cross-scene reference issues while we move
+            // children into it below.
             var exteriorScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(EXTERIOR);
             UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(s_MasterInterior, exteriorScene);
 
@@ -185,6 +188,34 @@ namespace SeamlessInteriors
             LightingManager.OnLevelLoadComplete();
             LightingManager.SetLightingStrengthDefault();
             UnityEngine.DynamicGI.UpdateEnvironment();
+
+            // Re-register all electrolizers in the cloned interior with the AuroraManager
+            // because they lose registration or are ignored when moved across scenes additively
+            var electrolizers = s_MasterInterior.GetComponentsInChildren<Il2CppTLD.ModularElectrolizer.AuroraModularElectrolizer>(true);
+            foreach (var electrolizer in electrolizers)
+            {
+                if (electrolizer != null)
+                {
+                    // Manually trigger initialization in case it was skipped during scene merging
+                    if (!electrolizer.m_IsInitialized)
+                    {
+                        var methodInit = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethodByToken(Il2CppInterop.Runtime.Il2CppClassPointerStore<Il2CppTLD.ModularElectrolizer.AuroraModularElectrolizer>.NativeClassPtr, 100695667);
+                        if (methodInit != System.IntPtr.Zero)
+                        {
+                            System.IntPtr exc = System.IntPtr.Zero;
+                            unsafe
+                            {
+                                Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(methodInit, electrolizer.Pointer, (void**)0, ref exc);
+                            }
+                        }
+                    }
+                    
+                    Il2Cpp.AuroraManager.RegisterAuroraElectrolizer(electrolizer);
+                    
+                    // Force state update
+                    electrolizer.m_HasStopped = false;
+                }
+            }
         }
 
         // Computes an axis-aligned bounding box (in the interior root's local space)

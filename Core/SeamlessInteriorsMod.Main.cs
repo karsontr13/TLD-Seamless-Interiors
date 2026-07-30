@@ -4,7 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Il2Cpp;
 
-[assembly: MelonInfo(typeof(SeamlessInteriors.SeamlessInteriorsMod), "SeamlessInteriors", "v1.2.0", "Hamsi Buglama")]
+[assembly: MelonInfo(typeof(SeamlessInteriors.SeamlessInteriorsMod), "SeamlessInteriors", "v1.1.0", "Hamsi Buglama")]
 [assembly: MelonGame("Hinterland", "TheLongDark")]
 
 namespace SeamlessInteriors
