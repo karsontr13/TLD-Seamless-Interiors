@@ -9,9 +9,6 @@ namespace SeamlessInteriors
 {
     public partial class SeamlessInteriorsMod
     {
-        // The base game's save system doesn't know about our cloned Placeables, so we
-        // persist their positions ourselves in a small sidecar JSON file next to the mod DLL,
-        // named after the current save slot.
         private static string GetPlaceableSavePath()
         {
             string saveName = SaveGameSystem.m_CurrentSaveName;
@@ -34,7 +31,6 @@ namespace SeamlessInteriors
 
             Transform interiorT = s_MasterInterior.transform;
 
-            // Placeables that live directly under s_MasterInterior.
             var placeablesInInterior = s_MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true);
             var entries = new List<string>();
             var savedGuids = new HashSet<string>();
@@ -43,7 +39,6 @@ namespace SeamlessInteriors
             {
                 if (p == null || string.IsNullOrEmpty(p.m_Guid)) continue;
 
-                // Interior-relative position/rotation.
                 Vector3 relPos = interiorT.InverseTransformPoint(p.transform.position);
                 Quaternion relRot = Quaternion.Inverse(interiorT.rotation) * p.transform.rotation;
                 Vector3 scl = p.transform.localScale;
@@ -53,9 +48,6 @@ namespace SeamlessInteriors
                 savedGuids.Add(p.m_Guid);
             }
 
-            // Also save items that have been moved outside the strict interior hierarchy
-            // (e.g. safehouse customization lets the player drag decorations out from
-            // under s_MasterInterior), as long as they're still physically inside the cabin bounds.
             var allPlaceables = UnityEngine.Object.FindObjectsOfType<Il2CppTLD.Placement.Placeable>(true);
             int movedCount = 0;
             foreach (var p in allPlaceables)
@@ -115,8 +107,6 @@ namespace SeamlessInteriors
                     guidToPosRot[entry.guid] = entry;
             }
 
-            // Apply saved data to the clone's Placeables. Saved positions are interior-relative,
-            // so they need to be converted back to world space via the current interior transform.
             Transform interiorT = s_MasterInterior.transform;
             var placeables = s_MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true);
             int restoredCount = 0;
@@ -129,7 +119,6 @@ namespace SeamlessInteriors
 
                 var entry = guidToPosRot[p.m_Guid];
 
-                // Convert the relative (saved) position/rotation back into world space.
                 Vector3 targetWorldPos = interiorT.TransformPoint(entry.position);
                 Quaternion targetWorldRot = interiorT.rotation * entry.rotation;
 
