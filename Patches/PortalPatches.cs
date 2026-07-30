@@ -5,15 +5,6 @@ using UnityEngine;
 
 namespace SeamlessInteriors
 {
-    // Intercepts every door/portal interaction in the game (LoadScene.PerformInteraction).
-    // If the door doesn't belong to the CampOffice building at all, we let the game handle it
-    // normally (real scene load), but we first make sure the interior is visible and its
-    // placeable positions are saved so nothing is lost if the player is about to enter the
-    // "real" (non-cloned) version of the interior through a different door/trigger.
-    // If the door DOES belong to CampOffice, we take over completely: instead of loading a
-    // separate scene, we just toggle the clone/shell visibility and audio occlusion and
-    // teleport the player to the matching spawn point - this is what makes the transition
-    // instant and seamless instead of showing a loading screen.
     [HarmonyLib.HarmonyPatch(typeof(LoadScene), nameof(LoadScene.PerformInteraction))]
     public class PortalMagicPatch
     {
