@@ -12,10 +12,6 @@ namespace SeamlessInteriors
         // Oyuncunun hangi klon sahnede olduğunu kaydeden key prefix
         private const string PLAYER_INSIDE_KEY_PREFIX = "SeamlessInteriors_PlayerInside_";
 
-        /// <summary>
-        /// Kayıt anında oyuncunun hangi instance'ın içinde olduğunu PlayerPrefs'e yazar.
-        /// SaveAllPlaceablePositions ile birlikte çağrılır.
-        /// </summary>
         public static void SavePlayerInsideState()
         {
             string saveName = SaveGameSystem.m_CurrentSaveName;
@@ -44,10 +40,6 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[SAVE-STATE] Oyuncu kayit pozisyonu: {(string.IsNullOrEmpty(insideInstanceId) ? "DISARIDA" : insideInstanceId)}");
         }
 
-        /// <summary>
-        /// Yükleme sırasında oyuncunun hangi instance'ın içinde kaydettiğini döndürür.
-        /// Boş string = dışarıda.
-        /// </summary>
         public static string GetSavedPlayerInsideInstanceId()
         {
             string saveName = SaveGameSystem.m_CurrentSaveName;
