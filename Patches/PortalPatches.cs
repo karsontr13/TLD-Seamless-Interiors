@@ -251,13 +251,6 @@ namespace SeamlessInteriors
             return sp != null ? sp.position : door.transform.position;
         }
 
-        /// <summary>
-        /// Spawn noktasından aşağı kısa bir raycast atar.
-        /// Yakın zemin bulursa oyuncuyu oraya yapıştırır (düşme efekti yok).
-        /// Bulamazsa koordinatı olduğu gibi bırakır.
-        /// NOT: Yukarıdan uzun raycast YAPMA — çatı collider'larına çarpar ve
-        /// oyuncuyu çatıda spawn eder. Sadece ayak seviyesinden aşağı bak.
-        /// </summary>
         private static Vector3 SnapToGround(Vector3 pos)
         {
             Vector3 rayOrigin = pos + Vector3.up * 0.5f;
