@@ -4,11 +4,6 @@ namespace SeamlessInteriors
 {
     public partial class SeamlessInteriorsMod
     {
-        /// <summary>
-        /// Verilen pozisyonun klon sahne zemininin üstünde olduğundan emin olur.
-        /// Yukarıdan aşağı raycast atarak doğru zemin seviyesini bulur.
-        /// Zeminin altındaysa düzeltilmiş pozisyonu, değilse orijinal pozisyonu döndürür.
-        /// </summary>
         public static Vector3 EnsureAboveGround(Vector3 pos, SeamlessInteriorInstance instance)
         {
             if (instance.MasterInterior == null || !instance.MasterInterior.activeSelf)
