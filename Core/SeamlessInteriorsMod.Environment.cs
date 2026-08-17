@@ -16,11 +16,6 @@ namespace SeamlessInteriors
         // Toplu ortam düzeltmesi zaten planlandı mı? Birden fazla coroutine başlatmayı önler.
         private static bool s_BatchEnvironmentPending = false;
 
-        /// <summary>
-        /// Tüm instance'ların RunCompleted olmasını bekler, sonra tek seferde
-        /// UpdateGlobalEnvironment çağırıp tüm renderer'ları açar.
-        /// Birden fazla instance aynı anda bitiğinde bile sadece 1 kere çalışır.
-        /// </summary>
         private IEnumerator TryBatchUpdateEnvironment()
         {
             // Zaten bekleyen bir batch varsa tekrar başlatma
@@ -487,12 +482,6 @@ namespace SeamlessInteriors
             }
         }
 
-        /// <summary>
-        /// Tüm renderer'ları grid hücrelerine böler, dolu hücreleri greedy rectangle
-        /// decomposition ile maksimal dikdörtgenlere ayırır.
-        /// L-şekli gibi düzensiz sahnelerde boş alanlar dahil edilmez.
-        /// Her dikdörtgen için, o dikdörtgene düşen renderer'lardan tight bounds hesaplar.
-        /// </summary>
         public static List<Bounds> ComputeInteriorSubBounds(GameObject root, float cellSize = 2.0f)
         {
             Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
@@ -645,9 +634,6 @@ namespace SeamlessInteriors
             return subBounds;
         }
 
-        /// <summary>
-        /// Çok küçük bounds'ları komşu büyük bounds'larla birleştirir.
-        /// </summary>
         private static List<Bounds> MergeSmallBounds(List<Bounds> bounds, float minVolume = 8f)
         {
             if (bounds.Count <= 1) return bounds;
@@ -704,11 +690,6 @@ namespace SeamlessInteriors
             return combined;
         }
 
-        /// <summary>
-        /// Aynı isimdeki tüm shell objelerini bulur, FallbackPosition'a en yakınını döndürür.
-        /// Böylece aynı prefab ismine sahip birden fazla bina doğru eşleştirilir.
-        /// Zaten başka bir instance tarafından kullanılan shell'ler atlanır.
-        /// </summary>
         private static GameObject FindClosestShell(string shellPrefabName, Vector3 fallbackPosition)
         {
             if (string.IsNullOrEmpty(shellPrefabName)) return null;
