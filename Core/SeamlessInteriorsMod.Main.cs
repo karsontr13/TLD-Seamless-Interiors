@@ -93,10 +93,6 @@ namespace SeamlessInteriors
             }
         }
 
-        /// <summary>
-        /// Öncelikli instance'ın RunCompleted olmasını bekledikten sonra
-        /// diğer instance'ları başlatır. Böylece oyuncu beklemez.
-        /// </summary>
         private IEnumerator StartDeferredInstances(List<InteriorConfig> configs, SeamlessInteriorInstance priorityInstance)
         {
             // Öncelikli instance varsa onun bitmesini bekle
@@ -201,11 +197,6 @@ namespace SeamlessInteriors
             MelonCoroutines.Start(Run(instance, playerSavedInside));
         }
 
-        /// <summary>
-        /// Oyuncu klon sahnenin içinde kaydedip oyunu tamamen kapatıp açtığında,
-        /// MasterInterior henüz yoktur. Run() sahneyi yükleyene kadar ekranı karartır
-        /// ve oyuncuyu yerinde tutar. Böylece oyuncu dışarıyı görmez.
-        /// </summary>
         private IEnumerator FadeScreenForInteriorLoad(SeamlessInteriorInstance instance)
         {
             // Ekranı hemen karart (0 saniye = anında)
