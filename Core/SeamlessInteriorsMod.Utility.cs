@@ -9,7 +9,6 @@ namespace SeamlessInteriors
             if (instance.MasterInterior == null || !instance.MasterInterior.activeSelf)
                 return pos;
 
-            // Pozisyonun çok üstünden başlayarak aşağı raycast at
             Vector3 rayOrigin = new Vector3(pos.x, pos.y + 5.0f, pos.z);
             float maxDist = 10.0f;
 
