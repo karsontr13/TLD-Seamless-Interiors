@@ -12,6 +12,7 @@
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -134,16 +135,20 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Core\SeamlessInteriorsMod.Audio.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Configs.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Environment.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Instances.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Main.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Safehouse.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.SaveData.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Spawning.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Utility.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Visibility.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Weather.cs" />
     <Compile Include="Patches\ContainerPatches.cs" />
     <Compile Include="Patches\FirePatches.cs" />
     <Compile Include="Patches\PortalPatches.cs" />
     <Compile Include="Patches\SafehouseFixes.cs" />
-    <Compile Include="Patches\SaveLoadVisibilityFix.cs" />
     <Compile Include="Patches\SpawningPatches.cs" />
     <Compile Include="Patches\SystemPatches.cs" />
     <Compile Include="Patches\WeatherPatches.cs" />
