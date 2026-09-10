@@ -2,20 +2,42 @@
 using Il2Cpp;
 using MelonLoader;
 using System.Collections;
-using System.Linq;
 using UnityEngine;
 
 namespace SeamlessInteriors
 {
+    // Keeps the vanilla wind audio loop alive around cloned interiors.
     [HarmonyPatch(typeof(Il2Cpp.Wind), "Start")]
     public class WindStartFixPatch
     {
-        private static int s_pendingRestarts = 0;
+        // Clear the ForceStopped flag BEFORE Wind.Start() runs so it can start its
+        // audio loop normally. If the player saved and reloaded inside a clone,
+        // Wind.Start() would be entered with ForceStopped=true, the loop would never
+        // start and the wind sound would be gone for the rest of the session.
+        public static void Prefix(Il2Cpp.Wind __instance)
+        {
+            if (__instance == null) return;
+
+            bool playerInside = SeamlessInteriorsMod.s_IsPlayerInsideClone;
+            if (!playerInside)
+            {
+                string savedId = SeamlessInteriorsMod.GetSavedPlayerInsideInstanceId();
+                if (!string.IsNullOrEmpty(savedId))
+                    playerInside = true;
+            }
+
+            // The loop must always start, inside or outside: while indoors the audio
+            // occlusion handles the volume. Leaving ForceStopped=true kills it entirely.
+            __instance.m_WindAudioForceStopped = false;
+
+            if (SeamlessInteriorsMod.s_DebugBounds)
+                MelonLogger.Msg($"[WIND-FIX-PRE] Wind.Start oncesi ForceStopped=false yapildi, playerInside={playerInside}");
+        }
 
         public static void Postfix(Il2Cpp.Wind __instance)
         {
+            // Re-check the wind state once cloning has settled.
             if (__instance == null) return;
-            s_pendingRestarts++;
             MelonCoroutines.Start(DelayedWindReset(__instance));
         }
 
@@ -23,63 +45,47 @@ namespace SeamlessInteriors
         {
             float waited = 0f;
 
-            // Bekleme süresini aktif binalardan herhangi birinin yüklemesi sürdüğü müddetçe uzat
-            while (SeamlessInteriorsMod.ActiveInteriors.Values.Any(i => !i.RunCompleted) && waited < 15f)
+            // Wait while any interior is still being cloned (15s safety cap).
+            while (!SeamlessInteriorsMod.AreAllInstancesReady() && waited < 15f)
             {
                 yield return new WaitForSeconds(0.5f);
                 waited += 0.5f;
             }
 
-            if (SeamlessInteriorsMod.ActiveInteriors.Values.Any(i => !i.RunCompleted))
-            {
-                s_pendingRestarts--;
+            if (!SeamlessInteriorsMod.AreAllInstancesReady())
                 yield break;
-            }
 
             yield return new WaitForSeconds(1f);
 
-            s_pendingRestarts--;
             if (wind == null) yield break;
-            if (wind.m_WindAudioForceStopped) yield break;
 
-            Transform playerT = GameManager.GetPlayerTransform();
-            bool playerInside = playerT != null && SeamlessInteriorsMod.IsPositionInsideAnyInstance(playerT.position);
-
-            if (playerInside)
+            bool playerInside = SeamlessInteriorsMod.s_IsPlayerInsideClone;
+            if (!playerInside)
             {
-                wind.m_WindLoopAudioInstance = 0;
-                wind.m_WindAudioForceStopped = false;
-                yield return null;
-                yield return null;
-                if (wind != null) wind.m_WindAudioForceStopped = true;
+                string savedId = SeamlessInteriorsMod.GetSavedPlayerInsideInstanceId();
+                if (!string.IsNullOrEmpty(savedId))
+                    playerInside = true;
+            }
+
+            if (!playerInside)
+            {
+                // Outdoors the vanilla behaviour is already correct.
                 if (SeamlessInteriorsMod.s_DebugBounds)
-                    MelonLogger.Msg("[WIND-FIX] Oyuncu herhangi bir evin icinde, Wind durduruldu.");
+                    MelonLogger.Msg("[WIND-FIX] Oyuncu disarida, wind'e dokunulmadi.");
                 yield break;
             }
 
-            uint idBefore = wind.m_WindLoopAudioInstance;
-            wind.m_WindLoopAudioInstance = 0;
+            // Indoors: leave wind running, audio occlusion takes care of the volume.
             wind.m_WindAudioForceStopped = false;
 
-            yield return null;
-            yield return null;
-
-            if (wind == null) yield break;
-
-            uint idAfter = wind.m_WindLoopAudioInstance;
-
-            if (idAfter == 0)
+            // Loop still not running (id 0) means it was cancelled: force a restart.
+            if (wind.m_WindLoopAudioInstance == 0)
             {
-                try
-                {
-                    uint newId = wind.PlayProceduralWindAudio();
-                    if (newId != 0)
-                    {
-                        wind.m_WindLoopAudioInstance = newId;
-                    }
-                }
-                catch { }
+                SeamlessInteriorsMod.ForceRestartWindAudio(wind, "wind-start-postfix");
             }
+
+            if (SeamlessInteriorsMod.s_DebugBounds)
+                MelonLogger.Msg($"[WIND-FIX] Oyuncu icerde, wind ForceStopped=false yapildi, id={wind.m_WindLoopAudioInstance}");
         }
     }
 }

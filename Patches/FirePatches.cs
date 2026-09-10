@@ -2,10 +2,11 @@
 using Il2Cpp;
 using MelonLoader;
 using UnityEngine;
-using System.Linq;
 
 namespace SeamlessInteriors
 {
+    // FireManager.Deserialize wipes and rebuilds every fire from the save string.
+    // We keep a copy of that string so fires can be restored after cloning.
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.FireManager), nameof(Il2Cpp.FireManager.Deserialize))]
     public class FireManagerStealerPatch
     {
@@ -13,8 +14,8 @@ namespace SeamlessInteriors
 
         public static void Prefix(string text)
         {
-            // Eğer aktif binalardan herhangi birinde klonlama rutini sürüyorsa bekle.
-            bool isAnyCloningActive = SeamlessInteriorsMod.ActiveInteriors.Values.Any(i => i.IsCloningRoutineActive);
+            // While a clone routine is running the data is incomplete, so skip it.
+            bool isAnyCloningActive = SeamlessInteriorsMod.IsAnyCloningActive();
 
             if (!string.IsNullOrEmpty(text) && !isAnyCloningActive)
             {
@@ -26,6 +27,8 @@ namespace SeamlessInteriors
         }
     }
 
+    // Guard used while FireManager rebuilds fires: it must not take cloned
+    // interior fires with it. Enabled only for the duration of that call.
     [HarmonyLib.HarmonyPatch(typeof(UnityEngine.Object), nameof(UnityEngine.Object.Destroy), new System.Type[] { typeof(UnityEngine.Object) })]
     public class PreventFireDestructionPatch
     {
@@ -42,18 +45,29 @@ namespace SeamlessInteriors
                     if (comp != null) go = comp.gameObject;
                 }
 
-                if (go != null)
+                // Protect fire objects ONLY. Protecting everything under MasterInterior
+                // used to leave player-broken objects (the ones without BreakDown) alive
+                // and stuck at activeSelf=true in the hierarchy.
+                //
+                // Order matters: cheap root test first, expensive GetComponentInParent
+                // chain second, because this prefix sees EVERY Object.Destroy in the game.
+                if (go != null
+                    && SeamlessInteriorsMod.FindInstanceOwning(go.transform) != null
+                    && IsFireRelated(go))
                 {
-                    foreach (var instance in SeamlessInteriorsMod.ActiveInteriors.Values)
-                    {
-                        if (instance.MasterInterior != null && go.transform.IsChildOf(instance.MasterInterior.transform))
-                        {
-                            return false; // Silinmesini engelle
-                        }
-                    }
+                    return false; // Block the destruction
                 }
             }
             return true;
+        }
+
+        // FireManager.Deserialize only destroys Fire / WoodStove / Campfire objects,
+        // so the protection is limited to those.
+        private static bool IsFireRelated(GameObject go)
+        {
+            return go.GetComponentInParent<Il2Cpp.Fire>() != null
+                || go.GetComponentInParent<Il2Cpp.WoodStove>() != null
+                || go.GetComponentInParent<Il2Cpp.Campfire>() != null;
         }
     }
 }

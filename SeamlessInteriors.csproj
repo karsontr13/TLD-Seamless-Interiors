@@ -60,6 +60,10 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppAK.Wwise.Unity.API.dll</HintPath>
     </Reference>
+    <Reference Include="Il2CppAK.Wwise.Unity.API.WwiseTypes, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppAK.Wwise.Unity.API.WwiseTypes.dll</HintPath>
+    </Reference>
     <Reference Include="Il2CppInterop.Common">
       <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\net6\Il2CppInterop.Common.dll</HintPath>
     </Reference>
@@ -132,13 +136,28 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.PhysicsModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.IMGUIModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.IMGUIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.TerrainModule">
+      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.TerrainModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.TextRenderingModule.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Core\SeamlessInteriorsMod.Audio.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Configs.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Environment.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.InteractiveState.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Interactivity.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Instances.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Junk.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Main.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Perf.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Safehouse.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.SaveData.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Spawning.cs" />
@@ -147,6 +166,7 @@
     <Compile Include="Core\SeamlessInteriorsMod.Weather.cs" />
     <Compile Include="Patches\ContainerPatches.cs" />
     <Compile Include="Patches\FirePatches.cs" />
+    <Compile Include="Patches\LightingPatches.cs" />
     <Compile Include="Patches\PortalPatches.cs" />
     <Compile Include="Patches\SafehouseFixes.cs" />
     <Compile Include="Patches\SpawningPatches.cs" />

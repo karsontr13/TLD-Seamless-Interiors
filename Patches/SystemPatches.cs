@@ -1,10 +1,12 @@
 ﻿using HarmonyLib;
 using Il2Cpp;
+using MelonLoader;
 using UnityEngine;
-using System.Linq;
 
 namespace SeamlessInteriors
 {
+    // An interior scene loaded for cloning brings its own GameManager along.
+    // That duplicate would fight the real one, so it is killed on Awake.
     [HarmonyLib.HarmonyPatch(typeof(GameManager), "Awake")]
     public class PreventFakeManagerPatch
     {
@@ -12,7 +14,8 @@ namespace SeamlessInteriors
         {
             string sceneName = __instance.gameObject.scene.name;
 
-            // Klonlama işlemi aktif olan evlerden birinin sahnesi yükleniyorsa, o sahnede uyanan GameManager sahtedir (fake).
+            // Any GameManager waking up inside an interior scene we are currently
+            // cloning is a fake one: destroy it and skip the original Awake.
             foreach (var instance in SeamlessInteriorsMod.ActiveInteriors.Values)
             {
                 if (instance.IsCloningRoutineActive && sceneName == instance.Config.InteriorSceneBaseName)

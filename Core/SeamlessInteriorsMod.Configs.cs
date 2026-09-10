@@ -5,9 +5,12 @@ namespace SeamlessInteriors
 {
     public partial class SeamlessInteriorsMod
     {
+        // Static definition of every interior the mod clones, grouped by region.
+        // One entry per building; see InteriorConfig (Instances.cs) for what each field
+        // does. Coordinates are world-space positions taken from the live game.
         public static List<InteriorConfig> SupportedInteriors = new List<InteriorConfig>
         {
-            // MYSTER LAKE:
+            // MYSTERY LAKE:
 
             // 1. Camp Office
             new InteriorConfig
@@ -22,8 +25,8 @@ namespace SeamlessInteriors
 
                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLight", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daytime" },
                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
-                EntrySpawnPosition = new Vector3(),
-                ExitSpawnPosition = new Vector3(),
+                EntrySpawnPosition = new Vector3(1018.956f, 29.1809f, 444.5092f),
+                ExitSpawnPosition = new Vector3(1019.351f, 28.1647f, 444.2208f),
                 RotationOffset = Vector3.zero,
                 DoorSpawnPoints = new List<DoorSpawnPoint>
                 {
@@ -343,9 +346,50 @@ namespace SeamlessInteriors
 
                     },
                 },
+                // Transition from inside FarmHouse down into the basement scene
+                SubInteriorLinks = new List<SubInteriorLink>
+                {
+                    new SubInteriorLink
+                    {
+                        TargetInstanceId = "FarmHouseABasement_1",
+                        // TODO: refresh these by locating the basement door in-game
+                        ParentDoorPosition = new Vector3(1450.66f, 50.723f, 1028.214f),
+                        ChildSpawnPosition = new Vector3(1445.968f, 43.3751f, 1024.733f),
+                        ParentSpawnPosition = new Vector3(1450.087f, 51.4499f, 1028.341f),
+                    },
+                },
             },
 
-            //COASTAL HİGHWAY:
+            // 2. FarmHouse Basement (a basement with its own outside entrance)
+            new InteriorConfig
+            {
+                InstanceId = "FarmHouseABasement_1",
+                ExteriorSceneName = "RuralRegion",
+                InteriorSceneBaseName = "FarmHouseABasement",
+                ExteriorShellPrefabName = "", // no shell of its own: it shares the FarmHouse shell
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1.01f, 1f, 1f),
+                FallbackPosition = new Vector3(1448.7f, 41.5001f, 1027.8f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "DarkLightingManager_Prefab" },
+                EntrySpawnPosition = new Vector3(1450.683f, 43.2501f, 1032.666f),
+                ExitSpawnPosition = new Vector3(1450.803f, 49.9805f, 1040.556f),
+                RotationOffset = new Vector3(0f, 270f, 0f),
+                DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+                    // The basement's own outer door
+                    new DoorSpawnPoint {
+                        DoorName = "STR_FarmHouseABasementDoor_Prefab",
+                        DoorTransformPosition = new Vector3(1448.7f, 47.8f, 1027.8f),
+                        EntryPosition = new Vector3(1450.683f, 43.2501f, 1032.666f),
+                        ExitPosition = new Vector3(1450.803f, 49.9805f, 1040.556f)
+                    },
+                },
+            },
+
+            //COASTAL HIGHWAY:
 
             // 1. Quonset
             new InteriorConfig
@@ -384,7 +428,7 @@ namespace SeamlessInteriors
                 },
             },
 
-            //FORSAKEN AİRFİLED:
+            //FORSAKEN AIRFIELD:
 
             // 1. Hangar
             new InteriorConfig
@@ -402,6 +446,8 @@ namespace SeamlessInteriors
                 EntrySpawnPosition = new Vector3(163.1478f, 162.594f, -617.2457f),
                 ExitSpawnPosition = new Vector3(163.1478f, 161.594f, -617.2457f),
                 RotationOffset = new Vector3(0f, 300f, 0f),
+                TerrainHoleSize = new Vector3(10f, 10f, 10f), // hole size (X width, Y depth, Z length)
+                TerrainHoleOffset = new Vector3(166.4297f, 158.3126f, -622.0966f), // hole centre in world space
                 DoorSpawnPoints = new List<DoorSpawnPoint>
                 {
                     
@@ -429,6 +475,25 @@ namespace SeamlessInteriors
 
                     },
                 },
+            },
+
+            // MILTON
+
+            // 1. GreyMothers House
+            new InteriorConfig
+            {
+                 ExteriorSceneName = "MountainTownRegion",
+                 InteriorSceneBaseName = "GreyMothersHouseA",
+                 ExteriorShellPrefabName = "STR_GreyMothersHouse_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(1107.28f, 268.85f, 1785.27f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_GreyMothersHouseInteriorGlow_D_Prefab", "STR_GreyMothersHouseInteriorGlow_C_Prefab", "STR_GreyMothersHouseInteriorGlow_B_Prefab", "STR_GreyMothersHouseInteriorGlow_A_Prefab" },
+                 EntrySpawnPosition = new Vector3(1104.889f, 269.7428f, 1783.645f),
+                 ExitSpawnPosition = new Vector3(65.7518f, 27.2677f, 945.5585f),
+                 RotationOffset = new Vector3(0f, 0f, 0f),
             },
         };
     }

@@ -2,10 +2,11 @@
 using Il2Cpp;
 using UnityEngine;
 using MelonLoader;
-using System.Linq;
 
 namespace SeamlessInteriors
 {
+    // Cloned interiors confuse the vanilla container lookup, which can throw.
+    // Swallow the exception and report "no container" instead of crashing.
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.ContainerManager), nameof(Il2Cpp.ContainerManager.FindContainerByPosition))]
     public class FixContainerManagerCrashPatch
     {
@@ -20,6 +21,8 @@ namespace SeamlessInteriors
         }
     }
 
+    // Loot rolls can be queued for containers that were already destroyed
+    // during cloning; skip them instead of dereferencing a dead object.
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Container), nameof(Il2Cpp.Container.PopulateWithRandomGear))]
     public class FixContainerPopulateCrashPatch
     {
@@ -33,6 +36,8 @@ namespace SeamlessInteriors
         }
     }
 
+    // A cloned container inherits the GUID of its original, so the save system
+    // would mirror their contents. Suffix cloned GUIDs to keep them separate.
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Container), nameof(Il2Cpp.Container.Awake))]
     public class CloneContainerGuidFixPatch
     {
@@ -40,21 +45,16 @@ namespace SeamlessInteriors
         {
             if (__instance == null) return;
 
-            foreach (var instance in SeamlessInteriorsMod.ActiveInteriors.Values)
-            {
-                if (instance.MasterInterior != null && __instance.transform.IsChildOf(instance.MasterInterior.transform))
-                {
-                    var guidComp = __instance.GetComponent<ObjectGuid>();
-                    if (guidComp != null && !string.IsNullOrEmpty(guidComp.m_Guid))
-                    {
-                        if (!guidComp.m_Guid.EndsWith("_CLONE"))
-                        {
-                            guidComp.m_Guid = guidComp.m_Guid + "_CLONE";
-                        }
-                    }
-                    break; // Kutunun hangi eve ait olduğunu bulduğumuz için döngüyü kırabiliriz.
-                }
-            }
+            // This runs THOUSANDS of times per scene load (once per Container.Awake),
+            // so the cheap root comparison is used instead of a per-instance IsChildOf walk.
+            var instance = SeamlessInteriorsMod.FindInstanceOwning(__instance.transform);
+            if (instance == null) return;
+
+            var guidComp = __instance.GetComponent<ObjectGuid>();
+            if (guidComp == null || string.IsNullOrEmpty(guidComp.m_Guid)) return;
+
+            if (!guidComp.m_Guid.EndsWith("_CLONE"))
+                guidComp.m_Guid = guidComp.m_Guid + "_CLONE";
         }
     }
 }

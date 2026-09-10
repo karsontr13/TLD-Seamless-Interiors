@@ -2,9 +2,8 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-// Bir bütünleştirilmiş koda ilişkin Genel Bilgiler aşağıdaki öznitelikler kümesiyle
-// denetlenir. Bütünleştirilmiş kod ile ilişkili bilgileri değiştirmek için
-// bu öznitelik değerlerini değiştirin.
+// General assembly information. Edit these attributes to change the metadata
+// that is embedded into the built mod assembly.
 [assembly: AssemblyTitle("SeamlessInteriors")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
@@ -14,20 +13,12 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
-// ComVisible özniteliğinin false olarak ayarlanması bu bütünleştirilmiş koddaki türleri
-// COM bileşenleri için görünmez yapar. Bu bütünleştirilmiş koddaki bir türe
-// erişmeniz gerekirse ComVisible özniteliğini o türde true olarak ayarlayın.
+// Hide all types in this assembly from COM.
 [assembly: ComVisible(false)]
 
-// Bu proje COM'un kullanımına sunulursa, aşağıdaki GUID tür kitaplığının kimliği içindir
+// Type library id used if this assembly is ever exposed to COM.
 [assembly: Guid("5a154768-c3c6-4c60-9e39-1f8588aad89e")]
 
-// Bir derlemenin sürüm bilgileri aşağıdaki dört değerden oluşur:
-//
-//      Ana Sürüm
-//      İkincil Sürüm 
-//      Yapı Numarası
-//      Düzeltme
-//
+// Assembly version: Major.Minor.Build.Revision
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
