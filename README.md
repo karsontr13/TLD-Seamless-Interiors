@@ -24,6 +24,7 @@
 *   **Real-Time Audio Occlusion:** Hooks into the game's `GameAudioManager` to dynamically apply `HeavyOcclusion` upon entering a building, ensuring realistic acoustic dampening of exterior weather and wildlife.
 *   **Strict AI Pathfinding & Collision Boundaries:** Generates a precise, hollow `BoxCollider` perimeter combined with custom `NavMeshObstacle` components around interiors. This physically prevents wildlife from clipping through walls during high-velocity flee or scent-tracking behaviors.
 *   **Deterministic Loot Synchronization:** Automatically handles spatial deduplication and PDID generation for gear items upon the first load, ensuring containers and originally spawned items transition flawlessly into the merged exterior space.
+*   **Indoors, you can switch between the original interior lighting and exterior lighting systems. (You can switch between modes using the F8 key)**
 
 ### ⚙️ Installation Guide
 
