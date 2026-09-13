@@ -10,7 +10,7 @@
 ### ⚠️ Disclaimer & Warning
 
 > **⚠️ WARNING: EARLY DEVELOPMENT**
-> This mod is in a very early stage of development. Even with testing, it may contain undiscovered bugs. **Do not use this with your primary/main save files.** Please consider the risks before installing. 
+> This mod is very early in development. Even after testing, it may contain bugs that haven't been discovered yet. **You can use it with your primary/master save files, but be sure to back up your files.** Please consider the risks before installing.
 > 
 > **Compatibility:** There is a high risk of conflict with other mods that modify the structure or interior of buildings. This has not been tested with other custom interior mods yet.
 
