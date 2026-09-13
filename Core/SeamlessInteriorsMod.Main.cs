@@ -4,7 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(SeamlessInteriors.SeamlessInteriorsMod), "SeamlessInteriors", "2.1.0", "Hamsi Buglama")]
+[assembly: MelonInfo(typeof(SeamlessInteriors.SeamlessInteriorsMod), "SeamlessInteriors", "2.1.1", "Hamsi Buglama")]
 [assembly: MelonGame("Hinterland", "TheLongDark")]
 
 namespace SeamlessInteriors
