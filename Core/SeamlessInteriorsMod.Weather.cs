@@ -214,16 +214,37 @@ namespace SeamlessInteriors
 
             bool playerInside = s_IsPlayerInsideClone;
 
-            // Fallback: if the flag was wrongly left false, trust the saved state.
+            // Fallback: if the flag was wrongly left false, trust the saved state - but only
+            // once the saved state is corroborated by where the player actually IS.
+            //
+            // Trusting the saved id on its own was a way for the flag to get stuck on: the
+            // PlayerPrefs entry is addressed by save name, the game reuses slot names, and a
+            // leftover entry from another save turned a player standing in the open into a
+            // permanently wind-sheltered one at indoor temperature. The three tests below
+            // are what tells a real "I saved indoors" from a leftover entry.
             if (!playerInside)
             {
                 string savedId = GetSavedPlayerInsideInstanceId();
+                SeamlessInteriorInstance savedInstance = null;
                 if (!string.IsNullOrEmpty(savedId))
+                    ActiveInteriors.TryGetValue(savedId, out savedInstance);
+
+                bool reallyInside = savedInstance != null
+                                    && savedInstance.MasterInterior != null
+                                    && savedInstance.MasterInterior.activeInHierarchy
+                                    && savedInstance.IsPositionInside(playerT.position);
+
+                if (reallyInside)
                 {
                     playerInside = true;
                     s_IsPlayerInsideClone = true;
                     SetAudioOcclusion(true);
-                    if (s_DebugBounds) MelonLogger.Msg("[WIND-POST-RUN] Flag false ama saved state icerde, duzeltildi.");
+                    if (s_DebugBounds) MelonLogger.Msg($"[WIND-POST-RUN] Flag false ama oyuncu gercekten {savedId} icinde, duzeltildi.");
+                }
+                else if (!string.IsNullOrEmpty(savedId) && s_DebugBounds)
+                {
+                    MelonLogger.Msg($"[WIND-POST-RUN] Kayit '{savedId}' diyor ama oyuncu orada degil - " +
+                                    $"bayat kayit, flag'e dokunulmadi.");
                 }
             }
 

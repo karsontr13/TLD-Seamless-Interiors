@@ -27,47 +27,34 @@ namespace SeamlessInteriors
         }
     }
 
-    // Guard used while FireManager rebuilds fires: it must not take cloned
-    // interior fires with it. Enabled only for the duration of that call.
-    [HarmonyLib.HarmonyPatch(typeof(UnityEngine.Object), nameof(UnityEngine.Object.Destroy), new System.Type[] { typeof(UnityEngine.Object) })]
-    public class PreventFireDestructionPatch
+    // DIAGNOSTIC (verbose only): what the game actually WROTE for this save.
+    //
+    // Read-only - it takes the string the game just produced rather than asking for
+    // another one, so nothing about the save changes. Together with the load-side dump
+    // this answers the one question the log cannot: is the clone's stove fire in the
+    // save at all? (see SeamlessInteriorsMod.FireDiagnostics.cs)
+    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.FireManager), nameof(Il2Cpp.FireManager.Serialize))]
+    public class FireSerializeDiagPatch
     {
-        public static bool s_ProtectInterior = false;
-
-        public static bool Prefix(UnityEngine.Object obj)
+        public static void Postfix(string __result)
         {
-            if (s_ProtectInterior && obj != null)
-            {
-                GameObject go = obj.TryCast<GameObject>();
-                if (go == null)
-                {
-                    Component comp = obj.TryCast<Component>();
-                    if (comp != null) go = comp.gameObject;
-                }
+            if (!SeamlessInteriorsMod.s_DebugBounds) return;
 
-                // Protect fire objects ONLY. Protecting everything under MasterInterior
-                // used to leave player-broken objects (the ones without BreakDown) alive
-                // and stuck at activeSelf=true in the hierarchy.
-                //
-                // Order matters: cheap root test first, expensive GetComponentInParent
-                // chain second, because this prefix sees EVERY Object.Destroy in the game.
-                if (go != null
-                    && SeamlessInteriorsMod.FindInstanceOwning(go.transform) != null
-                    && IsFireRelated(go))
-                {
-                    return false; // Block the destruction
-                }
-            }
-            return true;
-        }
-
-        // FireManager.Deserialize only destroys Fire / WoodStove / Campfire objects,
-        // so the protection is limited to those.
-        private static bool IsFireRelated(GameObject go)
-        {
-            return go.GetComponentInParent<Il2Cpp.Fire>() != null
-                || go.GetComponentInParent<Il2Cpp.WoodStove>() != null
-                || go.GetComponentInParent<Il2Cpp.Campfire>() != null;
+            SeamlessInteriorsMod.DumpFireState("kayit-ani");
+            SeamlessInteriorsMod.DumpFireBlob(__result, "kayit");
         }
     }
+
+    // REMOVED: PreventFireDestructionPatch.
+    //
+    // It was a prefix on UnityEngine.Object.Destroy that blocked the destruction of fire
+    // objects inside a clone, and it was switched on for exactly one thing: the mod's own
+    // replay of FireManager.Deserialize. That replay is gone (see DelayedFireRestore in
+    // SeamlessInteriorsMod.SaveData.cs - it was measured not to reach a closed building's
+    // fires at all, which is the only reason it existed), so the guard could never be
+    // switched on again.
+    //
+    // A prefix that can never fire is not free: this one sat in front of EVERY
+    // Object.Destroy in the game, for the whole session. The fires it used to protect are
+    // now restored one by one, by guid, without anything being destroyed or rebuilt.
 }

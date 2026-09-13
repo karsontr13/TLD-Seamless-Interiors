@@ -1,4 +1,4 @@
-﻿using Il2Cpp;
+using Il2Cpp;
 using UnityEngine;
 using MelonLoader;
 using Il2CppTLD.Placement;
@@ -26,51 +26,62 @@ namespace SeamlessInteriors
 
     // ─── "CLEAR JUNK" (R) — see Core/SeamlessInteriorsMod.Junk.cs ───
     //
-    // The game's JunkManager stores a SINGLE bool per scene. Pressing R inside a
-    // clone writes that bool onto the region scene; after a reload the clone is
-    // rebuilt so the junk is back, but the bool is still true, CanClearJunk()
-    // returns false and R never works again.
+    // The game keeps ONE "junk cleared" flag, and a clone lives inside the region scene.
+    // These patches keep that flag answering for the clone the player is customizing in,
+    // keep the clone's value out of the region's save, and keep ClearJunk from reaching
+    // into any other clone.
     //
-    // This patch overrides the global flag whenever the player stands inside a
-    // clone whose junk has not been cleared yet, re-enabling R and the HUD hint.
-    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.JunkManager), nameof(Il2Cpp.JunkManager.CanClearJunk))]
-    public class AllowClearJunkInsideClonePatch
-    {
-        public static void Postfix(ref bool __result)
-        {
-            if (__result) return;
+    // There is deliberately no patch on CanClearJunk or MaybeClearJunk any more: with the
+    // flag right, the game's own gates give the right answer by themselves.
 
-            if (SeamlessInteriorsMod.PlayerIsInInstanceWithClearableJunk())
-                __result = true;
+    // StartCustomizing asks CanClearJunk for the "R" prompt inside the same call, so the
+    // clone's state has to be in the flag before it runs.
+    [HarmonyLib.HarmonyPatch(typeof(SafehouseManager), nameof(SafehouseManager.StartCustomizing))]
+    public class JunkFlagOnStartCustomizingPatch
+    {
+        public static void Prefix()
+        {
+            try { SeamlessInteriorsMod.OnStartCustomizing(); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[JUNK] StartCustomizing prefix hatasi: {ex.Message}"); }
         }
     }
 
-    // After the game clears junk, mark the clone and also hide the junk that is
-    // parked in the deactivated hierarchy.
+    // ClearJunk switches off every JunkTag in every loaded scene, inactive ones included.
+    // Junk it had no business touching is switched back on afterwards.
     //
-    // BOTH ClearJunk and MaybeClearJunk are patched: IL2CPP may have inlined the
-    // body of ClearJunk into MaybeClearJunk, in which case the ClearJunk patch
-    // never fires. The handler is idempotent, so running twice is harmless.
+    // Every clear goes through here: MaybeClearJunk (the player's action), the console and
+    // LoadSceneData all CALL ClearJunk, and nothing inlines it (measured, see Junk.cs).
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.JunkManager), nameof(Il2Cpp.JunkManager.ClearJunk))]
-    public class MarkCloneJunkClearedPatch
+    public class KeepClearJunkInsideOneClonePatch
     {
+        public static void Prefix()
+        {
+            try { SeamlessInteriorsMod.BeforeGameClearJunk(); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[JUNK] ClearJunk prefix hatasi: {ex.Message}"); }
+        }
+
         public static void Postfix()
         {
-            try { SeamlessInteriorsMod.OnGameClearedJunk(); }
+            try { SeamlessInteriorsMod.AfterGameClearJunk(); }
             catch (System.Exception ex) { MelonLogger.Warning($"[JUNK] ClearJunk postfix hatasi: {ex.Message}"); }
         }
     }
 
-    // Fallback for the inlined case described above.
-    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.JunkManager), nameof(Il2Cpp.JunkManager.MaybeClearJunk))]
-    public class MarkCloneJunkClearedFallbackPatch
+    // A scene save writes the flag into the REGION's save, so it must see the region's own
+    // value while it runs. (StopCustomizing triggers a save of its own.)
+    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.SaveGameSystem), nameof(Il2Cpp.SaveGameSystem.SaveSceneData))]
+    public class RegionJunkFlagForSceneSavePatch
     {
-        public static void Postfix(bool __result)
+        public static void Prefix()
         {
-            if (!__result) return;
+            try { SeamlessInteriorsMod.BeforeSceneSave(); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[JUNK] SaveSceneData prefix hatasi: {ex.Message}"); }
+        }
 
-            try { SeamlessInteriorsMod.OnGameClearedJunk(); }
-            catch (System.Exception ex) { MelonLogger.Warning($"[JUNK] MaybeClearJunk postfix hatasi: {ex.Message}"); }
+        public static void Postfix()
+        {
+            try { SeamlessInteriorsMod.AfterSceneSave(); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[JUNK] SaveSceneData postfix hatasi: {ex.Message}"); }
         }
     }
 

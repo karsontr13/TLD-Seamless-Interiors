@@ -32,6 +32,69 @@ namespace SeamlessInteriors
 
         public static bool IsGearSaveFilterEnabled => s_PrefEnableGearSaveFilter?.Value ?? true;
 
+        // Should a save made BEFORE the mod was installed have its interior history
+        // imported? See SeamlessInteriorsMod.LegacyImport.cs. Runs at most once per
+        // building per save; the untouched original is kept as a backup either way.
+        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] EnableLegacySaveImport
+        private static MelonPreferences_Entry<bool> s_PrefEnableLegacySaveImport;
+
+        public static bool IsLegacySaveImportEnabled => s_PrefEnableLegacySaveImport?.Value ?? true;
+
+        // Should the mod check that the data on disk belongs to the playthrough that is
+        // actually loaded? The game reuses the slot names of deleted saves, so without
+        // this a new game inherits the previous one's interiors.
+        // See SeamlessInteriorsMod.SaveIdentity.cs.
+        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] EnableSaveIdentityGuard
+        private static MelonPreferences_Entry<bool> s_PrefEnableSaveIdentityGuard;
+
+        public static bool IsSaveIdentityGuardEnabled => s_PrefEnableSaveIdentityGuard?.Value ?? true;
+
+        // Should the mod's own files for a save be removed when that save is deleted?
+        // The guard above cleans up AFTER the fact, once the next game has already been
+        // handed the deleted save's slot name; this stops the leftovers from existing in
+        // the first place. See SeamlessInteriorsMod.SaveDeletion.cs.
+        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] DeleteDataWithSave
+        private static MelonPreferences_Entry<bool> s_PrefDeleteDataWithSave;
+
+        public static bool IsDeleteDataWithSaveEnabled => s_PrefDeleteDataWithSave?.Value ?? true;
+
+        // Should a building's contents be restored only when the player comes near,
+        // instead of for every building during the region load?
+        // See SeamlessInteriorsMod.Hydration.cs.
+        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] EnableLazyInteriorContent
+        private static MelonPreferences_Entry<bool> s_PrefEnableLazyInteriorContent;
+
+        public static bool IsLazyContentEnabled => s_PrefEnableLazyInteriorContent?.Value ?? true;
+
+        // Should the import switch off scene furniture the game's own save lists as
+        // "Removed"? On, an interior the player stripped comes back stripped. Off, every
+        // piece of the original furniture stays - which is the safer direction if the
+        // import ever reads that flag wrong, because a wrongly hidden object looks exactly
+        // like the player's belongings having vanished.
+        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] ApplyLegacyRemovedObjects
+        private static MelonPreferences_Entry<bool> s_PrefApplyLegacyRemovedObjects;
+
+        public static bool IsLegacyRemovedHandlingEnabled => s_PrefApplyLegacyRemovedObjects?.Value ?? true;
+
+        // Exterior fire effects: smoke from the building's chimney and, between dusk and dawn, a
+        // warm glow in its windows and on the snow in front of them while a fire burns inside.
+        // See SeamlessInteriorsMod.ExteriorFireEffects.cs.
+        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] EnableChimneySmoke, EnableWindowGlow,
+        // WindowGlowFlicker, WindowGlowStrength, EnableWindowGroundGlow, WindowGroundGlowStrength
+        private static MelonPreferences_Entry<bool> s_PrefEnableChimneySmoke;
+        private static MelonPreferences_Entry<bool> s_PrefEnableWindowGlow;
+        private static MelonPreferences_Entry<bool> s_PrefWindowGlowFlicker;
+        private static MelonPreferences_Entry<float> s_PrefWindowGlowStrength;
+        private static MelonPreferences_Entry<bool> s_PrefEnableWindowGroundGlow;
+        private static MelonPreferences_Entry<float> s_PrefWindowGroundGlowStrength;
+
+        public static bool IsChimneySmokeEnabled => s_PrefEnableChimneySmoke?.Value ?? true;
+        public static bool IsWindowGlowEnabled => s_PrefEnableWindowGlow?.Value ?? true;
+        public static bool IsWindowGlowFlickerEnabled => s_PrefWindowGlowFlicker?.Value ?? true;
+        public static float WindowGlowStrength => s_PrefWindowGlowStrength?.Value ?? 1f;
+        public static bool IsWindowGroundGlowEnabled => s_PrefEnableWindowGroundGlow?.Value ?? true;
+        public static float WindowGroundGlowStrength => s_PrefWindowGroundGlowStrength?.Value ?? 1f;
+
         // VERBOSE LOGGING.
         //
         // PERFORMANCE: with this flag on, the mod writes a line per object on every
@@ -73,6 +136,83 @@ namespace SeamlessInteriors
                 "Keeps container contents, looted items and eliminated loot candidates out of the cloned-interior gear save file. Turn off only for troubleshooting."
             );
 
+            s_PrefEnableLegacySaveImport = s_PrefCategory.CreateEntry<bool>(
+                "EnableLegacySaveImport",
+                true,
+                "Import Pre-Mod Save Data",
+                "Carries what the player did in the ORIGINAL interior scenes (items, containers, harvested objects, placed furniture, cleared junk) into the cloned interior the first time an existing save is loaded with the mod. Runs once per building per save."
+            );
+
+            s_PrefEnableSaveIdentityGuard = s_PrefCategory.CreateEntry<bool>(
+                "EnableSaveIdentityGuard",
+                true,
+                "Guard Against Another Game's Interior Data",
+                "Stamps every save with an id of its own and refuses interior data carrying a different one. The game reuses the slot names of deleted saves, so without this a new game can inherit the previous one's furniture, containers and harvested objects. Mismatched data is moved to Mods\\SeamlessInteriorsData\\BayatVeri, never deleted."
+            );
+
+            s_PrefDeleteDataWithSave = s_PrefCategory.CreateEntry<bool>(
+                "DeleteDataWithSave",
+                true,
+                "Delete Interior Data With The Save",
+                "Removes this mod's files and loot flags for a save the moment that save is deleted, and clears out data left behind by saves that no longer exist. The game reuses the slot names of deleted saves, so leftovers would otherwise be handed to the next new game. Turn off to keep every file forever - the Save Identity Guard above then quarantines the leftovers instead."
+            );
+
+            s_PrefEnableLazyInteriorContent = s_PrefCategory.CreateEntry<bool>(
+                "EnableLazyInteriorContent",
+                true,
+                "Lazy Interior Content",
+                "Restores a building's items and container contents only when the player comes near it, instead of filling every building in the region during the loading screen. Turn off to go back to the old, eager behaviour."
+            );
+
+            s_PrefApplyLegacyRemovedObjects = s_PrefCategory.CreateEntry<bool>(
+                "ApplyLegacyRemovedObjects",
+                true,
+                "Apply Removed Objects From Pre-Mod Save",
+                "Switches off scene furniture the pre-mod save records as removed, so a stripped interior is imported stripped. Turn off if furniture that should be there is coming in dark."
+            );
+
+            s_PrefEnableChimneySmoke = s_PrefCategory.CreateEntry<bool>(
+                "EnableChimneySmoke",
+                true,
+                "Chimney Smoke",
+                "Smoke rises from a building's chimney for as long as a stove or fireplace burns inside it - the game's own chimney effect, which the seamless doors would otherwise never trigger."
+            );
+
+            s_PrefEnableWindowGlow = s_PrefCategory.CreateEntry<bool>(
+                "EnableWindowGlow",
+                true,
+                "Window Glow At Night",
+                "While a fire burns inside, the building's windows glow warm orange from dusk to dawn, the way Grey Mother's house looks in Wintermute. Never in daylight."
+            );
+
+            s_PrefWindowGlowFlicker = s_PrefCategory.CreateEntry<bool>(
+                "WindowGlowFlicker",
+                true,
+                "Window Glow Flicker",
+                "Adds a very slight firelight flicker to the window glow. Turn off for a steady glow."
+            );
+
+            s_PrefWindowGlowStrength = s_PrefCategory.CreateEntry<float>(
+                "WindowGlowStrength",
+                1f,
+                "Window Glow Strength",
+                "Brightness multiplier for the window glow. 1 = the value Wintermute uses."
+            );
+
+            s_PrefEnableWindowGroundGlow = s_PrefCategory.CreateEntry<bool>(
+                "EnableWindowGroundGlow",
+                true,
+                "Window Glow On The Ground",
+                "Lit windows also throw a soft orange light onto the snow in front of the ground floor. Uses a few real-time lights per building, only while you are nearby."
+            );
+
+            s_PrefWindowGroundGlowStrength = s_PrefCategory.CreateEntry<float>(
+                "WindowGroundGlowStrength",
+                1f,
+                "Window Ground Glow Strength",
+                "Brightness multiplier for the light the windows throw onto the ground."
+            );
+
             s_PrefVerboseLogging = s_PrefCategory.CreateEntry<bool>(
                 "VerboseLogging",
                 false,
@@ -80,6 +220,10 @@ namespace SeamlessInteriors
                 "Writes a log line per object during save/load. Costs noticeable frame time on maps with many interiors - turn on only for troubleshooting (F7 toggles it in-game)."
             );
             s_DebugBounds = s_PrefVerboseLogging.Value;
+
+            // The timestamped fire dumps earlier versions left behind, one per save and one
+            // per load, go in one pass here.
+            CleanUpOldFireDumps();
 
             // Flush the settings to disk right away: otherwise newly added keys only reach
             // MelonPreferences.cfg when the game shuts down CLEANLY - after a crash they
@@ -89,6 +233,15 @@ namespace SeamlessInteriors
             MelonLogger.Msg($"[SETTINGS] Interior Lighting Mode: {(IsDarkAtmosphereMode ? "Dark Atmosphere" : "Outdoor Lighting")}");
             MelonLogger.Msg($"[SETTINGS] Initial Loot Roll: {(IsInitialLootRollEnabled ? "ON" : "OFF")}");
             MelonLogger.Msg($"[SETTINGS] Gear Save Filter: {(IsGearSaveFilterEnabled ? "ON" : "OFF")}");
+            MelonLogger.Msg($"[SETTINGS] Legacy Save Import: {(IsLegacySaveImportEnabled ? "ON" : "OFF")} (F6 teshis)");
+            MelonLogger.Msg($"[SETTINGS] Save Identity Guard: {(IsSaveIdentityGuardEnabled ? "ON" : "OFF")}");
+            MelonLogger.Msg($"[SETTINGS] Delete Data With Save: {(IsDeleteDataWithSaveEnabled ? "ON" : "OFF")}");
+            MelonLogger.Msg($"[SETTINGS] Lazy Interior Content: {(IsLazyContentEnabled ? "ON" : "OFF")}");
+            MelonLogger.Msg($"[SETTINGS] Apply Removed Objects: {(IsLegacyRemovedHandlingEnabled ? "ON" : "OFF")}");
+            MelonLogger.Msg($"[SETTINGS] Chimney Smoke: {(IsChimneySmokeEnabled ? "ON" : "OFF")}");
+            MelonLogger.Msg($"[SETTINGS] Window Glow: {(IsWindowGlowEnabled ? "ON" : "OFF")} " +
+                            $"(flicker {(IsWindowGlowFlickerEnabled ? "ON" : "OFF")}, strength {WindowGlowStrength:F2}) (Shift+F9 onizleme)");
+            MelonLogger.Msg($"[SETTINGS] Window Ground Glow: {(IsWindowGroundGlowEnabled ? "ON" : "OFF")} (strength {WindowGroundGlowStrength:F2})");
             MelonLogger.Msg($"[SETTINGS] Verbose Logging: {(s_DebugBounds ? "ON" : "OFF")} (F7)");
         }
 
@@ -98,6 +251,21 @@ namespace SeamlessInteriors
             // every frame. The light patches consult that result to decide who may write
             // the global ambient.
             ClonedInteriorLightingGuard.Tick();
+
+            // A region gear restore the mod turned away must always be replayed.
+            TickDeferredGearRestore();
+
+            // Interior data belonging to saves that no longer exist. Costs one call every
+            // few seconds and does nothing at all outside the main menu.
+            TickDeletedSaveSweep();
+
+            // A decoration in the backpack must not also be standing in the world.
+            // (see SeamlessInteriorsMod.CarriedDecorations.cs)
+            TickCarriedDecorationGuard();
+
+            // While the player customizes inside a clone, the game's single "junk cleared"
+            // flag has to answer for that clone. (see SeamlessInteriorsMod.Junk.cs)
+            TickJunkFlagView();
 
             // ─── F8: SWITCH INTERIOR LIGHTING MODE ───
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F8))
@@ -130,14 +298,63 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[SETTINGS] Verbose Logging: {(s_DebugBounds ? "ON" : "OFF")}");
             }
 
+            // ─── F6: PRE-MOD SAVE DIAGNOSTICS ───
+            // Lists the scene keys the current save really contains and what the mod
+            // resolved for every building. The only way to see, from inside the game,
+            // whether an old save's interior data was found and matched correctly.
+            if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F6))
+            {
+                try { DumpLegacySaveDiagnostics(); }
+                catch (System.Exception ex) { MelonLogger.Warning($"[LEGACY-TESHIS] Hata: {ex}"); }
+
+                s_LightingModeMessage = "Eski kayit teshisi log'a yazildi";
+                s_LightingModeMessageTimer = 3f;
+            }
+
             // ─── F9: INTERACTION DIAGNOSTICS ───
             // Dumps the colliders in front of the crosshair and the active/collider/layer
             // state of nearby items to the MelonLoader log, to find the cause of
             // "I can see the item but cannot pick it up".
+            // SHIFT+F9 previews the exterior fire effects on the nearest building instead
+            // (see SeamlessInteriorsMod.ExteriorFireEffects.cs).
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F9))
             {
-                try { DiagnoseInteractivity(); }
-                catch (System.Exception ex) { MelonLogger.Warning($"[TESHIS] Hata: {ex}"); }
+                bool shift = UnityEngine.Input.GetKey(UnityEngine.KeyCode.LeftShift)
+                          || UnityEngine.Input.GetKey(UnityEngine.KeyCode.RightShift);
+                if (shift)
+                {
+                    try { ToggleExteriorFxPreview(); }
+                    catch (System.Exception ex) { MelonLogger.Warning($"[DIS-EFEKT] Onizleme hatasi: {ex}"); }
+                }
+                else
+                {
+                    try { DiagnoseInteractivity(); }
+                    catch (System.Exception ex) { MelonLogger.Warning($"[TESHIS] Hata: {ex}"); }
+                }
+            }
+
+            // ─── F11: "PRETEND THE SAFE IS CRACKED" EXPERIMENT (reversible) ───
+            // SHIFT+F11 forces the interaction under the crosshair instead - the call a
+            // click would make. Both live in SeamlessInteriorsMod.Interactivity.cs.
+            if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F11))
+            {
+                bool force = UnityEngine.Input.GetKey(UnityEngine.KeyCode.LeftShift)
+                          || UnityEngine.Input.GetKey(UnityEngine.KeyCode.RightShift);
+                try
+                {
+                    if (force)
+                    {
+                        ForceCrosshairInteraction();
+                        s_LightingModeMessage = "Nisangahtaki etkilesim zorlandi (loga bak)";
+                    }
+                    else
+                    {
+                        ToggleSafeCrackedExperiment();
+                        s_LightingModeMessage = "Kasa deneyi degistirildi (loga bak)";
+                    }
+                    s_LightingModeMessageTimer = 4f;
+                }
+                catch (System.Exception ex) { MelonLogger.Warning($"[DENEY] Hata: {ex}"); }
             }
 
             // ─── F10: INTERACTION REPAIR (manual) ───
@@ -160,6 +377,22 @@ namespace SeamlessInteriors
             Transform playerT = Il2Cpp.GameManager.GetPlayerTransform();
             if (playerT == null) return;
             Vector3 pos = playerT.position;
+
+            // Keep the cooking pots and fires in CLOSED clones running. Unity stops calling
+            // their Update the moment MasterInterior goes inactive, which used to freeze a
+            // boil timer for as long as the player stayed outside.
+            // (see SeamlessInteriorsMod.FrozenTime.cs)
+            TickClosedInteriorTime();
+
+            // Chimney smoke and window glow on the shells of buildings with a fire burning inside.
+            // Runs after the closed-clone time step, so a fire that just ran out is seen as out.
+            // (see SeamlessInteriorsMod.ExteriorFireEffects.cs)
+            TickExteriorFireEffects(pos);
+
+            // Safety net for "the player is sheltered from wind and stuck at indoor
+            // temperature while standing in the open".
+            // (see SeamlessInteriorsMod.InsideFlag.cs)
+            TickPlayerInsideCloneFlagGuard();
 
             // Keep each building's terrain hole in sync with whether the player is inside it.
             foreach (var instance in ActiveInteriors.Values)
@@ -186,6 +419,37 @@ namespace SeamlessInteriors
         public override void OnLateUpdate()
         {
             ClonedInteriorLightingGuard.EnforceOwnerAmbient();
+        }
+
+        // ─── SAFETY NET FOR THE DEFERRED REGION GEAR RESTORE ───
+        //
+        // GearManager.Deserialize is how the game puts the region's loose gear back:
+        // the carcasses, the meat and everything the player dropped outdoors. The mod
+        // turns that call away while an interior scene is being pulled in, and replays it
+        // afterwards (see PreventGearManagerDuplicationPatch).
+        //
+        // That replay used to hang off ONE call site - the end of Run()'s scene-load
+        // section. Run() is not called at all when a region is re-entered from a vanilla
+        // interior: the clones come back out of the persist cache instead. A payload
+        // deferred in that window was therefore never replayed, and the items the player
+        // had left on the ground outside were simply gone.
+        //
+        // So the replay is now driven from here as well: the moment nothing is loading
+        // any more, whatever is queued runs. The check is a single bool read per frame
+        // while the queue is empty, which it is for the entire game except during a load.
+        private static float s_LastDeferredGearReplayCheck = -1f;
+
+        private static void TickDeferredGearRestore()
+        {
+            if (!PreventGearManagerDuplicationPatch.HasDeferred) return;
+            if (IsLoadingInteriorScene) return;
+
+            // Do not hammer it: a replay can itself take a while.
+            if (s_LastDeferredGearReplayCheck >= 0f
+                && Time.realtimeSinceStartup - s_LastDeferredGearReplayCheck < 0.5f) return;
+
+            s_LastDeferredGearReplayCheck = Time.realtimeSinceStartup;
+            PreventGearManagerDuplicationPatch.ReplayIfDeferred();
         }
 
         // Every building handled by the mod, keyed by InstanceId.
@@ -283,9 +547,70 @@ namespace SeamlessInteriors
         // Instances sharing an InteriorSceneBaseName load one after another: the first
         // loads the scene and stores it as a template, the rest copy it.
         private static bool s_SceneLoadLock = false;
+        private static float s_SceneLoadLockTakenAt = 0f;
+
+        // A single Addressables scene load is a matter of seconds. Anything still
+        // holding the lock after this has been interrupted and is never going to
+        // release it.
+        private const float SCENE_LOAD_LOCK_MAX_SECONDS = 45f;
+
+        private static void TakeSceneLoadLock()
+        {
+            s_SceneLoadLock = true;
+            s_SceneLoadLockTakenAt = Time.realtimeSinceStartup;
+        }
+
+        // Read by the patches: is an interior scene being pulled in RIGHT NOW?
+        //
+        // This is a far narrower window than "is the mod cloning". Cloning a whole
+        // region takes the better part of a minute; a single scene load is a moment.
+        // Patches that need to hold the game off should use this, never the full
+        // cloning flag - see PreventGearManagerDuplicationPatch.
+        //
+        // SELF-HEALING. While this lock is held, the game is not allowed to restore the
+        // region's loose gear, and no further clone may load. A Run() coroutine killed
+        // between taking and releasing it - an interrupted load, an exception inside
+        // LoadInteriorScenes, an Addressables handle that never reports IsDone - used to
+        // leave it set for the rest of the session, and from that moment on nothing the
+        // player dropped outdoors ever came back and no building was ever cloned again.
+        // Nothing announced it either. A load that overruns the cap is therefore treated
+        // as over.
+        public static bool IsLoadingInteriorScene
+        {
+            get
+            {
+                if (!s_SceneLoadLock) return false;
+
+                if (Time.realtimeSinceStartup - s_SceneLoadLockTakenAt <= SCENE_LOAD_LOCK_MAX_SECONDS)
+                    return true;
+
+                s_SceneLoadLock = false;
+                MelonLogger.Warning($"[SAHNE-KILIDI] Ic mekan sahne yukleme kilidi {SCENE_LOAD_LOCK_MAX_SECONDS:F0} " +
+                                    $"saniyeden uzun suredir acik kalmis (yarida kesilmis bir yukleme), zorla birakildi.");
+                return false;
+            }
+        }
 
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
+            // No save is loaded at the main menu, so anything the mod remembers ABOUT a
+            // save has to be dropped here. The game hands the slot name of a deleted save
+            // straight to the next new game, and a memo keyed on that name would answer
+            // for the wrong playthrough (see ForgetSaveIdentity).
+            if (!string.IsNullOrEmpty(sceneName)
+                && sceneName.StartsWith("MainMenu", System.StringComparison.Ordinal))
+            {
+                ForgetSaveIdentity("ana menuye donuldu");
+
+                // The main menu is also where saves get deleted, and where a save deleted
+                // in an earlier session (or with the mod uninstalled) first becomes visible
+                // as data without an owner. This is the earliest the sweep can be tried;
+                // the save list is usually still loading here, in which case it does
+                // nothing and the ticker in OnUpdate picks it up a few seconds later.
+                // See SeamlessInteriorsMod.SaveDeletion.cs.
+                SweepDeletedSaveData("ana menu", true);
+            }
+
             // Is this a region scene the mod cares about?
             bool isSupportedExteriorScene = false;
             foreach (var cfg in SupportedInteriors)
@@ -346,6 +671,27 @@ namespace SeamlessInteriors
             // Find out which clone scene the player saved in (for the early activation).
             string savedInsideId = GetSavedPlayerInsideInstanceId();
 
+            // STALE ENTRY FROM ANOTHER SAVE.
+            //
+            // The key is addressed by save NAME and the game reuses slot names, so a new
+            // game can inherit "the player was inside building X" from whatever used to
+            // live in that slot. The cleanup above cannot always catch it: it needs
+            // SaveGameSystem.m_CurrentSaveName, which is not always set yet at this point.
+            //
+            // Here the entry can be judged on its own merits: if no building in THIS region
+            // answers to that id, it cannot describe where the player is standing now.
+            // Only tested in a real region scene - the additive interior scenes the mod
+            // loads itself, and the intermediate scenes a save load passes through, own no
+            // buildings at all and would fail the test for the wrong reason.
+            if (isSupportedExteriorScene && !string.IsNullOrEmpty(savedInsideId)
+                && !SceneOwnsInstanceId(sceneName, savedInsideId))
+            {
+                MelonLogger.Msg($"[BAYAT-KAYIT] Kayitli 'oyuncu iceride' bilgisi ({savedInsideId}) bu bolgeye " +
+                                $"({sceneName}) ait degil - baska bir save'den kalmis, temizlendi.");
+                ClearSavedPlayerInsideState();
+                savedInsideId = "";
+            }
+
             // Inside the post-load window the saved state outranks the geometric test.
             // (Stops the interior from starting visible when the player saved outside,
             //  right in front of the door.)
@@ -355,7 +701,14 @@ namespace SeamlessInteriors
             // CRITICAL: if the player saved inside a clone scene, set the flags IMMEDIATELY.
             // Wind.Start and other patches read this flag - too late and the wind/audio are
             // started as if the player were outside.
-            if (!string.IsNullOrEmpty(savedInsideId))
+            //
+            // Restricted to the region scene that actually owns the saved building. The
+            // flag used to be set in EVERY scene this callback fires for - including
+            // regions the mod does not support at all, where a leftover entry from another
+            // save left the player permanently wind-sheltered and stuck at indoor
+            // temperature in the open. Wind.Start only matters in the region scene, so
+            // nothing is lost by being this specific.
+            if (isSupportedExteriorScene && SceneOwnsInstanceId(sceneName, savedInsideId))
             {
                 s_IsPlayerInsideClone = true;
                 SetAudioOcclusion(true);
@@ -468,6 +821,60 @@ namespace SeamlessInteriors
             }
         }
 
+        // Closes what OnSceneWasInitialized opened, for the persist flow - see the call
+        // site in ReattachPersistedInterior.
+        // One is enough, however many buildings the region reattached
+        // (same pattern as s_BatchEnvironmentPending).
+        private static bool s_PersistReleasePending = false;
+
+        private IEnumerator ReleaseLoadingScreenAfterPersist(string regionSceneName)
+        {
+            if (s_PersistReleasePending) yield break;
+            s_PersistReleasePending = true;
+
+            // Wait for every building in THIS region to be back on its feet. Mixed regions
+            // are normal: some clones come out of the persist cache, others have to be
+            // rebuilt by Run() because they had not finished when the region was left.
+            float timeout = 30f;
+            float elapsed = 0f;
+            while (elapsed < timeout)
+            {
+                bool allDone = true;
+                foreach (var inst in ActiveInteriors.Values)
+                {
+                    if (inst.Config.ExteriorSceneName != regionSceneName) continue;
+
+                    if (inst.IsCloningRoutineActive || inst.InteriorPersisted || !inst.RunCompleted)
+                    {
+                        allDone = false;
+                        break;
+                    }
+                }
+                if (allDone) break;
+
+                yield return new WaitForSeconds(0.25f);
+                elapsed += 0.25f;
+            }
+
+            s_PersistReleasePending = false;
+
+            // A Run() in flight owns the release: it calls TryBatchUpdateEnvironment when
+            // it finishes, and that does the full job including the environment fix.
+            if (IsAnyCloningActive()) yield break;
+
+            SceneScan.SetLoadPhase(false);
+
+            if (s_ScreenHeldBlack)
+            {
+                s_ScreenHeldBlack = false;
+                HideLoadingOverlay();
+                CameraFade.FadeIn(0.5f, 0f, null);
+
+                if (s_DebugBounds)
+                    MelonLogger.Msg("[SCREEN-RELEASE] Persist akisi: klonlar geri baglandi, ekran aciliyor.");
+            }
+        }
+
         private IEnumerator ScreenHoldFailsafe()
         {
             float maxWait = 60f;
@@ -520,9 +927,31 @@ namespace SeamlessInteriors
                 SceneScan.InvalidateVolatile();
             }
 
+            // A gear restore still sitting in the queue describes the region that is being
+            // torn down right now; replaying it into the next one would spawn the wrong
+            // region's items. (Normally the queue is already empty - OnUpdate drains it
+            // within half a second of the load window closing.)
+            if (unloadedSupportedExterior)
+                PreventGearManagerDuplicationPatch.DiscardDeferred();
+
+            // The game's "junk cleared" flag goes back to the region's own value before the
+            // next scene's restore reads it. (see SeamlessInteriorsMod.Junk.cs)
+            if (unloadedSupportedExterior)
+                EndJunkFlagView();
+
+            // The chimneys and shell renderers the exterior fire effects were driving go with the
+            // region. (see SeamlessInteriorsMod.ExteriorFireEffects.cs)
+            if (unloadedSupportedExterior)
+                ForgetExteriorFireEffects();
+
             // Reset the light ownership state: nobody owns it in the new scene, the outside
             // world writes.
             ClonedInteriorLightingGuard.Reset();
+
+            // Pending hydration requests point at clones that are about to be torn down
+            // or parked; anything still needed is requested again by the new scene's
+            // watchdog.
+            ResetHydrationQueue();
 
             // On a scene change, reset the mod's occlusion bool AND GameAudioManager's real
             // occlusion counters. Resetting only the bool was not enough: since
@@ -560,7 +989,15 @@ namespace SeamlessInteriors
 
                         // Scene-bound references are dead; only the clone itself survives.
                         instance.ExteriorShell = null;
+                        instance.ExteriorFx = null;
                         instance.WatchdogStarted = false;
+
+                        // Retire the running watchdog. RunCompleted stays true here, so its
+                        // loop would otherwise keep ticking - in the next scene, against
+                        // this region's coordinates - and the reattach would start a second
+                        // one next to it. (see SeamlessInteriorInstance.WatchdogGeneration)
+                        instance.WatchdogGeneration++;
+
                         if (instance.CustomKillers != null) instance.CustomKillers.Clear();
 
                         // NOTE: ResetWeatherParticles will take an instance parameter later.
@@ -570,10 +1007,26 @@ namespace SeamlessInteriors
 
                     instance.RunCompleted = false;
                     instance.ExteriorShell = null;
+                    instance.ExteriorFx = null;
                     instance.MasterInterior = null;
                     instance.InteriorTrigger = null;
                     instance.WatchdogStarted = false;
+                    instance.WatchdogGeneration++;
                     instance.InteriorPersisted = false;
+
+                    // The clone is gone, so its contents are gone with it. The next Run()
+                    // rebuilds from the template and has to fill it again.
+                    // (The PERSIST path above deliberately does NOT reset this: that clone
+                    //  keeps every object it was holding.)
+                    instance.ContentHydrated = false;
+                    instance.HydrationInProgress = false;
+                    instance.SpawnedPlaceableGuids.Clear();
+                    instance.LegacyRemovedGuids.Clear();
+                    instance.SpawnedShouldBeActive.Clear();
+                    instance.LegacyImport = LegacyImportState.Unknown;
+                    instance.LegacySource = LegacySourceKind.None;
+                    instance.LegacySourceId = null;
+                    instance.LegacyRawBlob = null;
 
                     // The clone was destroyed, so the references to the hidden junk objects
                     // are dead. The new clone is built from scratch and its state comes from
@@ -717,12 +1170,47 @@ namespace SeamlessInteriors
 
             instance.InteriorPersisted = false;
 
+            // PUT THIS CLONE'S FIRES BACK IN FRONT OF FireManager.
+            //
+            // This path does not go through Run(), so nothing here ever registered them -
+            // and FireManager.Serialize only ever walks its own lists. A clone fire that is
+            // not in them is left out of the NEXT save entirely, which means a stove still
+            // burning when the player leaves the region is gone one save later, even though
+            // it looks fine the moment they come back.
+            //
+            // The clone GameObject itself survived the region change, so its Fire components
+            // still carry their own state; all that is missing is the registration.
+            RegisterCloneFiresWithManager();
+
             // In the persist flow the clone GameObject stays alive. Since a DIFFERENT or
             // OLDER save may have been loaded in the same session, the junk state is
             // re-synchronised from the save file.
             RestoreJunkState(instance);
 
+            // A persisted clone normally still holds everything it was filled with, so
+            // this is a no-op. It only bites when the player left the region without ever
+            // going near this building and is now being put straight back inside it.
+            if (playerSavedInside)
+                EnsureHydratedNow(instance, "persist + oyuncu icerde kaydetmis");
+
             InitializeVisibilityAndWatchdog(instance);
+
+            // RELEASE THE LOADING SCREEN AND THE SHARED SCAN WINDOW.
+            //
+            // OnSceneWasInitialized blacks the screen out and opens the scan window for
+            // every region that owns buildings, but only Run() ever started the coroutine
+            // that closes them again. Re-entering a region from a vanilla interior takes
+            // the persist path instead of Run(), so nothing did: the "Loading..." overlay
+            // and the held black screen sat there until the 60 second failsafe fired, and
+            // the load window - which also keeps the name index of the whole scene alive -
+            // stayed open for just as long.
+            //
+            // Deliberately NOT TryBatchUpdateEnvironment: that one also forces the
+            // scene-wide orphan cleanup, which DESTROYS placed objects it finds outside
+            // any scene. On this path the game's own scene restore is still running, and
+            // an object it has instantiated but not yet put into a scene looks exactly
+            // like such an orphan. Only the release is wanted here.
+            MelonCoroutines.Start(ReleaseLoadingScreenAfterPersist(instance.Config.ExteriorSceneName));
 
             // After a persist the player may be below the floor - correct with the saved position.
             Transform playerTFix = GameManager.GetPlayerTransform();
@@ -772,16 +1260,31 @@ namespace SeamlessInteriors
         {
             instance.IsCloningRoutineActive = true;
 
+            // FIRST OF ALL: does the data on disk actually belong to THIS playthrough?
+            // The game reuses the slot names of deleted saves, so "sandbox29" can be a
+            // brand new game sitting on top of a previous one's interior data. Runs once
+            // per save; see SeamlessInteriorsMod.SaveIdentity.cs.
+            EnsureSaveIdentity();
+
             CheckNewGameLootLock(instance);
 
             // Wait for the scene load lock: if another coroutine is loading the same scene,
             // let it finish and store the template first.
-            while (s_SceneLoadLock)
+            //
+            // The wait goes through IsLoadingInteriorScene rather than reading the field,
+            // so a lock left behind by an interrupted load cannot stop every remaining
+            // building in the region from ever being cloned.
+            while (IsLoadingInteriorScene)
                 yield return null;
 
-            s_SceneLoadLock = true;
+            TakeSceneLoadLock();
             yield return LoadInteriorScenes(instance);
             s_SceneLoadLock = false;
+
+            // If the game tried to restore the region's loose gear while that scene was
+            // coming in, it was turned away - run it now that the window has closed.
+            PreventGearManagerDuplicationPatch.ReplayIfDeferred();
+
             PrepareMasterInterior(instance);
             AlignWithExteriorShell(instance);
 
@@ -843,6 +1346,21 @@ namespace SeamlessInteriors
             else
                 yield return null;
 
+            // PRE-MOD SAVE CHECK - must happen BEFORE ProcessSpawnsAndDeduplication.
+            //
+            // If the player already visited this building in the original interior scene,
+            // its loot was decided long ago and lives in the game's own save. Rolling
+            // fresh loot now would refill a house they emptied hundreds of days ago, so
+            // the building is treated exactly as one the mod itself has already
+            // generated. (The actual data is imported later, during hydration.)
+            ProbeLegacySave(instance);
+            if (IsLegacyImportPending(instance))
+            {
+                string legacySaveKey = instance.Config.SaveKeyPrefix + SaveGameSystem.m_CurrentSaveName;
+                UnityEngine.PlayerPrefs.SetInt(legacySaveKey, 1);
+                UnityEngine.PlayerPrefs.Save();
+            }
+
             ProcessSpawnsAndDeduplication(instance);
 
             DisableInteriorContainerSerialization(instance.MasterInterior);
@@ -871,8 +1389,23 @@ namespace SeamlessInteriors
                 // GameObjects survive - in the original flow those objects are deleted
                 // entirely by RandomSpawnBlockerPatch at Start(). That difference crashed
                 // the game natively on the first autosave.
-                string gearJsonPath = GetInactiveSceneGearSavePath(instance);
-                bool hasExistingSave = gearJsonPath != null && System.IO.File.Exists(gearJsonPath);
+                //
+                // A pending pre-mod import counts as "saved before" too: the gear JSON
+                // does not exist yet, but the game's own save holds this building's real
+                // contents and they are about to replace whatever the template provides.
+                //
+                // SAME TEST ProcessSpawnsAndDeduplication USES. The two have to agree - a
+                // building whose loot it decided to roll afresh must still have its random
+                // spawn filters removed the ordinary way - so they share one helper.
+                bool hasExistingSave = HasPersistedLootRecord(instance);
+
+                // LAST MOMENT THE RANDOM SPAWN FILTERS STILL EXIST.
+                //
+                // For a pre-mod building the roll above was suppressed, which leaves every
+                // candidate object enabled. Replay what the player's own save chose before
+                // the filters are destroyed below - afterwards there is no way to tell
+                // which objects were candidates at all.
+                ApplyLegacyRandomSpawns(instance);
 
                 if (hasExistingSave)
                 {
@@ -951,22 +1484,35 @@ namespace SeamlessInteriors
 
             ApplySafehouseCustomizationFix(instance);
 
-            RestorePlaceablePositions(instance);
-
-            // Restore the gear that went missing, from JSON.
-            RestoreInactiveSceneGearItems(instance);
-
-            // Restore the container data (the items inside them).
-            RestoreContainerData(instance);
-
-            // Restore the state of broken / harvested / opened objects. The game's own
-            // global save cannot match the clone scene by position or guid, so this lives
-            // in a separate JSON.
-            RestoreInteractiveState(instance);
-
-            // Restore the safehouse "clear junk" (R) state. The game's own flag is per
-            // scene so it does not cover the clone, and cleared junk came back on every load.
-            RestoreJunkState(instance);
+            // ─── CONTENT ───
+            //
+            // Placed furniture, loose items, container contents, the state of broken /
+            // harvested / opened objects and the cleared-junk flag. None of it can come
+            // from the game's own save: it cannot match a clone scene by position or
+            // guid, so the mod keeps its own JSON per building.
+            //
+            // The work itself lives in SeamlessInteriorsMod.Hydration.cs. Filling every
+            // building in the region here, behind the loading screen, meant thousands of
+            // item spawns for buildings the player may never walk into - so it now
+            // happens when they actually come near.
+            //
+            // The building the player saved inside is the one exception: they are about
+            // to be looking at it, so it is filled immediately, before the screen opens.
+            if (IsLazyContentEnabled && !playerSavedInside)
+            {
+                // Covers the case where the player loaded in already standing next to the
+                // building; otherwise the watchdog's distance check picks it up later.
+                Transform hydratePlayerT = GameManager.GetPlayerTransform();
+                if (hydratePlayerT != null)
+                {
+                    float d = Vector3.Distance(hydratePlayerT.position, instance.Config.FallbackPosition);
+                    MaybeRequestHydrationByDistance(instance, d);
+                }
+            }
+            else
+            {
+                EnsureHydratedNow(instance, playerSavedInside ? "oyuncu icerde kaydetmis" : "tembel yukleme kapali");
+            }
 
             InitializeVisibilityAndWatchdog(instance);
 

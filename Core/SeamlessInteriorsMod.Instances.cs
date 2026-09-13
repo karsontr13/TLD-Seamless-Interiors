@@ -76,6 +76,13 @@ namespace SeamlessInteriors
         // SaveKeyPrefix is InstanceId based, so buildings sharing a scene never clash.
         public string SaveKeyPrefix => $"{ResolvedInstanceId}Gen_";
 
+        // OPTIONAL: the key this building's data is stored under in the game's own
+        // (pre-mod) save slot. Normally resolved automatically from the door's GUID or
+        // from InteriorSceneBaseName - see SeamlessInteriorsMod.LegacyImport.cs.
+        // Only set this by hand when automatic resolution picks the wrong entry
+        // (F6 in game lists the keys the current save really contains).
+        public string LegacySceneKeyOverride;
+
         // ─── Caches for name lookups ───
         //
         // PrepareMasterInterior searches these two lists for EVERY transform in the
@@ -147,26 +154,130 @@ namespace SeamlessInteriors
 
         public bool WatchdogStarted = false;
 
+        // Which generation of this instance the running watchdog belongs to.
+        //
+        // WHY: MelonLoader coroutines are not bound to a scene, and the watchdog loops on
+        // "while (RunCompleted)" - which the persist flow deliberately leaves true. So the
+        // old loop kept running after the region had been torn down, and the reattach
+        // started a SECOND one: one more watchdog per region round trip, for ever.
+        //
+        // That is not only wasted work. A parked clone sits in DontDestroyOnLoad at its
+        // region coordinates, and the stale loop keeps measuring the distance from the
+        // player - who is now standing in a completely different scene - against those
+        // coordinates. Close enough and it runs the stray sweep, which ADOPTS whatever it
+        // finds inside the clone's volume into the building, i.e. takes objects out of the
+        // scene the player is actually in.
+        //
+        // Bumping this makes the old loop exit on its next tick.
+        public int WatchdogGeneration = 0;
+
+        // ─── LAZY CONTENT HYDRATION ───
+        //
+        // The expensive part of building a clone is not the geometry, it is the
+        // CONTENT: every loose GearItem is destroyed and respawned from JSON, and
+        // every container's contents are deserialized. On a 1000 day save that can be
+        // hundreds of items PER BUILDING, and a region has up to 15 buildings - so a
+        // region load used to pay for thousands of item spawns nobody can see.
+        //
+        // Content is now restored only when the player actually comes near
+        // (see SeamlessInteriorsMod.Hydration.cs). Until then the clone keeps the raw
+        // scene template content, which is invisible: the clone is SetActive(false)
+        // while the player is outside.
+        //
+        // CRITICAL INVARIANT: while ContentHydrated is false the mod must NEVER write
+        // this instance's content save files. The clone does not hold the player's
+        // items yet, so saving would overwrite the JSON with the template contents.
+        // Every Save* function checks this flag first.
+        public bool ContentHydrated = false;
+        public bool HydrationInProgress = false;
+
+        // Guids of the placeables the MOD created in this building - the player's own
+        // furniture, decorations and looted containers, which do not exist in the scene
+        // template at all.
+        //
+        // Their identity has to be tracked explicitly rather than guessed from the
+        // object's name: the name is what the "(PLACED)" test reads, and an object the
+        // game re-creates does not reliably keep it. Getting that wrong is expensive in
+        // both directions - RestorePlaceablePositions switches off anything it does not
+        // recognise, and SaveSpawnedPlaceables drops anything it does not recognise.
+        public readonly System.Collections.Generic.HashSet<string> SpawnedPlaceableGuids =
+            new System.Collections.Generic.HashSet<string>();
+
+        // Guids the pre-mod import switched off because the game's own save listed them
+        // as Removed. Kept so the diagnostics can say WHY an object in the building is
+        // dark - "the import decided the player had taken this away" is a very different
+        // answer from "something lost track of it".
+        public readonly System.Collections.Generic.HashSet<string> LegacyRemovedGuids =
+            new System.Collections.Generic.HashSet<string>();
+
+        // Of the player's own objects, the ones the save file says should be STANDING
+        // here. Anything in this set that turns up switched off has been switched off by
+        // something outside the mod, and is repaired (see RepairSpawnedPlaceables).
+        //
+        // Kept separate from SpawnedPlaceableGuids because the player is allowed to
+        // switch their own decorations off, and that has to survive.
+        public readonly System.Collections.Generic.HashSet<string> SpawnedShouldBeActive =
+            new System.Collections.Generic.HashSet<string>();
+
+        // The hydration coroutine while it is running, so a player who reaches the door
+        // before the background restore finishes can take it over and drain it to
+        // completion on the spot instead of walking into a half-filled building.
+        public System.Collections.IEnumerator HydrationRoutine = null;
+
+        // ─── LEGACY (PRE-MOD) SAVE IMPORT ───
+        //
+        // Set while probing whether this building has data in the game's OWN save from
+        // before the mod was installed. See SeamlessInteriorsMod.LegacyImport.cs.
+        public LegacyImportState LegacyImport = LegacyImportState.Unknown;
+
+        // How the vanilla scene save data for this building is addressed in the slot.
+        public LegacySourceKind LegacySource = LegacySourceKind.None;
+        public string LegacySourceId = null;
+
+        // The blob the probe already pulled out of the slot, held until the transcode
+        // consumes it. Reading it is what proves there is anything to import, so keeping
+        // it saves reading and parsing the same few hundred KB a second time. Released
+        // the moment the import finishes.
+        public string LegacyRawBlob = null;
+
+        // ─── TIME WHILE THE CLONE IS CLOSED ───
+        //
+        // Unity stops updating everything under MasterInterior once the clone closes, which
+        // freezes the cooking pots and fires inside it. SeamlessInteriorsMod.FrozenTime.cs
+        // keeps them running by hand; these fields are its bookkeeping.
+        //
+        // The component lists are collected the moment the clone closes. Nothing new can be
+        // put into a building the player is not in, so they stay valid until it opens again.
+        public readonly List<Il2Cpp.Fire> ClosedFires = new List<Il2Cpp.Fire>();
+        public readonly List<Il2Cpp.CookingPotItem> ClosedCookingPots = new List<Il2Cpp.CookingPotItem>();
+
+        // Was the clone open the last time the tick looked? The open -> closed edge is what
+        // triggers the rescan, and it is detected here rather than in the many places that
+        // call SetActive(false), so no path can be forgotten.
+        public bool ClosedTimeWasOpen = true;
+
+        // Forces a rescan even without that edge (a clone that was already closed the first
+        // time the tick saw it, or a save/load that put a new Fire into a closed clone).
+        public bool ClosedTimeCacheDirty = true;
+        public float ClosedTimeNextRescan = 0f;
+
+        // ─── EXTERIOR FIRE EFFECTS ───
+        //
+        // The chimneys and window glass on this building's shell, and which fire smokes through
+        // which chimney. Built for one shell and rebuilt whenever ExteriorShell is replaced;
+        // see SeamlessInteriorsMod.ExteriorFireEffects.cs.
+        public ExteriorFireFx ExteriorFx = null;
+
         // Has the safehouse "clear junk" (R) action been used on this building?
         // The game's own flag is per scene and cannot cover clone scenes;
         // see SeamlessInteriorsMod.Junk.cs
         public bool JunkCleared = false;
 
-        // Objects the MOD disabled while clearing junk.
+        // Junk objects switched off by clearing this building - by the mod, or by the
+        // game's own ClearJunk while the player was customizing here.
         // Only these may be re-enabled: touching objects the scene template itself
         // left disabled would break the look of the interior.
         public List<GameObject> JunkClearedObjects = new List<GameObject>();
-
-        // Cache for "does this building still have clearable junk".
-        //
-        // WHY: the game's HUD asks CanClearJunk every frame. Answering requires
-        // scanning EVERY JunkTag in the clone scene and walking the parent chain of
-        // each. The answer only changes when junk is cleared or restored from a save,
-        // and both of those invalidate the cache.
-        // (see SeamlessInteriorsMod.Junk.cs -> InvalidateJunkPromptCache)
-        public int JunkScanStamp = -1;
-        public float JunkScanTime = -999f;
-        public bool JunkScanResult;
 
         // When the ParticleKiller trigger is built, the real interior bounds are
         // expanded by (1, 3, 1) (SetupWeatherAndParticles / ReattachPersistedInterior).
@@ -242,6 +353,26 @@ namespace SeamlessInteriors
             }
 
             return false;
+        }
+
+        // Is there a piece of THIS building directly overhead?
+        //
+        // The volume test is an axis-aligned box around a building that is not axis
+        // aligned, so it reaches past the walls - a crate on the porch, a bed leaning
+        // against the outside wall and a body dropped by the door all land inside it.
+        // Asking for a roof separates them from anything genuinely indoors, and unlike
+        // the full inside test it does not also demand a floor, so an item resting on a
+        // table or a high shelf still answers yes.
+        //
+        // Needs the clone to be OPEN - with it switched off there are no colliders to hit.
+        public bool IsUnderInteriorRoof(Vector3 pos, float originLift = ITEM_RAY_ORIGIN_LIFT)
+        {
+            if (MasterInterior == null || !MasterInterior.activeSelf) return false;
+
+            if (InteriorTrigger != null && !IsPositionInVolume(pos, RAY_EARLY_REJECT_PADDING))
+                return false;
+
+            return CheckDirectionForInterior(pos + (Vector3.up * originLift), Vector3.up, 30f);
         }
 
         public bool IsPositionInsideRaycastOnly(Vector3 pos, float originLift = 2.5f)

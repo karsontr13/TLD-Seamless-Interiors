@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
@@ -80,7 +80,10 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppTLD.IntBackedUnit.dll</HintPath>
     </Reference>
-    <Reference Include="Il2CppTLD.PDID, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+    <Reference Include="Il2CppTLD.SaveState, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppTLD.SaveState.dll</HintPath>
+    </Reference>    <Reference Include="Il2CppTLD.PDID, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppTLD.PDID.dll</HintPath>
     </Reference>
@@ -150,8 +153,16 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Core\SeamlessInteriorsMod.Audio.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.CarriedDecorations.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Configs.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Environment.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ExteriorFireEffects.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.FireDiagnostics.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.FrozenTime.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.GearLeak.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Hydration.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.InsideFlag.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.LegacyImport.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InteractiveState.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Interactivity.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Instances.cs" />
@@ -160,15 +171,19 @@
     <Compile Include="Core\SeamlessInteriorsMod.Perf.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Safehouse.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.SaveData.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.SaveDeletion.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.SaveIdentity.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Spawning.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Utility.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Visibility.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Weather.cs" />
     <Compile Include="Patches\ContainerPatches.cs" />
     <Compile Include="Patches\FirePatches.cs" />
+    <Compile Include="Patches\InteractionDiagPatches.cs" />
     <Compile Include="Patches\LightingPatches.cs" />
     <Compile Include="Patches\PortalPatches.cs" />
     <Compile Include="Patches\SafehouseFixes.cs" />
+    <Compile Include="Patches\SaveDeletionPatches.cs" />
     <Compile Include="Patches\SpawningPatches.cs" />
     <Compile Include="Patches\SystemPatches.cs" />
     <Compile Include="Patches\WeatherPatches.cs" />

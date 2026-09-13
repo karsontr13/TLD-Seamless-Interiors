@@ -67,6 +67,11 @@ namespace SeamlessInteriors
                 }
                 instance.JunkCleared = false;
 
+                // The pre-mod import marker and its backup belong to the PREVIOUS save
+                // that happened to reuse this slot name. Leaving them behind would make
+                // the new game look like an already-decided import.
+                ClearLegacyImportFiles(instance);
+
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[NEW GAME DETECTED] {instance.Config.InteriorSceneBaseName} loot lock resetlendi! Eşyalar doğacak.");
             }
@@ -80,13 +85,59 @@ namespace SeamlessInteriors
             CollectInteriorPlaceableGuids(instance.MasterInterior);
         }
 
+        // Is there a record on disk of what is lying around inside this building?
+        //
+        // The gear JSON is that record. An EMPTY file counts: it means the player
+        // stripped the place bare (the same reasoning is spelled out in
+        // RestoreInactiveSceneGearItemsRoutine). A pending pre-mod import counts too -
+        // the file does not exist yet, but the game's own save holds this building's
+        // real contents and they are about to replace whatever the template provides.
+        public static bool HasPersistedLootRecord(SeamlessInteriorInstance instance)
+        {
+            if (instance == null) return false;
+
+            string gearJsonPath = GetInactiveSceneGearSavePath(instance);
+            if (gearJsonPath != null && File.Exists(gearJsonPath)) return true;
+
+            return IsLegacyImportPending(instance);
+        }
+
         // Decides whether this building's loot still has to be generated, then removes
         // duplicated items and duplicated GUIDs.
         private void ProcessSpawnsAndDeduplication(SeamlessInteriorInstance instance)
         {
             string currentSaveName = SaveGameSystem.m_CurrentSaveName;
             string saveKey = instance.Config.SaveKeyPrefix + currentSaveName;
-            bool isAlreadyGenerated = UnityEngine.PlayerPrefs.GetInt(saveKey, 0) == 1;
+
+            // THE FLAG ALONE IS NOT ENOUGH - THE SAVED CONTENTS HAVE TO EXIST TOO.
+            //
+            // The flag is written for EVERY building in the region the moment its clone is
+            // built: PerformInitialLootRoll runs from Run(), for all fifteen of them. The
+            // content files are NOT. Lazy hydration only fills a building once the player
+            // comes within HYDRATE_DISTANCE, and CanPersistContent deliberately refuses to
+            // write anything for a building that was never filled.
+            //
+            // So for every building that was cloned but never approached before a save, the
+            // two disagreed. The flag said "the loot is already in the save, throw the
+            // template copy away"; the disk held nothing to put back. The cleanup below
+            // emptied the building, and the hydration that came later found no file to
+            // restore from and left it that way - permanently. One save/load was enough to
+            // strip every building the player had not yet walked past.
+            //
+            // Containers were unaffected, because the game rolls their contents itself the
+            // first time they are searched. That is exactly what it looked like in play:
+            // searchable containers in a house with nothing lying around them.
+            bool hasSavedContents = HasPersistedLootRecord(instance);
+            bool lootFlagSet = UnityEngine.PlayerPrefs.GetInt(saveKey, 0) == 1;
+            bool isAlreadyGenerated = lootFlagSet && hasSavedContents;
+
+            if (lootFlagSet && !hasSavedContents)
+            {
+                // Never demoted to a debug-only line: this is the state that used to eat a
+                // building's loot, and it is worth seeing in an ordinary log.
+                MelonLogger.Msg($"[LOOT-LOCK] {instance.Config.ResolvedInstanceId}: kayitli icerik dosyasi yok, " +
+                                $"'loot uretildi' bayragi yok sayiliyor - sablon lootu korunup yeniden elenecek.");
+            }
 
             if (isAlreadyGenerated)
             {
@@ -195,18 +246,50 @@ namespace SeamlessInteriors
             int quotaTotal = 0;        // total the game wants for this difficulty
             int preInactiveTotal = 0;  // candidates already disabled before the roll
 
-            foreach (var rso in allRSO)
+            // ─── THE SAME BUILDING MUST ROLL THE SAME LOOT EVERY TIME ───
+            //
+            // A building is only rolled while it has no saved contents, and it keeps no
+            // saved contents until the player has been near it and saved. So every load
+            // in between rolls it again - and with the global RNG that meant a different
+            // cabin every time the player reloaded, which is a reload away from picking
+            // the loot you want.
+            //
+            // Seeding from the playthrough's identity plus the building's id makes the
+            // roll a property of THIS building in THIS game: stable across reloads,
+            // different in the next playthrough, and different for two buildings sharing
+            // one interior scene.
+            //
+            // The global stream is put back afterwards - the game rolls everything else
+            // (weather, wildlife, its own spawns) through it, and leaving it seeded from
+            // a fixed value would make all of that repeat too.
+            var rngStateBefore = UnityEngine.Random.state;
+            UnityEngine.Random.InitState(GetLootRollSeed(instance));
+
+            try
             {
-                if (rso == null) continue;
-                if (RollSingleSpawner(rso, ref candidateTotal, ref quotaTotal, ref preInactiveTotal)) rolled++;
+                foreach (var rso in allRSO)
+                {
+                    if (rso == null) continue;
+                    if (RollSingleSpawner(rso, ref candidateTotal, ref quotaTotal, ref preInactiveTotal)) rolled++;
+                }
             }
+            finally
+            {
+                UnityEngine.Random.state = rngStateBefore;
+            }
+
+            // The per-item spawn chance comes after the filters, as in the game: only an item
+            // a RandomSpawnObject kept is ever active, and only an active item rolls.
+            int spawnRolled, spawnRemoved;
+            PreRollGearSpawnChance(instance, out spawnRolled, out spawnRemoved);
 
             int after = CountActiveGear(instance.MasterInterior);
 
             MelonLogger.Msg($"[LOOT-ROLL] {instance.Config.ResolvedInstanceId} (mod={GetCurrentModeName()}): " +
                             $"{allRSO.Length} RandomSpawnObject'in {rolled} tanesi elendi. " +
                             $"Aday={candidateTotal} (elemeden once kapali={preInactiveTotal}), " +
-                            $"zorlugun istedigi={quotaTotal}. Acik esya: {before} -> {after}.");
+                            $"zorlugun istedigi={quotaTotal}. Dogma sansi: {spawnRolled} esyadan {spawnRemoved} tanesi elendi. " +
+                            $"Acik esya: {before} -> {after}.");
 
             // The loot really has been generated now: only NOW write the flag.
             string currentSaveName = SaveGameSystem.m_CurrentSaveName;
@@ -217,6 +300,92 @@ namespace SeamlessInteriors
             }
 
             instance.PendingInitialLootRoll = false;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // THE PER-ITEM SPAWN CHANCE, ROLLED BEFORE ANYONE CAN SEE IT
+        //
+        // RandomSpawnObject is not the only thing that thins out a building's loot. Every
+        // GearItem carries its own m_SpawnChance, and the game rolls it in
+        // GearItem.ManualStart - the first time GearManager's staggered update reaches the
+        // item. That update skips anything that is not isActiveAndEnabled, and a closed
+        // clone is inactive, so none of its items roll until the player opens the door. A
+        // second or two later the roll lands, and the lantern the player is looking at
+        // switches itself off.
+        //
+        // (Measured, not guessed: the xref cache and a disassembly of GameAssembly.dll,
+        // 2026-09-12. ManualStart is RollSpawnChance inlined plus
+        // InitializeLastUpdatedTodHours; UpdateItems gates on isActiveAndEnabled.)
+        //
+        // So the roll is made here, while the clone is still closed, through the game's own
+        // GearItem.RollSpawnChance: the same skip rules, the same experience-mode scale, and
+        // GameManager.RollSpawnChance seeds from the item's world position, so a building
+        // rolls the same way on every load. It sets m_RolledSpawnChance, which is what makes
+        // the later ManualStart skip the roll. A miss is SetActive(false) - exactly what an
+        // eliminated RandomSpawnObject candidate gets, so the save filter treats both alike.
+        //
+        // Only the roll is taken over, not ManualStart itself: its other half stamps the
+        // item's last-update time, and doing that in the middle of a load would start the
+        // item's decay from the wrong hour.
+        // ─────────────────────────────────────────────────────────────────
+        private static void PreRollGearSpawnChance(SeamlessInteriorInstance instance, out int rolled, out int removed)
+        {
+            rolled = 0;
+            removed = 0;
+
+            Transform rootT = instance.MasterInterior.transform;
+            foreach (var gear in instance.MasterInterior.GetComponentsInChildren<Il2Cpp.GearItem>(true))
+            {
+                if (gear == null || gear.gameObject == null) continue;
+                if (gear.m_RolledSpawnChance) continue;
+
+                // Only what will actually be standing in the building rolls in the game.
+                if (!IsHierarchyActiveUpTo(gear.transform, rootT)) continue;
+                if (IsInsideContainer(gear.transform, rootT)) continue;
+
+                try
+                {
+                    gear.RollSpawnChance();
+                }
+                catch (System.Exception ex)
+                {
+                    MelonLogger.Warning($"[LOOT-ROLL] {instance.Config.ResolvedInstanceId}: '{gear.gameObject.name}' " +
+                                        $"dogma sansi atilamadi: {ex.Message}");
+                    continue;
+                }
+
+                rolled++;
+                if (!gear.gameObject.activeSelf) removed++;
+            }
+        }
+
+        // Which playthrough + which building. The save identity tag is preferred over the
+        // save NAME, because the game hands out the lowest free slot name to every new
+        // game - "sandbox29" alone would give a deleted playthrough's layout back to its
+        // replacement (the whole reason SaveIdentity.cs exists).
+        private static int GetLootRollSeed(SeamlessInteriorInstance instance)
+        {
+            string playthrough = !string.IsNullOrEmpty(s_CurrentSaveTag)
+                ? s_CurrentSaveTag
+                : (SaveGameSystem.m_CurrentSaveName ?? "");
+
+            return StableHash(playthrough + "/" + instance.Config.ResolvedInstanceId);
+        }
+
+        // FNV-1a. NOT string.GetHashCode: .NET randomises that per process, which is the
+        // one property a seed meant to survive a restart must not have.
+        private static int StableHash(string text)
+        {
+            unchecked
+            {
+                uint hash = 2166136261u;
+                for (int i = 0; i < text.Length; i++)
+                {
+                    hash ^= text[i];
+                    hash *= 16777619u;
+                }
+                return (int)hash;
+            }
         }
 
         private static string GetCurrentModeName()
@@ -534,6 +703,22 @@ namespace SeamlessInteriors
                 // NEVER delete items on the player, in their hands or in their inventory.
                 if (IsPlayerOrInventory(p.transform)) continue;
 
+                // NEVER delete anything sitting under the game's own placement root.
+                //
+                // IsPlayerOrInventory only looks at the object's OWN name, and a placed
+                // object is called something like "OBJ_BandSaw_Prefab (PLACED)" - the
+                // "DesignPlaceables" it hangs under is its PARENT. So the guard above
+                // misses every one of them, and this cleanup would happily destroy the
+                // furniture the player set down outside the building.
+                if (IsUnderPlacementRoot(p.transform))
+                {
+                    MelonLogger.Msg($"[ORPHAN-CLEANUP] '{p.gameObject.name}' korundu - oyunun yerlestirme kokunun altinda.");
+                    continue;
+                }
+
+                MelonLogger.Warning($"[ORPHAN-CLEANUP] '{p.gameObject.name}' yok edildi " +
+                                    $"(sahne='{sceneName}', parent='{(p.transform.parent != null ? p.transform.parent.name : "ROOT")}').");
+
                 UnityEngine.Object.Destroy(p.gameObject);
             }
         }
@@ -549,6 +734,61 @@ namespace SeamlessInteriors
             return false;
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // ONLY SWITCH BACK ON WHAT THIS MOD SWITCHED OFF
+        //
+        // A combination safe inside a clone could not be clicked at all: no icon, no
+        // hover line, nothing. Everything readable on it was healthy - the interaction
+        // reported IsEnabled and CanInteract, produced its hover text, and performing it
+        // by hand opened the safe - and the game's own pick for the crosshair was still
+        // NULL. The answer came from comparing it against the SAME safe in Carter Dam,
+        // which the mod does not clone and where it works:
+        //
+        //   working : MeshCollider(off)  BoxCollider(on)
+        //   broken  : MeshCollider(ON)   BoxCollider(on)
+        //
+        // The game ships that safe with its MeshCollider DISABLED and drives the
+        // interaction off the box. The pass below used to switch every collider of every
+        // GearItem and Placeable on, and the safe is a Placeable - so the mesh came back,
+        // and with it in the way the crosshair never settled on the object.
+        //
+        // "visible = true" cannot mean "enable everything": this code has no idea why a
+        // collider was off, and half the time the answer is "because the game wanted it
+        // off". So the ones it disables are written down, and those are the only ones it
+        // ever puts back. Anything the scene shipped disabled stays disabled, which is
+        // what it was for.
+        //
+        // RENDERERS ARE LEFT AS THEY WERE. The same argument applies to them - an object
+        // with LOD levels always has all but one switched off - but that is a separate
+        // symptom with a separate blast radius, and this fix is for the one that was
+        // measured.
+        // ─────────────────────────────────────────────────────────────────
+        // KEPT FOR THE WHOLE SESSION, ON PURPOSE.
+        //
+        // The obvious thing is to clear this when the region changes, since the colliders
+        // it names are destroyed with the old scene. That is the dangerous thing. A
+        // building can be HIDDEN when a scene reset lands - its colliders switched off and
+        // written down here - and clearing the record would mean the mod no longer knows
+        // it owes them, so they would stay off for good. That is precisely the "visible
+        // but not interactive" defect this whole repair pass was written for.
+        //
+        // Left alone, the record holds a few thousand integers over a session and its only
+        // failure mode is an instance id being handed out again to a different collider,
+        // which would re-enable one object the scene shipped disabled - the old behaviour,
+        // for one object, rarely. That is the cheaper mistake by a wide margin.
+        private static readonly HashSet<int> s_CollidersWeDisabled = new HashSet<int>();
+
+        // True when this mod is the reason the collider is off.
+        private static bool WeDisabled(Collider c)
+        {
+            return c != null && s_CollidersWeDisabled.Contains(c.GetInstanceID());
+        }
+
+        private static void ForgetDisabledCollider(Collider c)
+        {
+            if (c != null) s_CollidersWeDisabled.Remove(c.GetInstanceID());
+        }
+
         // Sets the visibility and collision of an object (and all its children).
         // NOTE: Renderer, not MeshRenderer - SkinnedMeshRenderer, ParticleSystemRenderer
         // and LineRenderer have to be switched off too, otherwise part of the item stays
@@ -558,7 +798,29 @@ namespace SeamlessInteriors
             if (go == null) return;
 
             foreach (var r in go.GetComponentsInChildren<Renderer>(true)) if (r != null) r.enabled = visible;
-            foreach (var c in go.GetComponentsInChildren<Collider>(true)) if (c != null) c.enabled = visible;
+
+            foreach (var c in go.GetComponentsInChildren<Collider>(true))
+            {
+                if (c == null) continue;
+
+                if (!visible)
+                {
+                    // Remember it only if WE are the ones turning it off; a collider that
+                    // was already off is not ours to give back later.
+                    if (c.enabled)
+                    {
+                        s_CollidersWeDisabled.Add(c.GetInstanceID());
+                        c.enabled = false;
+                    }
+                    continue;
+                }
+
+                if (c.enabled) continue;
+                if (!WeDisabled(c)) continue;
+
+                c.enabled = true;
+                s_CollidersWeDisabled.Remove(c.GetInstanceID());
+            }
         }
 
         public static int AdoptStrayInteriorObjects(SeamlessInteriorInstance instance)
@@ -567,7 +829,6 @@ namespace SeamlessInteriors
             if (instance.InteriorTrigger == null) return 0; // no volume test possible: leave it alone
 
             Transform interiorT = instance.MasterInterior.transform;
-            int adopted = 0;
 
             // The coarse world AABB is computed once and applied to every candidate:
             // nearly all of the thousands of items in the scene are rejected with a single
@@ -575,28 +836,60 @@ namespace SeamlessInteriors
             Bounds filter;
             bool hasFilter = TryGetWorldFilterBounds(instance, out filter);
 
+            // TWO PHASES, because the deciding test needs the clone to be OPEN.
+            //
+            // The cheap filters run first and reject essentially everything. Whatever
+            // survives is then checked for a roof overhead - the test that separates a
+            // crate genuinely standing indoors from one on the porch, which the
+            // axis-aligned volume cannot tell apart. Adopting the latter dragged the
+            // player's meat, beds and chairs into the building, where they vanished from
+            // the world the moment the clone closed.
+            //
+            // Collecting first means the clone is toggled at most ONCE per sweep rather
+            // than once per candidate.
+            var candidates = new List<Transform>();
+
             foreach (var gear in SceneScan.GearAll())
             {
                 if (gear == null || gear.gameObject == null) continue;
                 if (!IsAdoptableStray(instance, hasFilter, filter, gear.transform)) continue;
-
-                gear.transform.SetParent(interiorT, true);
-                adopted++;
-
-                if (s_DebugBounds)
-                    MelonLogger.Msg($"[ADOPT] {instance.Config.ResolvedInstanceId}: gear '{gear.gameObject.name}' klon sahneye baglandi.");
+                candidates.Add(gear.transform);
             }
 
             foreach (var p in SceneScan.PlaceablesAll())
             {
                 if (p == null || p.gameObject == null) continue;
                 if (!IsAdoptableStray(instance, hasFilter, filter, p.transform)) continue;
+                candidates.Add(p.transform);
+            }
 
-                p.transform.SetParent(interiorT, true);
-                adopted++;
+            if (candidates.Count == 0) return 0;
 
-                if (s_DebugBounds)
-                    MelonLogger.Msg($"[ADOPT] {instance.Config.ResolvedInstanceId}: placeable '{p.gameObject.name}' klon sahneye baglandi.");
+            int adopted = 0;
+            bool wasActive = instance.MasterInterior.activeSelf;
+            if (!wasActive) instance.MasterInterior.SetActive(true);
+
+            try
+            {
+                foreach (var t in candidates)
+                {
+                    if (t == null || t.gameObject == null) continue;
+                    if (!instance.IsPositionInsideRaycastOnly(t.position, SeamlessInteriorInstance.ITEM_RAY_ORIGIN_LIFT)) continue;
+
+                    // Named at normal level for the first few. Adoption is what physically
+                    // moves an object out of the world and into the building, so when
+                    // something the player left by the door goes missing, this line is
+                    // where it went.
+                    if (adopted < 10)
+                        MelonLogger.Msg($"[ADOPT] {instance.Config.ResolvedInstanceId}: '{t.gameObject.name}' klon sahneye baglandi.");
+
+                    t.SetParent(interiorT, true);
+                    adopted++;
+                }
+            }
+            finally
+            {
+                if (!wasActive) instance.MasterInterior.SetActive(false);
             }
 
             return adopted;
@@ -655,8 +948,11 @@ namespace SeamlessInteriors
             // Hot path, called on door transitions. The whole block runs inside one scan
             // scope: AdoptStrayInteriorObjects and the "non-child items" safety net below
             // share the same scene scan (2 full scans instead of 4).
-            // The block only REPARENTS, it never creates or destroys objects, so sharing
-            // is safe.
+            //
+            // Sharing is safe because the block never CREATES anything. The one step that
+            // destroys - PurgeLeakedCloneGearDuplicates - calls
+            // SceneScan.InvalidateVolatile() itself, so the snapshot the rest of the block
+            // reads is taken again after it, never over dead references.
             SceneScan.Begin();
             try
             {
@@ -673,7 +969,19 @@ namespace SeamlessInteriors
             // WHEN HIDING: adopt the stray objects first. After that everything in the
             // clone scene is under MasterInterior and SetActive(false) switches it all off
             // at once - no item is left hanging outside.
-            if (!visible) AdoptStrayInteriorObjects(instance);
+            if (!visible)
+            {
+                AdoptStrayInteriorObjects(instance);
+
+                // ...and then throw away the copies of this building's own loot that the
+                // GAME's save put back into the region. Adoption cannot be relied on for
+                // those: it needs a roof and a floor inside a shrunk volume, which a
+                // trailer-sized interior barely has. Left behind they are not children of
+                // MasterInterior, so the SetActive(false) below cannot hide them and they
+                // stay hanging in the air once the player is outside.
+                // (see SeamlessInteriorsMod.GearLeak.cs)
+                PurgeLeakedCloneGearDuplicates(instance);
+            }
 
             // Gear and placeables that are children of MasterInterior.
             //

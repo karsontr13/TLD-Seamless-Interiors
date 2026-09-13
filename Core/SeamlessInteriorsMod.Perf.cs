@@ -323,6 +323,53 @@ namespace SeamlessInteriors
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // FRAME TIME BUDGET
+    //
+    // Spreading work with a fixed "N items per frame" count only works when every
+    // item costs the same. Restoring a building's contents is the opposite: one
+    // GearItem might come out of a warm Addressables cache in under a millisecond
+    // while the next one triggers a cold load and costs a hundred. A count of 15
+    // measured 350 ms per frame on a real save - technically spread, and still a
+    // freeze.
+    //
+    // Asking "have I used up my slice of this frame yet" instead makes the cost of
+    // the individual item irrelevant. The first call in a new frame always answers
+    // no, so at least one item is always processed and a loop can never stall.
+    // ─────────────────────────────────────────────────────────────────────────
+    internal static class FrameBudget
+    {
+        // Milliseconds of a frame the mod may spend on background restore work.
+        //
+        // Deliberately small. This is a floor, not a ceiling: the check can only be made
+        // BETWEEN items, so one expensive item always overshoots it. Keeping the budget
+        // well under a frame leaves room for that overshoot to still land inside one.
+        public const float DEFAULT_MS = 2.5f;
+
+        private static int s_Frame = -1;
+        private static float s_StartedAt;
+
+        public static bool Exceeded(float budgetMs = DEFAULT_MS)
+        {
+            int frame = Time.frameCount;
+            if (frame != s_Frame)
+            {
+                s_Frame = frame;
+                s_StartedAt = Time.realtimeSinceStartup;
+                return false;
+            }
+
+            return (Time.realtimeSinceStartup - s_StartedAt) * 1000f >= budgetMs;
+        }
+
+        // Forget the current frame, so the next Exceeded() call starts a fresh slice.
+        // Used right after a yield, where a new frame is guaranteed anyway.
+        public static void Reset()
+        {
+            s_Frame = -1;
+        }
+    }
+
     internal static class RayScan
     {
         private const int INITIAL_CAPACITY = 64;

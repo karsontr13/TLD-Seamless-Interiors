@@ -59,6 +59,33 @@ namespace SeamlessInteriors
 
         public static void SyncExternalHiddenObjects()
         {
+            // 0) DROP ANYTHING THAT HAS SINCE BECOME PART OF A CLONE.
+            //
+            // The hide list is built in Run(), and at that moment the game's own scene
+            // restore has already spawned the player's decorations - standing inside the
+            // building, but not yet parented to the clone, because the mod fills the
+            // interior later. They look exactly like outdoor scenery poking through a
+            // wall, so they end up on the hide list and get switched off.
+            //
+            // Hydration then adopts them into the clone, but the stale list entry stays,
+            // and every later sync switches them off again. Measured: 172 of the player's
+            // decorations, switched off and re-enabled in a loop.
+            //
+            // Once an object is under a clone it is interior content and this system has
+            // no business touching it, so the entry is removed for good.
+            foreach (var inst in ActiveInteriors.Values)
+            {
+                if (inst == null || inst.ResolvedExternalHiddenObjects == null) continue;
+
+                var list = inst.ResolvedExternalHiddenObjects;
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    GameObject obj = list[i];
+                    if (obj == null) { list.RemoveAt(i); continue; }
+                    if (IsUnderAnyMasterInterior(obj.transform)) list.RemoveAt(i);
+                }
+            }
+
             // 1) Union of the hide lists of the clones that are currently active.
             s_ExternalHideSet.Clear();
             foreach (var inst in ActiveInteriors.Values)
@@ -121,6 +148,11 @@ namespace SeamlessInteriors
 
             if (isInside)
             {
+                // The player is about to be looking at the inside of this building, so
+                // its contents cannot wait for the prefetch queue. Normally a no-op:
+                // entering through a door already forced it (see PortalPatches).
+                EnsureHydratedNow(instance, "gorunurluk senkronu: oyuncu iceride");
+
                 instance.MasterInterior.SetActive(true);
                 if (instance.ExteriorShell != null) instance.ExteriorShell.SetActive(false);
                 SetInteriorItemsVisible(instance, true);
@@ -190,6 +222,18 @@ namespace SeamlessInteriors
             yield return new WaitForSeconds(10f);
             if (!instance.RunCompleted) yield break;
 
+            // Ten seconds in, the game's restore is definitely finished - the last point
+            // at which it can have switched the player's decorations off.
+            RepairSpawnedPlaceables(instance);
+
+            // By now GearManager.Deserialize has also run, which is what puts the game's
+            // OWN copies of this building's loot back into the region. Standing inside,
+            // the player would be looking at doubled loot; stepping outside, at loot
+            // hanging in mid-air. Either way the copies go now rather than waiting for
+            // the stray sweep, which only runs while the building is closed.
+            // (see SeamlessInteriorsMod.GearLeak.cs)
+            PurgeLeakedCloneGearDuplicates(instance);
+
             Transform playerT = GameManager.GetPlayerTransform();
             if (playerT != null) ApplyInitialSyncState(instance, playerT.position);
         }
@@ -230,7 +274,13 @@ namespace SeamlessInteriors
             float interactivityRepairInterval = INTERACTIVITY_REPAIR_INTERVAL;
             int outsideConfirmations = 0;
 
-            while (instance.RunCompleted)
+            // The loop belongs to THIS incarnation of the instance. A region change bumps
+            // the generation, which is what makes this coroutine end - RunCompleted alone
+            // does not, because the persist flow keeps it true on purpose.
+            // (see SeamlessInteriorInstance.WatchdogGeneration)
+            int myGeneration = instance.WatchdogGeneration;
+
+            while (instance.RunCompleted && instance.WatchdogGeneration == myGeneration)
             {
                 // Right after a door transition the portal code owns the state; stay out of its way.
                 bool suppressed = Time.time - s_LastPortalUseTime <= PORTAL_SUPPRESS_WINDOW;
@@ -242,6 +292,14 @@ namespace SeamlessInteriors
                     if (playerT != null)
                     {
                         float dist = Vector3.Distance(playerT.position, instance.Config.FallbackPosition);
+
+                        // CONTENT PREFETCH: this loop is the only place that already
+                        // knows how far the player is from every building, so the lazy
+                        // content restore rides along on it for free - one float compare
+                        // per tick. Starting at HYDRATE_DISTANCE gives the queue plenty
+                        // of walking time to finish before the player reaches the door.
+                        // (see SeamlessInteriorsMod.Hydration.cs)
+                        MaybeRequestHydrationByDistance(instance, dist);
 
                         if (dist > WATCHDOG_FAR_DISTANCE)
                         {
@@ -275,6 +333,14 @@ namespace SeamlessInteriors
                                 if (Time.time - lastInteractivityRepair >= interactivityRepairInterval)
                                 {
                                     lastInteractivityRepair = Time.time;
+
+                                    // The game's own scene restore finishes AFTER the mod
+                                    // has rebuilt the interior and can switch the player's
+                                    // decorations off behind its back. Riding along with
+                                    // the collider repair costs one extra pass over the
+                                    // same objects and catches it whenever it happens.
+                                    RepairSpawnedPlaceables(instance);
+
                                     int fixedColliders = RestoreInteriorItemColliders(instance, true);
                                     if (fixedColliders > 0)
                                     {
@@ -321,7 +387,26 @@ namespace SeamlessInteriors
                                 outsideConfirmations = 0;
                                 lastStraySweep = Time.time;
 
-                                int adopted = AdoptStrayInteriorObjects(instance);
+                                // One scan scope for both passes: the adoption and the
+                                // purge below ask for the same scene scan.
+                                int adopted;
+                                SceneScan.Begin();
+                                try
+                                {
+                                    adopted = AdoptStrayInteriorObjects(instance);
+
+                                    // Copies of this building's own loot that the GAME's
+                                    // save restored into the region. They are what stays
+                                    // visible after a load once the player steps outside,
+                                    // and adoption only catches part of them.
+                                    // (see SeamlessInteriorsMod.GearLeak.cs)
+                                    PurgeLeakedCloneGearDuplicates(instance);
+                                }
+                                finally
+                                {
+                                    SceneScan.End();
+                                }
+
                                 if (adopted > 0)
                                     MelonLogger.Msg($"[STRAY-SWEEP] {instance.Config.ResolvedInstanceId}: {adopted} sahipsiz obje klon sahneye alindi ve gizlendi.");
                             }
@@ -354,6 +439,10 @@ namespace SeamlessInteriors
             if (playerT == null) yield break;
 
             bool isInside = ResolvePlayerInside(instance, playerT.position);
+
+            // By now the game's own scene restore has run, which is the moment it can
+            // have switched the player's decorations off (see RepairSpawnedPlaceables).
+            RepairSpawnedPlaceables(instance);
 
             if (s_DebugBounds)
                 MelonLogger.Msg($"[SAVE-LOAD-FIX] {instance.Config.InteriorSceneBaseName} isInside={isInside} | pos={playerT.position}");

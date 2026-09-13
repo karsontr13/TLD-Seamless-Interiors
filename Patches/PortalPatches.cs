@@ -165,6 +165,15 @@ namespace SeamlessInteriors
 
             if (isEntering)
             {
+                // LAST CHANCE TO FILL THE BUILDING.
+                //
+                // Content is normally restored by the prefetch while the player walks up
+                // (see SeamlessInteriorsMod.Hydration.cs), but they can arrive without
+                // any warning - a teleport, or a save loaded right on the doorstep. The
+                // door is the point of no return: one frame later they are inside and
+                // looking at the room, so this call blocks until the room is real.
+                SeamlessInteriorsMod.EnsureHydratedNow(matchedInstance, "kapidan giris");
+
                 if (matchedInstance.MasterInterior != null)
                 {
                     matchedInstance.MasterInterior.SetActive(true);
@@ -452,6 +461,10 @@ namespace SeamlessInteriors
 
                     SeamlessInteriorsMod.PlayDoorTransitionSound();
 
+                    // Same point of no return as the ordinary entry door: the child scene
+                    // (a basement, an upper floor) has to be filled before it is shown.
+                    SeamlessInteriorsMod.EnsureHydratedNow(targetInstance, "alt-mekan gecisi");
+
                     // Activate the child and force all of its renderers on.
                     if (targetInstance.MasterInterior != null)
                     {
@@ -516,6 +529,11 @@ namespace SeamlessInteriors
                     SeamlessInteriorsMod.NotifyPortalUsed();
 
                     SeamlessInteriorsMod.PlayDoorTransitionSound();
+
+                    // Coming back up: the parent may have been closed long enough that it
+                    // was never filled (or was torn down and rebuilt), so make sure of it
+                    // before it is shown again.
+                    SeamlessInteriorsMod.EnsureHydratedNow(parentInstance, "alt-mekandan geri donus");
 
                     // Activate the parent and force all of its renderers on.
                     if (parentInstance.MasterInterior != null)

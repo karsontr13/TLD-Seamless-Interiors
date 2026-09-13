@@ -42,6 +42,123 @@ namespace SeamlessInteriors
             return null;
         }
 
+        public static bool IsUnderAnyMasterInteriorPublic(Transform t)
+        {
+            if (t == null) return false;
+
+            foreach (var inst in ActiveInteriors.Values)
+            {
+                if (inst == null || inst.MasterInterior == null) continue;
+                if (t.IsChildOf(inst.MasterInterior.transform)) return true;
+            }
+            return false;
+        }
+
+        // Which interior this scene belongs to: "CampOffice_SANDBOX" -> "CampOffice".
+        // Null when the scene is not one of the mod's interiors at all.
+        //
+        // The mod pulls each interior in as three additive scenes - the base name plus
+        // the "_SANDBOX" and "_DLC01" variants - and empties them into the clone.
+        //
+        // THERE IS DELIBERATELY NO "IsInteriorSceneName" ANY MORE. A bare yes/no on the
+        // name reads as "this belongs to the mod", and it does not: the original room
+        // the player walks into through a loading screen carries the very same name.
+        // One caller made that assumption and it cost the player every piece of
+        // furniture they moved indoors. Ask IsInteriorLoadedAsCloneTemplate instead.
+        public static string GetInteriorBaseName(string sceneName)
+        {
+            if (string.IsNullOrEmpty(sceneName)) return null;
+
+            foreach (var cfg in SupportedInteriors)
+            {
+                string baseName = cfg.InteriorSceneBaseName;
+                if (string.IsNullOrEmpty(baseName)) continue;
+
+                if (sceneName.Length < baseName.Length) continue;
+                if (!sceneName.StartsWith(baseName, System.StringComparison.Ordinal)) continue;
+
+                // Exact match, or one of the variant suffixes - never a different scene
+                // that merely starts with the same letters.
+                if (sceneName.Length == baseName.Length) return baseName;
+                if (sceneName[baseName.Length] == '_') return baseName;
+            }
+            return null;
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // TEMPLATE, OR THE ROOM THE PLAYER IS STANDING IN?
+        //
+        // An interior scene reaches the game in two completely different ways and the
+        // mod has to treat them as opposites:
+        //
+        //   TEMPLATE - the mod loads it additively, next to the region, purely to copy
+        //              its contents into a clone. Nothing in it belongs to the world and
+        //              nothing in it may reach the game's own save.
+        //
+        //   THE REAL ROOM - the game itself takes the player inside through a loading
+        //              screen, exactly as it would with no mod installed. Everything in
+        //              it is the player's real surroundings and the game's save is the
+        //              only thing recording it.
+        //
+        // Telling them apart by scene NAME alone is impossible, and treating the second
+        // as the first is not a cosmetic mistake: it silently threw away every piece of
+        // furniture the player moved while standing in an original interior.
+        //
+        // Two things separate them, and either one is enough to prove "real room":
+        //
+        //   1. The mod only ever pulls a template in while the REGION is loaded around
+        //      it. Walking into an original interior unloads the region first, so with
+        //      no supported exterior loaded there is no cloning going on at all.
+        //
+        //   2. During the changeover both can briefly be loaded at once - and in that
+        //      moment the game is restoring the interior's own save. The ACTIVE scene is
+        //      what settles it: the game makes the room the player is entering active,
+        //      while a template is only ever an additive passenger.
+        public static bool IsInteriorLoadedAsCloneTemplate(string sceneName)
+        {
+            string interiorBase = GetInteriorBaseName(sceneName);
+            if (interiorBase == null) return false;
+
+            if (!IsSupportedExteriorSceneLoaded()) return false;
+
+            string activeBase = GetInteriorBaseName(
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+
+            return activeBase != interiorBase;
+        }
+
+        // Is a region the mod clones into currently loaded?
+        //
+        // Cached for the frame: every placeable in a template scene asks this as it
+        // wakes up, and that is hundreds of calls inside one loading frame.
+        private static int s_ExteriorLoadedFrame = -1;
+        private static bool s_ExteriorLoadedAnswer;
+
+        public static bool IsSupportedExteriorSceneLoaded()
+        {
+            if (s_ExteriorLoadedFrame == Time.frameCount) return s_ExteriorLoadedAnswer;
+            s_ExteriorLoadedFrame = Time.frameCount;
+            s_ExteriorLoadedAnswer = false;
+
+            try
+            {
+                int count = UnityEngine.SceneManagement.SceneManager.sceneCount;
+                for (int i = 0; i < count; i++)
+                {
+                    string name = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i).name;
+                    if (string.IsNullOrEmpty(name)) continue;
+
+                    foreach (var cfg in SupportedInteriors)
+                    {
+                        if (name == cfg.ExteriorSceneName) { s_ExteriorLoadedAnswer = true; return true; }
+                    }
+                }
+            }
+            catch { }
+
+            return s_ExteriorLoadedAnswer;
+        }
+
         public static bool TryGetWorldFilterBounds(SeamlessInteriorInstance instance, out Bounds bounds, float margin = 1.35f)
         {
             bounds = default(Bounds);
@@ -68,9 +185,19 @@ namespace SeamlessInteriors
 
             // Purely geometric volume test - needs no colliders, works while the clone
             // is switched off. The volume is shrunk slightly so outdoor items standing
-            // in a doorway are not swept in (the existing -0.7 behaviour is preserved).
-            if (instance.IsPositionInVolume(pos, -0.7f)) return StrayVerdict.Inside;
+            // in a doorway are not swept in.
+            if (!instance.IsPositionInVolume(pos, -0.7f)) return StrayVerdict.Outside;
 
+            // PASSING THE VOLUME TEST NO LONGER MEANS "INSIDE".
+            //
+            // The volume is an axis-aligned box around a building that is not axis
+            // aligned, so it reaches past the walls and swallows whatever the player
+            // left by the door. Claiming those into the building's save file made them
+            // disappear from the world on the next load.
+            //
+            // Everything the box accepts is now verified with a ray instead. The callers
+            // already batch that: they collect the pending candidates, open the clone
+            // ONCE, and test them together - so this costs no extra scene toggling.
             return StrayVerdict.NeedsRaycast;
         }
 
@@ -116,6 +243,43 @@ namespace SeamlessInteriors
             }
 
             return pos;
+        }
+
+        // Name of the root the game parks every placed object under ("DesignPlaceables").
+        // Read once: under IL2CPP each read of a static string property allocates.
+        private static string s_PlacementRootName;
+
+        private static string PlacementRootName()
+        {
+            if (s_PlacementRootName != null) return s_PlacementRootName;
+
+            string n = null;
+            try { n = Il2CppTLD.Placement.PlaceableManager.CATEGORY_NAME; }
+            catch { }
+
+            s_PlacementRootName = string.IsNullOrEmpty(n) ? "DesignPlaceables" : n;
+            return s_PlacementRootName;
+        }
+
+        // Is this object parked under the game's own placement root?
+        //
+        // Everything the player sets down in the world lives there, and the object's own
+        // name says nothing about it - only its parent does. Anything under that root is
+        // the player's property and the mod must never destroy it.
+        public static bool IsUnderPlacementRoot(Transform t)
+        {
+            if (t == null) return false;
+
+            string rootName = PlacementRootName();
+
+            Transform cur = t;
+            while (cur != null)
+            {
+                if (cur.name.IndexOf(rootName, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+                cur = cur.parent;
+            }
+            return false;
         }
 
         public static bool IsPlayerOrInventory(Transform t)

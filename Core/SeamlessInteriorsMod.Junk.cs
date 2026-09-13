@@ -9,26 +9,45 @@ namespace SeamlessInteriors
     public partial class SeamlessInteriorsMod
     {
         // ─────────────────────────────────────────────────────────────────
-        // SAFEHOUSE "CLEAR JUNK" (R) STATE
+        // SAFEHOUSE "CLEAR JUNK" (R)
         //
-        // PROBLEM: the game's JunkManager keeps a SINGLE bool per scene
-        // (JunkManager.m_ClearedJunk -> SceneSaveGameFormat.m_JunkManagedSerialized).
-        // When the player presses R inside a clone:
-        //   1. The game clears every JunkTag object that is currently ACTIVE
-        //      (clone ones included - the clone lives inside the region scene).
-        //   2. m_ClearedJunk = true is written to the REGION scene's save data.
+        // WHAT THE GAME DOES - measured from GameAssembly.dll (the method xref cache plus
+        // disassembly, 2026-09-12), not guessed from the names:
         //
-        // After a load:
-        //   - The game restores the region scene's junk clearing itself, but the
-        //     clone scene is rebuilt FROM SCRATCH by the mod -> its junk is back.
-        //   - m_ClearedJunk is still true, so CanClearJunk() returns false -> the R
-        //     key does nothing and the HUD hint never appears.
+        //   CanClearJunk()   customizing && not placing a mesh or decal && !m_ClearedJunk.
+        //                    Asked by StartCustomizing and the HUD indicator - it is what
+        //                    puts the "R" prompt up.
+        //   MaybeClearJunk() if (m_ClearedJunk) return false; ClearJunk(); return true.
+        //                    The player's action. No code in the game calls it directly.
+        //   ClearJunk()      SetActive(false) on EVERY JunkTag in every loaded scene,
+        //                    inactive ones included, then m_ClearedJunk = true. Called by
+        //                    MaybeClearJunk, the console, and LoadSceneData when a scene's
+        //                    save says its junk was cleared.
         //
-        // FIX (same pattern as the other clone data):
-        //   - "Has this building's junk been cleared" is stored per instance in its
-        //     own JSON and re-applied once the clone is ready.
-        //   - The CanClearJunk patch re-enables R, despite the game's global flag,
-        //     whenever the player is inside a clone whose junk is NOT yet cleared.
+        // m_ClearedJunk is a single bool on a JunkManager that lives as long as the game,
+        // and it is written into the scene's save. A clone lives inside the region scene,
+        // so:
+        //
+        //   1. Clearing ONE clone set the REGION's flag. From then on every gate above
+        //      refused in every other clone - and the flag went into the region's save, so
+        //      a load did not help either. The prompt could be forced back (the old
+        //      CanClearJunk patch did), but R still did nothing.
+        //   2. The same press hid the junk of EVERY clone in the region, closed ones
+        //      included, because ClearJunk searches inactive objects too.
+        //
+        // The old patches on CanClearJunk and MaybeClearJunk are gone. Nothing in the game
+        // calls MaybeClearJunk directly and its prefix never logged in play, so nothing here
+        // relies on seeing that call.
+        //
+        // THE FIX
+        //   * While the player customizes inside a clone, m_ClearedJunk holds THAT clone's
+        //     state. The region's own value goes back the moment they stop, and around every
+        //     scene save. Every gate reads this one flag, so the game's own R path works as
+        //     it is, whatever calls it.
+        //   * Around ClearJunk, junk the call had no business touching is switched back on:
+        //     only the clone the player is customizing gets cleared.
+        //   * Whether a building's junk has been cleared is stored per instance in its own
+        //     JSON and re-applied once the clone is ready.
         // ─────────────────────────────────────────────────────────────────
 
         private static string GetJunkStateSavePath(SeamlessInteriorInstance instance)
@@ -49,39 +68,6 @@ namespace SeamlessInteriors
             }
             return true;
         }
-
-        private static bool HasClearableJunk(SeamlessInteriorInstance instance)
-        {
-            if (instance == null || instance.MasterInterior == null) return false;
-
-            // Cache: the answer can only change when junk is cleared or restored, and
-            // both paths bump s_JunkScanGeneration. The scan is expensive (all
-            // JunkTags plus a parent-chain walk for each) and the HUD asks constantly.
-            //
-            // Safety: in case some unknown path destroys a JunkTag, the cache lives at
-            // most JUNK_SCAN_MAX_AGE seconds.
-            if (instance.JunkScanStamp == s_JunkScanGeneration
-                && Time.time - instance.JunkScanTime < JUNK_SCAN_MAX_AGE)
-            {
-                return instance.JunkScanResult;
-            }
-
-            bool result = false;
-            var tags = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.JunkTag>(true);
-            foreach (var tag in tags)
-            {
-                if (!IsPlainJunk(tag)) continue;
-                if (tag.gameObject.activeSelf) { result = true; break; }
-            }
-
-            instance.JunkScanStamp = s_JunkScanGeneration;
-            instance.JunkScanTime = Time.time;
-            instance.JunkScanResult = result;
-            return result;
-        }
-
-        // Maximum age of the junk-scan cache, in seconds.
-        private const float JUNK_SCAN_MAX_AGE = 5f;
 
         public static int ClearJunkInInstance(SeamlessInteriorInstance instance)
         {
@@ -122,88 +108,202 @@ namespace SeamlessInteriors
             return count;
         }
 
-        private static bool PlayerIsAtInstance(SeamlessInteriorInstance instance, Vector3 playerPos)
+        // ─── The flag, as seen from inside a clone ───
+
+        // The clone whose state m_ClearedJunk holds right now. Null means the flag holds
+        // the region's own value, which is the normal state.
+        private static SeamlessInteriorInstance s_JunkFlagOwner;
+
+        // The region's own value, put back when the player stops customizing.
+        private static bool s_RegionJunkCleared;
+
+        // Which clone the player stands in needs raycasts. Customizing can go on for
+        // minutes, and the answer cannot change faster than the player walks.
+        private const float JUNK_FLAG_RECHECK_SECONDS = 0.5f;
+        private static float s_JunkFlagNextRecheck;
+
+        private static Il2Cpp.JunkManager TryGetJunkManager()
         {
-            return instance.IsPositionInside(playerPos) || instance.IsPositionInVolume(playerPos, 0.5f);
+            try { return GameManager.GetJunkManager(); }
+            catch { return null; }
         }
 
-        public static void OnGameClearedJunk()
+        private static bool IsCustomizingSafehouse()
         {
-            // During a load the game may also call ClearJunk to re-apply the saved
-            // "junk cleared" flag. That call is NOT a player action and must not mark
-            // the clone - the clone's own state comes from RestoreJunkState.
+            try
+            {
+                var sm = GameManager.GetSafehouseManager();
+                return sm != null && sm.IsCustomizing();
+            }
+            catch { return false; }
+        }
+
+        // Every frame, from OnUpdate. Outside customizing mode - nearly always - this is
+        // two IL2CPP calls.
+        public static void TickJunkFlagView()
+        {
+            if (!IsCustomizingSafehouse())
+            {
+                if (s_JunkFlagOwner != null) EndJunkFlagView();
+                return;
+            }
+
+            if (Time.realtimeSinceStartup < s_JunkFlagNextRecheck) return;
+            s_JunkFlagNextRecheck = Time.realtimeSinceStartup + JUNK_FLAG_RECHECK_SECONDS;
+
+            SeamlessInteriorInstance inside = GetInstancePlayerIsIn();
+            if (ReferenceEquals(inside, s_JunkFlagOwner)) return;
+
+            EndJunkFlagView();
+            if (inside != null) BeginJunkFlagView(inside);
+        }
+
+        // StartCustomizing asks CanClearJunk for the "R" prompt inside the same call, so
+        // the clone's state has to be in the flag before it runs - the tick would only get
+        // there a frame later, with the prompt already decided.
+        public static void OnStartCustomizing()
+        {
+            SeamlessInteriorInstance inside = GetInstancePlayerIsIn();
+            if (inside == null) return;
+
+            BeginJunkFlagView(inside);
+            s_JunkFlagNextRecheck = Time.realtimeSinceStartup + JUNK_FLAG_RECHECK_SECONDS;
+        }
+
+        private static void BeginJunkFlagView(SeamlessInteriorInstance instance)
+        {
+            if (ReferenceEquals(instance, s_JunkFlagOwner)) return;
+            EndJunkFlagView();
+
+            Il2Cpp.JunkManager jm = TryGetJunkManager();
+            if (jm == null) return;
+
+            s_RegionJunkCleared = jm.m_ClearedJunk;
+            s_JunkFlagOwner = instance;
+            jm.m_ClearedJunk = instance.JunkCleared;
+
+            if (s_DebugBounds)
+                MelonLogger.Msg($"[JUNK] {instance.Config.ResolvedInstanceId}: duzenleme modu, cop bayragi klonun durumuna cekildi " +
+                                $"(klon={instance.JunkCleared}, bolge={s_RegionJunkCleared}).");
+        }
+
+        // Also called on a region change: the next scene's restore has to find the
+        // region's own value in the flag.
+        public static void EndJunkFlagView()
+        {
+            if (s_JunkFlagOwner == null) return;
+
+            Il2Cpp.JunkManager jm = TryGetJunkManager();
+            if (jm != null) jm.m_ClearedJunk = s_RegionJunkCleared;
+
+            s_JunkFlagOwner = null;
+        }
+
+        // A scene save writes the flag into the REGION's save, so it has to see the
+        // region's own value, never the clone's. StopCustomizing triggers a save itself,
+        // a frame before the tick notices that customizing has ended.
+        public static void BeforeSceneSave()
+        {
+            if (s_JunkFlagOwner == null) return;
+
+            Il2Cpp.JunkManager jm = TryGetJunkManager();
+            if (jm != null) jm.m_ClearedJunk = s_RegionJunkCleared;
+        }
+
+        public static void AfterSceneSave()
+        {
+            if (s_JunkFlagOwner == null) return;
+
+            Il2Cpp.JunkManager jm = TryGetJunkManager();
+            if (jm != null) jm.m_ClearedJunk = s_JunkFlagOwner.JunkCleared;
+        }
+
+        // ─── Keeping ClearJunk inside the clone being customized ───
+
+        private struct JunkBeforeClear
+        {
+            public GameObject Go;
+            public SeamlessInteriorInstance Instance;   // null: not part of any clone
+        }
+
+        // Junk that was switched on right before the game's ClearJunk ran.
+        private static readonly List<JunkBeforeClear> s_JunkBeforeClear = new List<JunkBeforeClear>();
+
+        public static void BeforeGameClearJunk()
+        {
+            s_JunkBeforeClear.Clear();
+            if (ActiveInteriors.Count == 0) return;
+
+            // The same search ClearJunk makes, inactive objects included, so whatever it
+            // is about to switch off is on this list first.
+            foreach (var tag in UnityEngine.Object.FindObjectsOfType<Il2Cpp.JunkTag>(true))
+            {
+                if (tag == null) continue;
+
+                GameObject go = tag.gameObject;
+                if (go == null || !go.activeSelf) continue;
+
+                JunkBeforeClear entry;
+                entry.Go = go;
+                entry.Instance = FindInstanceOwning(tag.transform);
+                s_JunkBeforeClear.Add(entry);
+            }
+        }
+
+        public static void AfterGameClearJunk()
+        {
+            // A clear the player asked for happens in customizing mode, inside the clone
+            // that holds the flag. Anything else - LoadSceneData re-applying a region's saved
+            // flag, the console - clears the scene, and no clone at all.
+            SeamlessInteriorInstance target = s_JunkFlagOwner;
             try
             {
                 if (SaveGameSystem.IsRestoreInProgress() || SaveGameSystem.IsSceneRestoreInProgress())
-                    return;
+                    target = null;
             }
             catch { }
 
-            Transform playerT = GameManager.GetPlayerTransform();
-            if (playerT == null) return;
-            Vector3 pos = playerT.position;
+            int clearedHere = 0;
+            int switchedBack = 0;
 
-            foreach (var instance in ActiveInteriors.Values)
+            foreach (JunkBeforeClear entry in s_JunkBeforeClear)
             {
-                if (instance.MasterInterior == null) continue;
-                if (!instance.MasterInterior.activeSelf) continue;
-                if (!PlayerIsAtInstance(instance, pos)) continue;
+                if (entry.Go == null || entry.Go.activeSelf) continue;
 
-                int closed = ClearJunkInInstance(instance);
-                InvalidateJunkPromptCache();
+                if (entry.Instance == null)
+                {
+                    // Junk of the scene itself: the region's own clear takes it, a clone's
+                    // clear does not.
+                    if (target == null) continue;
+                }
+                else if (ReferenceEquals(entry.Instance, target))
+                {
+                    // Written down, so a load of an older save can switch it back on
+                    // (RestoreJunkInInstance only re-enables what is on this list).
+                    target.JunkClearedObjects.Add(entry.Go);
+                    clearedHere++;
+                    continue;
+                }
 
-                if (s_DebugBounds)
-                    MelonLogger.Msg($"[JUNK] {instance.Config.ResolvedInstanceId}: copler temizlendi (mod ek olarak {closed} obje kapatti).");
+                entry.Go.SetActive(true);
+                switchedBack++;
             }
-        }
 
-        // CanClearJunk is queried by the HUD every frame. The answer needs a raycast
-        // plus GetComponentsInChildren, so it is cached briefly.
-        private const float JUNK_PROMPT_CACHE_SECONDS = 0.25f;
-        private static float s_JunkPromptCacheTime = -1f;
-        private static bool s_JunkPromptCacheValue = false;
+            s_JunkBeforeClear.Clear();
 
-        // Bumped on every invalidation; also invalidates all per-instance
-        // HasClearableJunk caches at once (see SeamlessInteriorInstance.JunkScanStamp).
-        private static int s_JunkScanGeneration = 0;
-
-        private static void InvalidateJunkPromptCache()
-        {
-            s_JunkPromptCacheTime = -1f;
-            s_JunkScanGeneration++;
-        }
-
-        public static bool PlayerIsInInstanceWithClearableJunk()
-        {
-            if (s_JunkPromptCacheTime >= 0f && Time.time - s_JunkPromptCacheTime < JUNK_PROMPT_CACHE_SECONDS)
-                return s_JunkPromptCacheValue;
-
-            s_JunkPromptCacheTime = Time.time;
-            s_JunkPromptCacheValue = ComputePlayerIsInInstanceWithClearableJunk();
-            return s_JunkPromptCacheValue;
-        }
-
-        private static bool ComputePlayerIsInInstanceWithClearableJunk()
-        {
-            Transform playerT = GameManager.GetPlayerTransform();
-            if (playerT == null) return false;
-            Vector3 pos = playerT.position;
-
-            foreach (var instance in ActiveInteriors.Values)
+            if (target != null)
             {
-                if (!instance.RunCompleted || instance.MasterInterior == null) continue;
-                if (!instance.MasterInterior.activeSelf) continue;
-                if (instance.JunkCleared) continue;
+                // Marks the building, and hides anything the game's pass did not reach.
+                clearedHere += ClearJunkInInstance(target);
 
-                // Cheap geometric test first, expensive raycast second.
-                // (Without an InteriorTrigger the volume test is impossible, so we fall
-                // straight through to the raycast - see IsPositionInVolume.)
-                if (instance.InteriorTrigger != null && !instance.IsPositionInVolume(pos, 0.5f)) continue;
-                if (!PlayerIsAtInstance(instance, pos)) continue;
-
-                if (HasClearableJunk(instance)) return true;
+                MelonLogger.Msg($"[JUNK] {target.Config.ResolvedInstanceId}: copler temizlendi ({clearedHere} obje). " +
+                                $"Oyunun temizligi baska yerlerden {switchedBack} copu da kapatmisti, geri acildi.");
             }
-            return false;
+            else if (switchedBack > 0)
+            {
+                MelonLogger.Msg($"[JUNK] Oyunun cop temizligi klonlardaki {switchedBack} copu da kapatmisti, geri acildi " +
+                                $"(klonun copu klonun kendi kaydina bagli).");
+            }
         }
 
         // ─── Persistence ───
@@ -217,6 +317,7 @@ namespace SeamlessInteriors
         public static void SaveJunkState(SeamlessInteriorInstance instance)
         {
             if (instance.MasterInterior == null || !instance.RunCompleted) return;
+            if (!CanPersistContent(instance)) return;
 
             string path = GetJunkStateSavePath(instance);
             if (path == null) return;
@@ -248,8 +349,6 @@ namespace SeamlessInteriors
                 }
             }
 
-            InvalidateJunkPromptCache();
-
             if (cleared)
             {
                 int closed = ClearJunkInInstance(instance);
@@ -261,6 +360,14 @@ namespace SeamlessInteriors
                 int opened = RestoreJunkInInstance(instance);
                 if (s_DebugBounds && opened > 0)
                     MelonLogger.Msg($"[JUNK-LOAD] {instance.Config.ResolvedInstanceId}: kayit 'temizlenmedi' diyor, {opened} cop geri acildi.");
+            }
+
+            // The player may be customizing in this very building right now (a persisted
+            // clone put back, a load on the doorstep): the flag has to follow.
+            if (ReferenceEquals(instance, s_JunkFlagOwner))
+            {
+                Il2Cpp.JunkManager jm = TryGetJunkManager();
+                if (jm != null) jm.m_ClearedJunk = instance.JunkCleared;
             }
         }
     }

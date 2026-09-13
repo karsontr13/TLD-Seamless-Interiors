@@ -237,6 +237,7 @@ namespace SeamlessInteriors
         public static void SaveInteractiveState(SeamlessInteriorInstance instance)
         {
             if (instance.MasterInterior == null || !instance.RunCompleted) return;
+            if (!CanPersistContent(instance)) return;
 
             string path = GetInteractiveStateSavePath(instance);
             if (path == null) return;
