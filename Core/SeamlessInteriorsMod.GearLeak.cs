@@ -60,7 +60,7 @@ namespace SeamlessInteriors
             // in it belongs to the world and not to the clone.
             if (!instance.ContentHydrated) return 0;
 
-            var owned = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.GearItem>(true);
+            var owned = InteriorScan.Gear(instance.MasterInterior);
             if (owned.Length == 0) return 0;
 
             Transform masterT = instance.MasterInterior.transform;

@@ -329,6 +329,7 @@ namespace SeamlessInteriors
 
         public static SeamlessInteriorInstance FindOwningInstance(Transform t)
         {
+            SeamlessInteriorsMod.PerfProbe.Count(SeamlessInteriorsMod.PerfProbe.Hit.LightOwnerLookup);
             return SeamlessInteriorsMod.FindInstanceOwning(t);
         }
 

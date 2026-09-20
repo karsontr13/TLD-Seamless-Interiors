@@ -12,7 +12,7 @@ namespace SeamlessInteriors
     {
         public static bool Prefix(GameManager __instance)
         {
-            string sceneName = __instance.gameObject.scene.name;
+            string sceneName = SeamlessInteriorsMod.RealSceneName(__instance.gameObject.scene);
 
             // Any GameManager waking up inside an interior scene we are currently
             // cloning is a fake one: destroy it and skip the original Awake.

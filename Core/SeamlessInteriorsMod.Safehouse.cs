@@ -39,7 +39,7 @@ namespace SeamlessInteriors
             }
 
             // Cloning invalidates placeables; clear the flag so they stay interactive.
-            var placeables = instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true);
+            var placeables = InteriorScan.Placeables(instance.MasterInterior);
             foreach (var p in placeables)
             {
                 if (p != null) p.m_Invalidated = false;

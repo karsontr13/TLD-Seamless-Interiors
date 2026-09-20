@@ -342,7 +342,7 @@ namespace SeamlessInteriors
             if (instance == null || instance.MasterInterior == null) return 0;
 
             int off = 0;
-            foreach (var p in instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true))
+            foreach (var p in InteriorScan.Placeables(instance.MasterInterior))
             {
                 if (p == null || p.gameObject == null) continue;
                 if (!p.gameObject.activeSelf) off++;

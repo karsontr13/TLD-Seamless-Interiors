@@ -60,7 +60,7 @@ namespace SeamlessInteriors
             {
                 if (inst.RunCompleted && inst.MasterInterior != null)
                 {
-                    foreach (var r in inst.MasterInterior.GetComponentsInChildren<Renderer>(true))
+                    foreach (var r in InteriorScan.Renderers(inst.MasterInterior))
                         if (r != null) r.enabled = true;
 
                     // Wherever renderers are enabled unconditionally the colliders have to
@@ -139,7 +139,9 @@ namespace SeamlessInteriors
             // SERIALIZES across buildings: on Mystery Lake 11 different interior scenes x 3
             // = 33 consecutive loads, each with at least a frame of delay at its start.
             // Opening the requests together lets Addressables overlap all three.
-            var opMain = UnityEngine.AddressableAssets.Addressables.LoadSceneAsync(baseName, UnityEngine.SceneManagement.LoadSceneMode.Additive);
+            // A mod that subscribed to scene events late is shielded before these loads.
+            RefreshSceneEventShield();
+            var opMain =UnityEngine.AddressableAssets.Addressables.LoadSceneAsync(baseName, UnityEngine.SceneManagement.LoadSceneMode.Additive);
             var opSandbox = UnityEngine.AddressableAssets.Addressables.LoadSceneAsync(baseName + "_SANDBOX", UnityEngine.SceneManagement.LoadSceneMode.Additive);
             var opDLC = UnityEngine.AddressableAssets.Addressables.LoadSceneAsync(baseName + "_DLC01", UnityEngine.SceneManagement.LoadSceneMode.Additive);
 
@@ -236,6 +238,9 @@ namespace SeamlessInteriors
             var hiddenIds = new HashSet<int>();
             var allRenderers = SceneScan.RenderersActive();
 
+            // What mods built there (an Architect wall rebuilt by its own load) is the building's content, not scenery.
+            var modOwned = SeamlessInteriorsMod.ModOwnedRootIds();
+
             foreach (var renderer in allRenderers)
             {
                 if (renderer == null) continue;
@@ -252,6 +257,7 @@ namespace SeamlessInteriors
                 if (rt.IsChildOf(masterT)) continue;
                 if (shellT != null && rt.IsChildOf(shellT)) continue;
                 if (PlayerRefs.IsPlayerRoot(rt.root)) continue;
+                if (modOwned.Contains(rt.root.GetInstanceID())) continue;
                 if (renderer.gameObject.scene.name == "DontDestroyOnLoad") continue;
 
                 // CRITICAL: skip anything that is a child of another instance's
@@ -269,7 +275,7 @@ namespace SeamlessInteriors
                 foreach (var col in renderer.GetComponentsInParent<Collider>(true))
                     if (col != null && !col.isTrigger) AddHidden(instance, hiddenIds, col.gameObject);
 
-                foreach (var col in renderer.GetComponentsInChildren<Collider>(true))
+                foreach (var col in InteriorScan.Colliders(renderer.gameObject))
                     if (col != null && !col.isTrigger) AddHidden(instance, hiddenIds, col.gameObject);
             }
 
@@ -838,7 +844,7 @@ namespace SeamlessInteriors
             // interior atmosphere.
             if (IsDarkAtmosphereMode) return;
 
-            Renderer[] allRenderersAfter = instance.MasterInterior.GetComponentsInChildren<Renderer>(true);
+            Renderer[] allRenderersAfter = InteriorScan.Renderers(instance.MasterInterior);
             foreach (var r in allRenderersAfter)
             {
                 if (r == null) continue;
@@ -882,38 +888,81 @@ namespace SeamlessInteriors
 
             if (instance.MasterInterior != null)
             {
-                // Aurora electrolizers register themselves in Start(), which never ran for
-                // the clone. They are initialised and registered by hand here.
+                // Aurora electrolizers normally set themselves up and register from Awake/OnEnable,
+                // which a clone kept inactive since it was copied has not run. They are prepared
+                // and registered by hand here.
                 var electrolizers = instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.ModularElectrolizer.AuroraModularElectrolizer>(true);
+                int failed = 0;
+                string firstError = null;
                 foreach (var electrolizer in electrolizers)
                 {
-                    if (electrolizer != null)
-                    {
-                        if (!electrolizer.m_IsInitialized)
-                        {
-                            // The Initialize method is private, so it is invoked directly by
-                            // its IL2CPP method token.
-                            var methodInit = Il2CppInterop.Runtime.IL2CPP.GetIl2CppMethodByToken(Il2CppInterop.Runtime.Il2CppClassPointerStore<Il2CppTLD.ModularElectrolizer.AuroraModularElectrolizer>.NativeClassPtr, 100695667);
-                            if (methodInit != System.IntPtr.Zero)
-                            {
-                                System.IntPtr exc = System.IntPtr.Zero;
-                                unsafe
-                                {
-                                    Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(methodInit, electrolizer.Pointer, (void**)0, ref exc);
-                                }
-                            }
-                        }
+                    if (electrolizer == null) continue;
 
-                        Il2Cpp.AuroraManager.RegisterAuroraElectrolizer(electrolizer);
-                        electrolizer.m_HasStopped = false;
+                    try
+                    {
+                        PrepareCloneElectrolizer(electrolizer);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        if (failed++ == 0) firstError = electrolizer.gameObject.name + ": " + ex.Message;
                     }
                 }
+
+                if (failed > 0)
+                    MelonLoader.MelonLogger.Warning($"[ELEKTROLIZOR] {instance.Config.ResolvedInstanceId}: {failed} elektrolizor hazirlanamadi, " +
+                                                    $"aurora sistemine kaydedilmedi. Ilk hata: {firstError}");
             }
+        }
+
+        // AuroraModularElectrolizer.Initialize (private), looked up by name. It used to be invoked
+        // through a metadata token copied from one build of the game; a token only names the same
+        // method in that build.
+        private static System.IntPtr s_ElectrolizerInitialize = System.IntPtr.Zero;
+        private static bool s_ElectrolizerInitializeResolved = false;
+
+        private static void PrepareCloneElectrolizer(Il2CppTLD.ModularElectrolizer.AuroraModularElectrolizer electrolizer)
+        {
+            // Awake creates the property block the emissives are drawn with, and Initialize already
+            // draws them (through StopAll). On a clone that never ran Awake, Initialize threw there,
+            // before marking the electrolizer initialised; it was registered anyway and then threw
+            // inside AuroraManager on every frame of an aurora.
+            if (electrolizer.m_EmissivePropertyBlock == null)
+                electrolizer.m_EmissivePropertyBlock = new UnityEngine.MaterialPropertyBlock();
+
+            if (!electrolizer.m_IsInitialized)
+            {
+                if (!s_ElectrolizerInitializeResolved)
+                {
+                    s_ElectrolizerInitializeResolved = true;
+                    s_ElectrolizerInitialize = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_method_from_name(
+                        Il2CppInterop.Runtime.Il2CppClassPointerStore<Il2CppTLD.ModularElectrolizer.AuroraModularElectrolizer>.NativeClassPtr,
+                        "Initialize", 0);
+                    if (s_ElectrolizerInitialize == System.IntPtr.Zero)
+                        MelonLoader.MelonLogger.Warning("[ELEKTROLIZOR] AuroraModularElectrolizer.Initialize bulunamadi; " +
+                                                        "baslatilmamis klon elektrolizorleri aurora sistemine kaydedilmeyecek.");
+                }
+
+                if (s_ElectrolizerInitialize == System.IntPtr.Zero) return;
+
+                System.IntPtr exc = System.IntPtr.Zero;
+                unsafe
+                {
+                    Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(s_ElectrolizerInitialize, electrolizer.Pointer, (void**)0, ref exc);
+                }
+                Il2CppInterop.Runtime.Il2CppException.RaiseExceptionIfNecessary(exc);
+            }
+
+            // Initialize sets this as its last step: still false means it did not finish, and the
+            // electrolizer would fail in the aurora update.
+            if (!electrolizer.m_IsInitialized) return;
+
+            Il2Cpp.AuroraManager.RegisterAuroraElectrolizer(electrolizer);
+            electrolizer.m_HasStopped = false;
         }
 
         public static List<Bounds> ComputeInteriorSubBounds(GameObject root, float cellSize = 2.0f)
         {
-            Renderer[] renderers = root.GetComponentsInChildren<Renderer>(true);
+            Renderer[] renderers = InteriorScan.Renderers(root);
             Transform rootT = root.transform;
 
             // 1. Collect the local-space centres of all renderers (filtered).

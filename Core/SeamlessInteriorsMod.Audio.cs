@@ -11,9 +11,10 @@ namespace SeamlessInteriors
         // Global audio occlusion state - toggled on door transitions.
         private static bool s_IsGlobalAudioOccluded = false;
 
-        // Is the player inside a cloned scene? Set on door transitions.
-        // Wind shelter and wind occlusion checks read this flag.
-        public static bool s_IsPlayerInsideClone = false;
+        // Is the player inside a cloned scene? Wind shelter and wind occlusion checks read
+        // this flag. Written only through MarkPlayerInside / MarkPlayerOutside, which also
+        // record WHICH building and tell other mods (see SeamlessInteriorsMod.PlayerLocation.cs).
+        public static bool s_IsPlayerInsideClone { get; private set; }
 
         // Muffles outside audio while the player is inside a clone.
         public static void SetAudioOcclusion(bool occlude)

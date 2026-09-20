@@ -48,7 +48,7 @@ namespace SeamlessInteriors
                 int managerTotal = 0, managerDead = 0;
                 try
                 {
-                    var all = Il2Cpp.FireManager.m_Fires;
+                    var all = RealFires();
                     if (all != null)
                     {
                         managerTotal = all.Count;
@@ -102,7 +102,7 @@ namespace SeamlessInteriors
             try { life = fire.GetRemainingLifeTimeSeconds().ToString("F1"); } catch { }
             try { elapsed = fire.m_ElapsedOnTODSeconds.ToString("F1"); } catch { }
             try { state = fire.m_FireState.ToString(); } catch { }
-            try { registered = Il2Cpp.FireManager.m_Fires.Contains(fire).ToString(); } catch { }
+            try { registered = RealFires().Contains(fire).ToString(); } catch { }
             try { activeSelf = fire.gameObject.activeSelf.ToString(); } catch { }
             try { parent = fire.transform.parent != null ? fire.transform.parent.name : "ROOT"; } catch { }
 

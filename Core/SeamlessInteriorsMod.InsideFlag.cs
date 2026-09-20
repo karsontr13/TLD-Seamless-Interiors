@@ -105,7 +105,7 @@ namespace SeamlessInteriors
             if (s_InsideFlagOutsideConfirmations < INSIDE_FLAG_CONFIRMATIONS) return;
             s_InsideFlagOutsideConfirmations = 0;
 
-            s_IsPlayerInsideClone = false;
+            MarkPlayerOutside("takili bayrak bekcisi");
             SetAudioOcclusion(false);
 
             // The saved entry is what keeps bringing the flag back on every scene load, so

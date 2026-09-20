@@ -152,6 +152,8 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Compat\ModExceptions.cs" />
+    <Compile Include="Compat\SeamlessInteriorsApi.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Audio.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.CarriedDecorations.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Configs.cs" />
@@ -167,14 +169,20 @@
     <Compile Include="Core\SeamlessInteriorsMod.Interactivity.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Instances.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Junk.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.LightShafts.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Main.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ObjectView.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.PlaceContext.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Perf.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.PlayerLocation.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Profiler.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Safehouse.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.SaveData.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.SaveDeletion.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.SaveIdentity.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Spawning.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Utility.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.VanillaView.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Visibility.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Weather.cs" />
     <Compile Include="Patches\ContainerPatches.cs" />
@@ -186,7 +194,6 @@
     <Compile Include="Patches\SaveDeletionPatches.cs" />
     <Compile Include="Patches\SpawningPatches.cs" />
     <Compile Include="Patches\SystemPatches.cs" />
-    <Compile Include="Patches\WeatherPatches.cs" />
     <Compile Include="Patches\WindInstanceFix.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

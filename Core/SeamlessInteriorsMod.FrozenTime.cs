@@ -13,6 +13,7 @@ namespace SeamlessInteriors
         // a building that measure time in Update stop with it:
         //   * CookingPotItem - m_CookingElapsedHours (cooking, melting snow, boiling water)
         //   * Fire           - m_ElapsedOnTODSeconds (how much of the fire's life is spent)
+        //   * KeroseneLampItem, TorchItem, FlareItem - the fuel and burn time of a light left lit
         //
         // So a pot left boiling in the camp office made no progress at all while the player
         // was outside: come back half an hour later and the timer sits exactly where it was.
@@ -69,11 +70,25 @@ namespace SeamlessInteriors
                 GameObject master = instance.MasterInterior;
                 if (master == null) continue;
 
-                // A clone parked for another region is left to the game's own catch-up:
-                // changing region writes a save and reloads it, and FireManager.Deserialize
-                // then advances these same fires from the save's timestamp. Ticking them
-                // here as well would count those hours twice.
-                if (instance.InteriorPersisted) continue;
+                // A clone parked for another region is left to the game's own catch-up for its
+                // timers: changing region writes a save and reloads it, and FireManager.Deserialize
+                // then advances these same fires from the save's timestamp. Ticking them here as
+                // well would count those hours twice. Only the heat keeps running (see below).
+                if (instance.InteriorPersisted)
+                {
+                    try { AdvanceParkedInteriorHeat(instance, todSeconds); }
+                    catch (System.Exception ex)
+                    {
+                        instance.ParkedFires.Clear();
+                        instance.ParkedFireSecondsLeft.Clear();
+                        MelonLogger.Warning($"[KAPALI-ZAMAN] {instance.Config.ResolvedInstanceId} park halindeyken isitilamadi: {ex.Message}");
+                    }
+                    continue;
+                }
+
+                // Back in this region: the game catches the fires up itself, so the parked
+                // budget is dropped.
+                if (instance.ParkedHeatCacheBuilt) ClearParkedInteriorHeat(instance);
 
                 if (master.activeInHierarchy)
                 {
@@ -105,12 +120,78 @@ namespace SeamlessInteriors
                     // every single frame.
                     instance.ClosedFires.Clear();
                     instance.ClosedCookingPots.Clear();
+                    instance.ClosedLamps.Clear();
+                    instance.ClosedTorches.Clear();
+                    instance.ClosedFlares.Clear();
                     instance.ClosedTimeCacheDirty = false;
                     instance.ClosedTimeNextRescan = Time.time + CLOSED_INTERIOR_RESCAN_INTERVAL;
 
                     MelonLogger.Warning($"[KAPALI-ZAMAN] {instance.Config.ResolvedInstanceId} icin zaman ilerletilemedi: {ex.Message}");
                 }
             }
+        }
+
+        // ─── HEAT WHILE PARKED FOR ANOTHER REGION ───
+        //
+        // In the vanilla game a fire left burning in an interior keeps warming that interior
+        // after its scene is gone: a temperature mod takes the fire's remaining life with it when
+        // the scene unloads and heats from that. Here nothing unloads, so the same thing is done
+        // by keeping the heat source running - for exactly as long as the fire had life left.
+        // The fire's own timers stay untouched; the game advances them when the region returns.
+        private static void AdvanceParkedInteriorHeat(SeamlessInteriorInstance instance, float todSeconds)
+        {
+            if (!instance.ParkedHeatCacheBuilt) BuildParkedInteriorHeat(instance);
+
+            var fires = instance.ParkedFires;
+            for (int i = fires.Count - 1; i >= 0; i--)
+            {
+                Il2Cpp.Fire fire = fires[i];
+                float secondsLeft = instance.ParkedFireSecondsLeft[i] - todSeconds;
+
+                if (fire == null || secondsLeft <= 0f)
+                {
+                    fires.RemoveAt(i);
+                    instance.ParkedFireSecondsLeft.RemoveAt(i);
+                    continue;
+                }
+
+                instance.ParkedFireSecondsLeft[i] = secondsLeft;
+
+                // Only ramps the fire's heat value; nothing else in the building runs.
+                HeatSource heatSource = fire.m_HeatSource;
+                if (heatSource != null) heatSource.Update();
+            }
+        }
+
+        private static void BuildParkedInteriorHeat(SeamlessInteriorInstance instance)
+        {
+            instance.ParkedHeatCacheBuilt = true;
+            instance.ParkedFires.Clear();
+            instance.ParkedFireSecondsLeft.Clear();
+
+            GameObject master = instance.MasterInterior;
+            if (master == null) return;
+
+            foreach (var fire in master.GetComponentsInChildren<Il2Cpp.Fire>(true))
+            {
+                if (!IsFireStillAlive(fire)) continue;
+
+                instance.ParkedFires.Add(fire);
+                instance.ParkedFireSecondsLeft.Add(fire.GetRemainingLifeTimeSeconds());
+            }
+
+            if (s_DebugBounds && instance.ParkedFires.Count > 0)
+            {
+                MelonLogger.Msg($"[KAPALI-ZAMAN] {instance.Config.ResolvedInstanceId}: park halinde {instance.ParkedFires.Count} " +
+                                $"ates isitmaya devam ediyor.");
+            }
+        }
+
+        private static void ClearParkedInteriorHeat(SeamlessInteriorInstance instance)
+        {
+            instance.ParkedHeatCacheBuilt = false;
+            instance.ParkedFires.Clear();
+            instance.ParkedFireSecondsLeft.Clear();
         }
 
         // Marks a clone's fire / cooking-pot list as out of date. Used by the paths that can
@@ -128,6 +209,9 @@ namespace SeamlessInteriors
 
             instance.ClosedFires.Clear();
             instance.ClosedCookingPots.Clear();
+            instance.ClosedLamps.Clear();
+            instance.ClosedTorches.Clear();
+            instance.ClosedFlares.Clear();
 
             GameObject master = instance.MasterInterior;
             if (master == null) return;
@@ -135,18 +219,34 @@ namespace SeamlessInteriors
             // Only what is UNDER MasterInterior matters: that is exactly the set Unity stops
             // updating when the clone closes. A fire or a pot that was never adopted into
             // the clone stays active in the world and keeps ticking on its own.
-            var fires = master.GetComponentsInChildren<Il2Cpp.Fire>(true);
+            var fires = InteriorScan.Components<Il2Cpp.Fire>(master);
             foreach (var fire in fires)
                 if (fire != null) instance.ClosedFires.Add(fire);
 
-            var pots = master.GetComponentsInChildren<Il2Cpp.CookingPotItem>(true);
+            var pots = InteriorScan.Components<Il2Cpp.CookingPotItem>(master);
             foreach (var pot in pots)
                 if (pot != null) instance.ClosedCookingPots.Add(pot);
 
-            if (s_DebugBounds && (instance.ClosedFires.Count > 0 || instance.ClosedCookingPots.Count > 0))
+            var lamps = InteriorScan.Components<Il2CppTLD.Gear.KeroseneLampItem>(master);
+            foreach (var lamp in lamps)
+                if (lamp != null) instance.ClosedLamps.Add(lamp);
+
+            var torches = InteriorScan.Components<Il2Cpp.TorchItem>(master);
+            foreach (var torch in torches)
+                if (torch != null) instance.ClosedTorches.Add(torch);
+
+            var flares = InteriorScan.Components<Il2Cpp.FlareItem>(master);
+            foreach (var flare in flares)
+                if (flare != null) instance.ClosedFlares.Add(flare);
+
+            if (s_DebugBounds && (instance.ClosedFires.Count > 0 || instance.ClosedCookingPots.Count > 0
+                                  || instance.ClosedLamps.Count > 0 || instance.ClosedTorches.Count > 0
+                                  || instance.ClosedFlares.Count > 0))
             {
                 MelonLogger.Msg($"[KAPALI-ZAMAN] {instance.Config.ResolvedInstanceId}: " +
-                                $"{instance.ClosedFires.Count} ates, {instance.ClosedCookingPots.Count} tencere takip ediliyor.");
+                                $"{instance.ClosedFires.Count} ates, {instance.ClosedCookingPots.Count} tencere, " +
+                                $"{instance.ClosedLamps.Count} lamba, {instance.ClosedTorches.Count} mesale, " +
+                                $"{instance.ClosedFlares.Count} fisek takip ediliyor.");
             }
         }
 
@@ -169,6 +269,11 @@ namespace SeamlessInteriors
                 fire.m_ElapsedOnTODSeconds += todSeconds;
                 fire.m_ElapsedOnTODSecondsUnmodified += todSeconds;
                 fire.m_BurningTimeTODHours += todHours;
+
+                // The heat source runs as if the building were open, so mods listening to it keep warming it.
+                // HeatSource.Update only ramps the heat value toward the fire's own maximum.
+                HeatSource heatSource = fire.m_HeatSource;
+                if (heatSource != null) heatSource.Update();
             }
 
             var pots = instance.ClosedCookingPots;
@@ -200,6 +305,55 @@ namespace SeamlessInteriors
                     // free, indefinitely paused cooking.
                     pot.m_GracePeriodElapsedHours += todHours;
                 }
+            }
+
+            AdvanceClosedLightSources(instance, todHours);
+        }
+
+        // Lamps, torches and flares burning inside the closed building. Only their fuel and burn
+        // time are moved on - the same fields the vanilla save's catch-up writes (KeroseneLampItem
+        // .Deserialize calls this very ReduceFuel). Their Update is deliberately NOT called: it
+        // also re-enables renderers and objects, moves audio sources, drives the player's hands,
+        // animation and control mode, and runs the ignite / extinguish paths - none of which
+        // belongs to a building nobody is in. Whether the torch is spent and the lamp is out is
+        // decided by the components themselves on their first Update after the building opens.
+        private static void AdvanceClosedLightSources(SeamlessInteriorInstance instance, float todHours)
+        {
+            float todMinutes = todHours * 60f;
+
+            var lamps = instance.ClosedLamps;
+            for (int i = lamps.Count - 1; i >= 0; i--)
+            {
+                Il2CppTLD.Gear.KeroseneLampItem lamp = lamps[i];
+                if (lamp == null) { lamps.RemoveAt(i); continue; }
+
+                if (lamp.IsOn()) lamp.ReduceFuel(todHours);
+            }
+
+            var torches = instance.ClosedTorches;
+            for (int i = torches.Count - 1; i >= 0; i--)
+            {
+                Il2Cpp.TorchItem torch = torches[i];
+                if (torch == null) { torches.RemoveAt(i); continue; }
+
+                // IsBurning() reports the state the last Update left behind, so the burn time
+                // itself decides when there is nothing left to run down.
+                if (!torch.IsBurning()) continue;
+                if (torch.m_ElapsedBurnMinutes >= torch.GetModifiedBurnLifetimeMinutes()) continue;
+
+                torch.m_ElapsedBurnMinutes += todMinutes;
+            }
+
+            var flares = instance.ClosedFlares;
+            for (int i = flares.Count - 1; i >= 0; i--)
+            {
+                Il2Cpp.FlareItem flare = flares[i];
+                if (flare == null) { flares.RemoveAt(i); continue; }
+
+                if (!flare.IsBurning()) continue;
+                if (flare.m_ElapsedBurnMinutes >= flare.GetModifiedBurnLifetimeMinutes()) continue;
+
+                flare.m_ElapsedBurnMinutes += todMinutes;
             }
         }
 

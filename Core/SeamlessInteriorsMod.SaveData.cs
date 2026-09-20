@@ -186,7 +186,7 @@ namespace SeamlessInteriors
 
             Transform interiorT = instance.MasterInterior.transform;
 
-            var placeablesInInterior = instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true);
+            var placeablesInInterior = InteriorScan.Placeables(instance.MasterInterior);
             var entries = new List<string>();
             var savedGuids = new HashSet<string>();
 
@@ -364,7 +364,7 @@ namespace SeamlessInteriors
             // shares, so that is what is compared.
             var seen = new HashSet<string>();
 
-            foreach (var p in instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true))
+            foreach (var p in InteriorScan.Placeables(instance.MasterInterior))
             {
                 if (p == null || p.gameObject == null) continue;
                 if (string.IsNullOrEmpty(p.m_Guid)) continue;
@@ -528,7 +528,7 @@ namespace SeamlessInteriors
         private static bool IsFullyHidden(GameObject go)
         {
             bool any = false;
-            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            foreach (var r in InteriorScan.Renderers(go))
             {
                 if (r == null) continue;
                 any = true;
@@ -545,7 +545,7 @@ namespace SeamlessInteriors
             int repaired = 0;
             bool interiorOpen = instance.MasterInterior.activeSelf;
 
-            foreach (var p in instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true))
+            foreach (var p in InteriorScan.Placeables(instance.MasterInterior))
             {
                 if (p == null || p.gameObject == null) continue;
                 if (string.IsNullOrEmpty(p.m_Guid)) continue;
@@ -718,7 +718,7 @@ namespace SeamlessInteriors
             }
 
             Transform interiorT = instance.MasterInterior.transform;
-            var placeables = instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true);
+            var placeables = InteriorScan.Placeables(instance.MasterInterior);
             int restoredCount = 0;
             int changedCount = 0;
             int protectedSpawned = 0;
@@ -1088,7 +1088,7 @@ namespace SeamlessInteriors
 
         private static int PruneDuplicateFires()
         {
-            var managerFires = Il2Cpp.FireManager.m_Fires;
+            var managerFires = RealFires();
             if (managerFires == null || managerFires.Count < 2) return 0;
 
             var live = new List<Il2Cpp.Fire>(managerFires.Count);
@@ -1162,7 +1162,7 @@ namespace SeamlessInteriors
 
             if (removed > 0)
                 MelonLogger.Msg($"[FIRE-DEDUP] Ust uste binmis {removed} kopya ates temizlendi, " +
-                                $"FireManager'da {Il2Cpp.FireManager.m_Fires.Count} ates kaldi.");
+                                $"FireManager'da {RealFires().Count} ates kaldi.");
 
             return removed;
         }
@@ -1329,7 +1329,7 @@ namespace SeamlessInteriors
         // How a fire is addressed in the save. The game writes ObjectGuid's value as the
         // record's m_Guid, and on a clone that value lives in PDID rather than m_Guid -
         // both are accepted so neither spelling can miss.
-        private static string GetFireKey(Il2Cpp.Fire fire)
+        internal static string GetFireKey(Il2Cpp.Fire fire)
         {
             try
             {
@@ -1434,15 +1434,15 @@ namespace SeamlessInteriors
                 // to be in the list.
                 var allFires = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.Fire>(true);
                 foreach (var f in allFires)
-                    if (f != null && !Il2Cpp.FireManager.m_Fires.Contains(f)) { Il2Cpp.FireManager.AddFire(f); added++; }
+                    if (f != null && !RealFires().Contains(f)) { Il2Cpp.FireManager.AddFire(f); added++; }
 
                 var allWoodStoves = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.WoodStove>(true);
                 foreach (var ws in allWoodStoves)
-                    if (ws != null && !Il2Cpp.FireManager.m_WoodStoves.Contains(ws)) { Il2Cpp.FireManager.AddWoodStove(ws); added++; }
+                    if (ws != null && !RealWoodStoves().Contains(ws)) { Il2Cpp.FireManager.AddWoodStove(ws); added++; }
 
                 var allCampfires = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.Campfire>(true);
                 foreach (var cf in allCampfires)
-                    if (cf != null && !Il2Cpp.FireManager.m_Campfires.Contains(cf)) { Il2Cpp.FireManager.AddCampfire(cf); added++; }
+                    if (cf != null && !RealCampfires().Contains(cf)) { Il2Cpp.FireManager.AddCampfire(cf); added++; }
             }
 
             return added;
@@ -1563,7 +1563,7 @@ namespace SeamlessInteriors
 
             // includeInactive=true so every GearItem is visible even while the clone scene
             // is switched off. (ShouldPersistGear decides which ones are SAVED.)
-            var allGear = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.GearItem>(true);
+            var allGear = InteriorScan.Gear(instance.MasterInterior);
             var entries = new List<string>();
             var savedPositions = new HashSet<string>(); // de-duplication
             int skippedCount = 0;
@@ -1954,7 +1954,7 @@ namespace SeamlessInteriors
             // CONTAINER CONTENTS ARE LEFT ALONE: RestoreContainerData owns them
             // (Container.Deserialize overwrites the existing contents). Deleting them here
             // would lose the contents entirely whenever a container does not match the save.
-            var existingGear = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.GearItem>(true);
+            var existingGear = InteriorScan.Gear(instance.MasterInterior);
             int deletedCount = 0;
             foreach (var gear in existingGear)
             {

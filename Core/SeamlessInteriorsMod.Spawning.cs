@@ -143,7 +143,7 @@ namespace SeamlessInteriors
             {
                 // Loot already exists in the save: anything without a GUID is a rogue
                 // copy created by the clone itself and would duplicate items.
-                var allGearInside = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.GearItem>(true);
+                var allGearInside = InteriorScan.Gear(instance.MasterInterior);
                 int deletedRogueCount = 0;
 
                 foreach (var gear in allGearInside)
@@ -334,7 +334,7 @@ namespace SeamlessInteriors
             removed = 0;
 
             Transform rootT = instance.MasterInterior.transform;
-            foreach (var gear in instance.MasterInterior.GetComponentsInChildren<Il2Cpp.GearItem>(true))
+            foreach (var gear in InteriorScan.Gear(instance.MasterInterior))
             {
                 if (gear == null || gear.gameObject == null) continue;
                 if (gear.m_RolledSpawnChance) continue;
@@ -400,7 +400,7 @@ namespace SeamlessInteriors
 
             Transform rootT = interiorRoot.transform;
             int count = 0;
-            foreach (var gear in interiorRoot.GetComponentsInChildren<Il2Cpp.GearItem>(true))
+            foreach (var gear in InteriorScan.Gear(interiorRoot))
             {
                 if (gear == null || gear.gameObject == null) continue;
                 if (IsHierarchyActiveUpTo(gear.transform, rootT)) count++;
@@ -528,7 +528,7 @@ namespace SeamlessInteriors
         private static void GenerateDeterministicPDIDs(GameObject interiorRoot, string baseName)
         {
             if (interiorRoot == null) return;
-            var allGear = interiorRoot.GetComponentsInChildren<Il2Cpp.GearItem>(true);
+            var allGear = InteriorScan.Gear(interiorRoot);
 
             foreach (var gear in allGear)
             {
@@ -554,7 +554,7 @@ namespace SeamlessInteriors
         {
             if (interiorRoot == null) return;
 
-            var allGearInside = interiorRoot.GetComponentsInChildren<Il2Cpp.GearItem>(true);
+            var allGearInside = InteriorScan.Gear(interiorRoot);
             if (allGearInside.Length == 0) return;
 
             // Only outside items near the inside items can be candidates; a coarse box
@@ -662,7 +662,7 @@ namespace SeamlessInteriors
         private static void InvalidateInteriorPlaceables(GameObject interiorRoot)
         {
             if (interiorRoot == null) return;
-            var placeables = interiorRoot.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true);
+            var placeables = InteriorScan.Placeables(interiorRoot);
             foreach (var p in placeables) { if (p != null) p.m_Invalidated = true; }
         }
 
@@ -670,7 +670,7 @@ namespace SeamlessInteriors
         {
             PlaceableFindOrCreatePatch.s_InteriorPlaceableGuids.Clear(); // safe to be global: only one building is cloned at a time
             if (interiorRoot == null) return;
-            var placeables = interiorRoot.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true);
+            var placeables = InteriorScan.Placeables(interiorRoot);
             foreach (var p in placeables)
             {
                 if (p != null && !string.IsNullOrEmpty(p.m_Guid))
@@ -776,12 +776,23 @@ namespace SeamlessInteriors
         // failure mode is an instance id being handed out again to a different collider,
         // which would re-enable one object the scene shipped disabled - the old behaviour,
         // for one object, rarely. That is the cheaper mistake by a wide margin.
-        private static readonly HashSet<int> s_CollidersWeDisabled = new HashSet<int>();
+        // THE COLLIDER ITSELF IS KEPT, NOT JUST ITS ID.
+        //
+        // The id alone answers "do we owe this one?", which is all the hide pass needs.
+        // The repair pass asks the opposite question - "which ones do we owe?" - and with
+        // only ids it could not answer it: it had to walk every GearItem and every
+        // Placeable in the building and ask about each collider in turn. On a base with
+        // 3700 items that was 8500 component scans and 220 ms per door transition,
+        // to switch a handful of colliders back on.
+        //
+        // Holding the reference makes the debt directly iterable, so the repair costs what
+        // the debt costs instead of what the building costs.
+        internal static readonly Dictionary<int, Collider> s_CollidersWeDisabled = new Dictionary<int, Collider>();
 
         // True when this mod is the reason the collider is off.
         private static bool WeDisabled(Collider c)
         {
-            return c != null && s_CollidersWeDisabled.Contains(c.GetInstanceID());
+            return c != null && s_CollidersWeDisabled.ContainsKey(c.GetInstanceID());
         }
 
         private static void ForgetDisabledCollider(Collider c)
@@ -797,9 +808,9 @@ namespace SeamlessInteriors
         {
             if (go == null) return;
 
-            foreach (var r in go.GetComponentsInChildren<Renderer>(true)) if (r != null) r.enabled = visible;
+            foreach (var r in InteriorScan.Renderers(go)) if (r != null) r.enabled = visible;
 
-            foreach (var c in go.GetComponentsInChildren<Collider>(true))
+            foreach (var c in InteriorScan.Colliders(go))
             {
                 if (c == null) continue;
 
@@ -809,7 +820,7 @@ namespace SeamlessInteriors
                     // was already off is not ours to give back later.
                     if (c.enabled)
                     {
-                        s_CollidersWeDisabled.Add(c.GetInstanceID());
+                        s_CollidersWeDisabled[c.GetInstanceID()] = c;
                         c.enabled = false;
                     }
                     continue;
@@ -861,6 +872,14 @@ namespace SeamlessInteriors
                 if (p == null || p.gameObject == null) continue;
                 if (!IsAdoptableStray(instance, hasFilter, filter, p.transform)) continue;
                 candidates.Add(p.transform);
+            }
+
+            // What mods built in here (an Architect wall): no shrunk volume, it is often built right against the walls.
+            foreach (var root in ModOwnedRoots())
+            {
+                if (root == null || (hasFilter && !filter.Contains(root.position))) continue;
+                if (!instance.IsPositionInVolume(root.position) || BelongsToAnotherInstance(instance, root)) continue;
+                candidates.Add(root);
             }
 
             if (candidates.Count == 0) return 0;
@@ -983,48 +1002,113 @@ namespace SeamlessInteriors
                 PurgeLeakedCloneGearDuplicates(instance);
             }
 
-            // Gear and placeables that are children of MasterInterior.
-            //
-            // WHY THERE IS NO "activeInHierarchy" FILTER: re-enabling (visible=true) used
-            // to skip items whose hierarchy was inactive. Their colliders had been
-            // disabled while hiding, so they STAYED disabled. Renderers, on the other
-            // hand, are re-enabled in bulk unconditionally in three places (end of Run(),
-            // TryBatchUpdateEnvironment, PortalPatches), so once the item became visible
-            // again it was "visible but not interactive": neither pickable nor selectable
-            // in placement (Y) mode.
-            //
-            // Enabling the collider/renderer of a disabled GameObject is harmless - while
-            // the object is off it is neither drawn nor part of physics - and leaves it in
-            // the right state for when it is switched on.
             Transform masterT = instance.MasterInterior.transform;
 
-            var childGear = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.GearItem>(true);
-            foreach (var gear in childGear)
-            {
-                if (gear == null || gear.gameObject == null) continue;
-                if (PlayerRefs.IsPlayerRoot(gear.transform.root)) continue;
-
-                SetObjectVisualState(gear.gameObject, visible);
-            }
-
-            var childPlaceables = instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true);
-            foreach (var p in childPlaceables)
-            {
-                if (p == null || p.gameObject == null) continue;
-                if (PlayerRefs.IsPlayerRoot(p.transform.root)) continue;
-
-                SetObjectVisualState(p.gameObject, visible);
-            }
-
-            // The old renderer-based path remains as a safety net for moved objects that
-            // could not be adopted (e.g. found while InteriorTrigger was missing).
+            // ─────────────────────────────────────────────────────────────
+            // THE BUILDING'S OWN CONTENTS ARE HIDDEN BY DEACTIVATING THE BUILDING
             //
+            // Every object handled below is a child of MasterInterior, and the only
+            // caller that hides (HideInteriorCompletely) calls MasterInterior
+            // .SetActive(false) on the very next line. Unity then stops drawing and
+            // colliding the whole subtree on its own, whatever each object's individual
+            // enabled flags say. Switching those flags off first changes nothing that is
+            // visible - and every flag switched off has to be switched back on when the
+            // player returns, which is the other half of the cost.
+            //
+            // MEASURED on a 15-building Mystery Lake save: 4958 gear and placeables under
+            // the clones, each asked for its Renderers and its Colliders on the way in and
+            // again on the way out - about 10000 component searches per door. The door
+            // took 885 ms, 446 of it here.
+            //
+            // WHAT STILL HAPPENS, AND WHY IT HAS TO:
+            //   * the adoption and purge above, which decide WHICH objects are children
+            //     in the first place - SetActive can only hide what it owns;
+            //   * the safety net below, for objects inside the building's volume that are
+            //     NOT children of it. Deactivating the clone cannot touch those, so they
+            //     keep their explicit switch-off, and RepairSpawnedPlaceables still
+            //     depends on that being how they got hidden;
+            //   * paying back what earlier versions (or the safety net) switched off -
+            //     RestoreInteriorItemColliders reads that debt directly and the door
+            //     calls it, so a save upgraded mid-play gets its colliders back.
+            //
+            // Turned off by the FastInteriorToggle preference, which restores the old
+            // object-by-object behaviour exactly.
+            // ─────────────────────────────────────────────────────────────
+            if (!IsFastInteriorToggleEnabled)
+            {
+                // WHY THERE IS NO "activeInHierarchy" FILTER: re-enabling (visible=true)
+                // used to skip items whose hierarchy was inactive. Their colliders had
+                // been disabled while hiding, so they STAYED disabled. Renderers, on the
+                // other hand, are re-enabled in bulk unconditionally in three places (end
+                // of Run(), TryBatchUpdateEnvironment, PortalPatches), so once the item
+                // became visible again it was "visible but not interactive": neither
+                // pickable nor selectable in placement (Y) mode.
+                //
+                // Enabling the collider/renderer of a disabled GameObject is harmless -
+                // while the object is off it is neither drawn nor part of physics - and
+                // leaves it in the right state for when it is switched on.
+                var childGear = InteriorScan.Gear(instance.MasterInterior);
+                foreach (var gear in childGear)
+                {
+                    if (gear == null || gear.gameObject == null) continue;
+                    if (PlayerRefs.IsPlayerRoot(gear.transform.root)) continue;
+
+                    SetObjectVisualState(gear.gameObject, visible);
+                }
+
+                var childPlaceables = InteriorScan.Placeables(instance.MasterInterior);
+                foreach (var p in childPlaceables)
+                {
+                    if (p == null || p.gameObject == null) continue;
+                    if (PlayerRefs.IsPlayerRoot(p.transform.root)) continue;
+
+                    SetObjectVisualState(p.gameObject, visible);
+                }
+            }
+
+            // ─────────────────────────────────────────────────────────────
+            // OBJECTS IN THE BUILDING THAT THE CLONE DOES NOT OWN
+            //
+            // Items dropped just inside a doorway, furniture the adoption pass could not
+            // claim (found while InteriorTrigger was missing). Deactivating the clone
+            // cannot hide these, so they are the one set that still needs switching off
+            // and on by hand.
+            //
+            // GIVING THEM BACK DOES NOT NEED A SEARCH. Finding them costs two
+            // whole-scene searches - FindObjectsOfType over roughly 5000 gear and 1300
+            // placeables, 43-176 ms each - and after Faz 3 that was most of what a door
+            // still cost. The hide pass already knows which objects it touched, so it
+            // writes them down and the show pass reads the list instead.
+            //
+            // The search still runs on the way OUT, because that is when they have to be
+            // found, and it shares its scan with the adoption above.
+            // ─────────────────────────────────────────────────────────────
+            if (visible && instance.OutsidersRecorded)
+            {
+                for (int i = 0; i < instance.HiddenOutsiders.Count; i++)
+                {
+                    GameObject go = instance.HiddenOutsiders[i];
+                    if (go == null) continue;   // destroyed since; nothing to give back
+
+                    SetObjectVisualState(go, true);
+                }
+                instance.HiddenOutsiders.Clear();
+                return;
+            }
+
             // CONDITION ORDER: the AABB pre-filter now comes FIRST. It used to be last, so
             // every item in the scene first ran IsChildOf + IsPlayerOrInventory +
             // BelongsToAnotherInstance (15 instances x 2 IsChildOf).
             Bounds filterBounds;
             if (TryGetWorldFilterBounds(instance, out filterBounds, 1.2f))
             {
+                // Hiding: this is the list the next show pass will read.
+                if (!visible)
+                {
+                    instance.HiddenOutsiders.Clear();
+                    instance.OutsidersRecorded = true;
+                }
+
                 foreach (var gear in SceneScan.GearAll())
                 {
                     if (gear == null || gear.gameObject == null) continue;
@@ -1034,7 +1118,10 @@ namespace SeamlessInteriors
                     if (BelongsToAnotherInstance(instance, gear.transform)) continue;
 
                     if (IsPositionInsideFull(instance, gear.transform.position))
+                    {
                         SetObjectVisualState(gear.gameObject, visible);
+                        if (!visible) instance.HiddenOutsiders.Add(gear.gameObject);
+                    }
                 }
 
                 foreach (var p in SceneScan.PlaceablesAll())
@@ -1046,7 +1133,10 @@ namespace SeamlessInteriors
                     if (BelongsToAnotherInstance(instance, p.transform)) continue;
 
                     if (IsPositionInsideFull(instance, p.transform.position))
+                    {
                         SetObjectVisualState(p.gameObject, visible);
+                        if (!visible) instance.HiddenOutsiders.Add(p.gameObject);
+                    }
                 }
             }
         }

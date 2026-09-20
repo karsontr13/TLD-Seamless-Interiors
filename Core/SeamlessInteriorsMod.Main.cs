@@ -1,4 +1,4 @@
-﻿using Il2Cpp;
+using Il2Cpp;
 using MelonLoader;
 using System.Collections;
 using System.Collections.Generic;
@@ -107,6 +107,27 @@ namespace SeamlessInteriors
         //   UserData\MelonPreferences.cfg -> [SeamlessInteriors] VerboseLogging = true
         // or F7 in game.
         private static MelonPreferences_Entry<bool> s_PrefVerboseLogging;
+
+        // Should the door skip switching the renderers and colliders of the building's own
+        // contents off and on again? Everything inside a clone is a child of MasterInterior,
+        // and MasterInterior is deactivated the moment the player steps out - which hides
+        // the whole subtree by itself. Doing it a second time, object by object, is what
+        // made a door transition cost most of a second on a full base.
+        // See SetInteriorItemsVisibleCore.
+        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] FastInteriorToggle
+        private static MelonPreferences_Entry<bool> s_PrefFastInteriorToggle;
+
+        public static bool IsFastInteriorToggleEnabled => s_PrefFastInteriorToggle?.Value ?? true;
+
+        // PERFORMANCE REPORT. Writes a summary to the log every 5 seconds: frame time, what
+        // the mod spends it on, and which object searches cost what against how full each
+        // building is. Cheap enough to leave on (one branch per measured call while off),
+        // but it does write to the log, so it defaults to OFF.
+        //
+        // This is the switch to ask a player to turn on when they report frame drops.
+        // Shift+F6 toggles the same thing in game and writes the choice back here.
+        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] EnablePerformanceReport
+        private static MelonPreferences_Entry<bool> s_PrefEnablePerfProbe;
 
         public static int InteriorLightingMode => s_PrefInteriorLightingMode?.Value ?? 0;
 
@@ -221,6 +242,24 @@ namespace SeamlessInteriors
             );
             s_DebugBounds = s_PrefVerboseLogging.Value;
 
+            s_PrefFastInteriorToggle = s_PrefCategory.CreateEntry<bool>(
+                "FastInteriorToggle",
+                true,
+                "Fast Door Transitions",
+                "Lets deactivating the building hide its contents, instead of switching every item's renderers and colliders off and on again one by one. On a base with thousands of items this is the difference between a door taking most of a second and taking a few milliseconds. Turn off only if items go missing or become impossible to pick up after walking through a door."
+            );
+
+            s_PrefEnablePerfProbe = s_PrefCategory.CreateEntry<bool>(
+                "EnablePerformanceReport",
+                false,
+                "Performance Report",
+                "Writes a performance summary to the log every 5 seconds: frame time, what the mod spends it on, and how much each object search costs against how full every building is. Turn this on if you are reporting frame drops. Shift+F6 toggles it in game."
+            );
+
+            // The scene stats the probe writes on start need a loaded region, so the state is
+            // applied without them here; the first report follows five seconds into the game.
+            PerfProbe.On = s_PrefEnablePerfProbe.Value;
+
             // The timestamped fire dumps earlier versions left behind, one per save and one
             // per load, go in one pass here.
             CleanUpOldFireDumps();
@@ -243,14 +282,40 @@ namespace SeamlessInteriors
                             $"(flicker {(IsWindowGlowFlickerEnabled ? "ON" : "OFF")}, strength {WindowGlowStrength:F2}) (Shift+F9 onizleme)");
             MelonLogger.Msg($"[SETTINGS] Window Ground Glow: {(IsWindowGroundGlowEnabled ? "ON" : "OFF")} (strength {WindowGroundGlowStrength:F2})");
             MelonLogger.Msg($"[SETTINGS] Verbose Logging: {(s_DebugBounds ? "ON" : "OFF")} (F7)");
+            MelonLogger.Msg($"[SETTINGS] Fast Door Transitions: {(IsFastInteriorToggleEnabled ? "ON" : "OFF")}");
+            MelonLogger.Msg($"[SETTINGS] Performance Report: {(PerfProbe.On ? "ON" : "OFF")} (Shift+F6)");
+        }
+
+        // Runs once every mod has been initialised, before any gameplay code of those mods has
+        // run: early enough that the views are in place before other mods' gameplay code asks.
+        public override void OnLateInitializeMelon()
+        {
+            // Template scene loads stay between this mod and MelonLoader; mods see the interior scene
+            // and only its fires, and cannot save under its name (see SeamlessInteriorsMod.VanillaView.cs).
+            InstallSceneEventShield();
+            InstallSceneView();
+
+            // FindObjectsOfType searches from mods find only the player's place (SeamlessInteriorsMod.ObjectView.cs),
+            // and their components elsewhere keep running in their own place (SeamlessInteriorsMod.PlaceContext.cs).
+            InstallObjectView();
+            InstallPlaceContext(HarmonyInstance);
+
+            // The two cases no vanilla answer can cover (see Compat/ModExceptions.cs).
+            ModExceptions.Install(HarmonyInstance);
         }
 
         public override void OnUpdate()
         {
+            PerfProbe.Frame();
+
             // Determine the owner of the global lighting (the clone the player is inside)
             // every frame. The light patches consult that result to decide who may write
             // the global ambient.
+            long perf = PerfProbe.Begin();
             ClonedInteriorLightingGuard.Tick();
+            PerfProbe.End(PerfProbe.Section.LightGuard, perf);
+
+            perf = PerfProbe.Begin();
 
             // A region gear restore the mod turned away must always be replayed.
             TickDeferredGearRestore();
@@ -266,6 +331,8 @@ namespace SeamlessInteriors
             // While the player customizes inside a clone, the game's single "junk cleared"
             // flag has to answer for that clone. (see SeamlessInteriorsMod.Junk.cs)
             TickJunkFlagView();
+
+            PerfProbe.End(PerfProbe.Section.FrameTicks, perf);
 
             // ─── F8: SWITCH INTERIOR LIGHTING MODE ───
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F8))
@@ -300,15 +367,21 @@ namespace SeamlessInteriors
 
             // ─── F6: PRE-MOD SAVE DIAGNOSTICS ───
             // Lists the scene keys the current save really contains and what the mod
-            // resolved for every building. The only way to see, from inside the game,
-            // whether an old save's interior data was found and matched correctly.
+            // resolved for every building. SHIFT+F6 toggles the performance probe instead.
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F6))
             {
-                try { DumpLegacySaveDiagnostics(); }
-                catch (System.Exception ex) { MelonLogger.Warning($"[LEGACY-TESHIS] Hata: {ex}"); }
+                if (UnityEngine.Input.GetKey(UnityEngine.KeyCode.LeftShift) || UnityEngine.Input.GetKey(UnityEngine.KeyCode.RightShift))
+                {
+                    PerfProbe.Toggle();
+                }
+                else
+                {
+                    try { DumpLegacySaveDiagnostics(); }
+                    catch (System.Exception ex) { MelonLogger.Warning($"[LEGACY-TESHIS] Hata: {ex}"); }
 
-                s_LightingModeMessage = "Eski kayit teshisi log'a yazildi";
-                s_LightingModeMessageTimer = 3f;
+                    s_LightingModeMessage = "Eski kayit teshisi log'a yazildi";
+                    s_LightingModeMessageTimer = 3f;
+                }
             }
 
             // ─── F9: INTERACTION DIAGNOSTICS ───
@@ -359,15 +432,36 @@ namespace SeamlessInteriors
 
             // ─── F10: INTERACTION REPAIR (manual) ───
             // Re-enables item colliders left disabled in the clone the player is inside.
+            // SHIFT+F10 shows the indoor temperatures instead (see SeamlessInteriorsMod.VanillaView.cs).
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F10))
             {
+                bool shiftHeld = UnityEngine.Input.GetKey(UnityEngine.KeyCode.LeftShift)
+                              || UnityEngine.Input.GetKey(UnityEngine.KeyCode.RightShift);
                 try
                 {
-                    int repaired = RepairInteractivityForPlayerInstance(true);
-                    s_LightingModeMessage = $"Etkilesim onarimi: {repaired} collider geri acildi";
-                    s_LightingModeMessageTimer = 4f;
+                    if (shiftHeld)
+                    {
+                        string screenText;
+                        string logLine = DescribeIndoorState(out screenText);
+                        if (logLine != null)
+                        {
+                            MelonLogger.Msg($"[ISI] (Shift+F10) {logLine}");
+                            s_LightingModeMessage = screenText;
+                        }
+                        else
+                        {
+                            s_LightingModeMessage = "Sicaklik bilgisi henuz hazir degil";
+                        }
+                        s_LightingModeMessageTimer = 8f;
+                    }
+                    else
+                    {
+                        int repaired = RepairInteractivityForPlayerInstance(true);
+                        s_LightingModeMessage = $"Etkilesim onarimi: {repaired} collider geri acildi";
+                        s_LightingModeMessageTimer = 4f;
+                    }
                 }
-                catch (System.Exception ex) { MelonLogger.Warning($"[ETKILESIM-ONARIM] Hata: {ex}"); }
+                catch (System.Exception ex) { MelonLogger.Warning($"[F10] Hata: {ex}"); }
             }
 
             // Tick down the on-screen notification timer.
@@ -375,26 +469,59 @@ namespace SeamlessInteriors
                 s_LightingModeMessageTimer -= UnityEngine.Time.deltaTime;
 
             Transform playerT = Il2Cpp.GameManager.GetPlayerTransform();
-            if (playerT == null) return;
+            if (playerT == null) { PerfProbe.FrameEnd(); return; }
             Vector3 pos = playerT.position;
 
             // Keep the cooking pots and fires in CLOSED clones running. Unity stops calling
             // their Update the moment MasterInterior goes inactive, which used to freeze a
             // boil timer for as long as the player stayed outside.
             // (see SeamlessInteriorsMod.FrozenTime.cs)
+            perf = PerfProbe.Begin();
             TickClosedInteriorTime();
+            PerfProbe.End(PerfProbe.Section.ClosedTime, perf);
 
             // Chimney smoke and window glow on the shells of buildings with a fire burning inside.
             // Runs after the closed-clone time step, so a fire that just ran out is seen as out.
             // (see SeamlessInteriorsMod.ExteriorFireEffects.cs)
+            perf = PerfProbe.Begin();
             TickExteriorFireEffects(pos);
+            PerfProbe.End(PerfProbe.Section.ExteriorFx, perf);
+
+            // A player something moved out of a building without a door (sleepwalking, a
+            // teleport) is taken out of its inside state here.
+            // (see SeamlessInteriorsMod.PlayerLocation.cs)
+            perf = PerfProbe.Begin();
+            TickDoorlessExitDetection(pos);
+            PerfProbe.End(PerfProbe.Section.DoorlessExit, perf);
+
+            // Objects the game put back where a closed building stands are pulled under its
+            // clone. One pass for the whole region - it used to be one per building, each
+            // with its own scene scan. (see SeamlessInteriorsMod.Visibility.cs)
+            TickStraySweep(pos);
+
+            // The game's own indoor space follows the building the player is recorded in; a load may build it late.
+            SyncVanillaIndoorSpace();
+            TickIndoorReadout();
+
+            // Other mods' components where the player is not run in their own place's context.
+            // (see SeamlessInteriorsMod.PlaceContext.cs)
+            perf = PerfProbe.Begin();
+            TickPlaceContext();
+            PerfProbe.End(PerfProbe.Section.PlaceContext, perf);
+
+            // Window light shafts follow the time of day, as the interior's lighting manager makes them do.
+            // (see SeamlessInteriorsMod.LightShafts.cs)
+            TickWindowLightShafts();
 
             // Safety net for "the player is sheltered from wind and stuck at indoor
             // temperature while standing in the open".
             // (see SeamlessInteriorsMod.InsideFlag.cs)
+            perf = PerfProbe.Begin();
             TickPlayerInsideCloneFlagGuard();
+            PerfProbe.End(PerfProbe.Section.FlagGuard, perf);
 
             // Keep each building's terrain hole in sync with whether the player is inside it.
+            perf = PerfProbe.Begin();
             foreach (var instance in ActiveInteriors.Values)
             {
                 if (!instance.RunCompleted || instance.MasterInterior == null) continue;
@@ -410,15 +537,19 @@ namespace SeamlessInteriors
                     continue;
                 }
 
-                // Check every frame whether the player is inside the actual clone scene.
-                bool isInsideScene = instance.IsPositionInside(pos);
-                SetTerrainHoleState(instance, isInsideScene);
+                // Only buildings with a hole; the door state answers first, rays at most four times a second.
+                if (!IsTerrainHoleWanted(instance) && !IsTerrainHoleOpen(instance)) continue;
+                SetTerrainHoleState(instance, IsPlayerInsideForTerrainHole(instance, pos));
             }
+            PerfProbe.End(PerfProbe.Section.TerrainHole, perf);
+            PerfProbe.FrameEnd();
         }
 
         public override void OnLateUpdate()
         {
+            long perf = PerfProbe.Begin();
             ClonedInteriorLightingGuard.EnforceOwnerAmbient();
+            PerfProbe.End(PerfProbe.Section.LateUpdate, perf);
         }
 
         // ─── SAFETY NET FOR THE DEFERRED REGION GEAR RESTORE ───
@@ -671,6 +802,16 @@ namespace SeamlessInteriors
             // Find out which clone scene the player saved in (for the early activation).
             string savedInsideId = GetSavedPlayerInsideInstanceId();
 
+            // A mod loaded this scene while the player was inside a building. Like a vanilla door,
+            // it puts the player somewhere itself, so the saved state must not pull them back in.
+            if (TakeModSceneLoad(sceneName) && !string.IsNullOrEmpty(savedInsideId))
+            {
+                MelonLogger.Msg($"[MOD-GECIS] {savedInsideId} icin kayitli 'oyuncu iceride' bilgisi kullanilmadi: " +
+                                $"oyuncuyu sahneyi yukleten mod yerlestiriyor.");
+                ClearSavedPlayerInsideState();
+                savedInsideId = "";
+            }
+
             // STALE ENTRY FROM ANOTHER SAVE.
             //
             // The key is addressed by save NAME and the game reuses slot names, so a new
@@ -710,7 +851,7 @@ namespace SeamlessInteriors
             // nothing is lost by being this specific.
             if (isSupportedExteriorScene && SceneOwnsInstanceId(sceneName, savedInsideId))
             {
-                s_IsPlayerInsideClone = true;
+                MarkPlayerInside(savedInsideId, "erken bayrak: icerde kaydedilmis");
                 SetAudioOcclusion(true);
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[EARLY-FLAG] Oyuncu icerde kaydetti ({savedInsideId}), flag'ler erken set edildi.");
@@ -953,16 +1094,21 @@ namespace SeamlessInteriors
             // watchdog.
             ResetHydrationQueue();
 
+            // The stray sweep's item counts and its backoff describe the region being torn
+            // down; the next one has never been swept. (see SeamlessInteriorsMod.Visibility.cs)
+            ResetStraySweep();
+
             // On a scene change, reset the mod's occlusion bool AND GameAudioManager's real
             // occlusion counters. Resetting only the bool was not enough: since
             // GameAudioManager survives scene changes, an unbalanced Enter/Exit counter
             // leaves the audio permanently muffled or inaudible.
             ResetAudioOcclusionCounters("unload");
 
-            string savedIdOnUnload = GetSavedPlayerInsideInstanceId();
+            // A mod-triggered load takes the player out of the building, whatever the save says.
+            string savedIdOnUnload = IsModSceneLoadPending() ? "" : GetSavedPlayerInsideInstanceId();
             if (string.IsNullOrEmpty(savedIdOnUnload))
             {
-                s_IsPlayerInsideClone = false;
+                MarkPlayerOutside("sahne kaldirildi: " + sceneName);
             }
             else if (s_DebugBounds)
             {
@@ -991,6 +1137,12 @@ namespace SeamlessInteriors
                         instance.ExteriorShell = null;
                         instance.ExteriorFx = null;
                         instance.WatchdogStarted = false;
+
+                        // Those objects belonged to the region being torn down. The clone
+                        // comes back, they do not, so the next show pass has to look again
+                        // rather than trust a list of dead references.
+                        instance.HiddenOutsiders.Clear();
+                        instance.OutsidersRecorded = false;
 
                         // Retire the running watchdog. RunCompleted stays true here, so its
                         // loop would otherwise keep ticking - in the next scene, against
@@ -1033,6 +1185,11 @@ namespace SeamlessInteriors
                     // the save file.
                     instance.JunkCleared = false;
                     instance.JunkClearedObjects.Clear();
+
+                    // See the persist path above: the objects this list names went with the
+                    // old scene.
+                    instance.HiddenOutsiders.Clear();
+                    instance.OutsidersRecorded = false;
 
                     if (instance.CustomKillers != null) instance.CustomKillers.Clear();
                     // ResetWeatherParticles(instance);
@@ -1423,7 +1580,7 @@ namespace SeamlessInteriors
                         MelonLogger.Msg($"[RSO-CLEANUP] {instance.Config.InteriorSceneBaseName}: {rsoCount} RSO component SetActive oncesi yok edildi.");
                 }
 
-                foreach (var r in instance.MasterInterior.GetComponentsInChildren<Renderer>(true))
+                foreach (var r in InteriorScan.Renderers(instance.MasterInterior))
                     if (r != null) r.enabled = false;
 
                 instance.MasterInterior.SetActive(true);
@@ -1460,7 +1617,7 @@ namespace SeamlessInteriors
             if (playerSavedInside && instance.MasterInterior != null)
             {
                 UpdateGlobalEnvironment(instance);
-                foreach (var r in instance.MasterInterior.GetComponentsInChildren<Renderer>(true))
+                foreach (var r in InteriorScan.Renderers(instance.MasterInterior))
                     if (r != null) r.enabled = true;
 
                 // Renderers were enabled unconditionally, so the colliders must be too,

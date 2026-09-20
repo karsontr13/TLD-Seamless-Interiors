@@ -122,7 +122,7 @@ namespace SeamlessInteriors
             if (!IsSupportedExteriorSceneLoaded()) return false;
 
             string activeBase = GetInteriorBaseName(
-                UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+                RealSceneName(UnityEngine.SceneManagement.SceneManager.GetActiveScene()));
 
             return activeBase != interiorBase;
         }
@@ -145,7 +145,7 @@ namespace SeamlessInteriors
                 int count = UnityEngine.SceneManagement.SceneManager.sceneCount;
                 for (int i = 0; i < count; i++)
                 {
-                    string name = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i).name;
+                    string name = RealSceneName(UnityEngine.SceneManagement.SceneManager.GetSceneAt(i));
                     if (string.IsNullOrEmpty(name)) continue;
 
                     foreach (var cfg in SupportedInteriors)
@@ -375,12 +375,62 @@ namespace SeamlessInteriors
             return IsTerrainHoleActive.TryGetValue(instance.Config.ResolvedInstanceId, out open) && open;
         }
 
+        private static readonly System.Collections.Generic.Dictionary<string, float> s_TerrainHoleNextProbe =
+            new System.Collections.Generic.Dictionary<string, float>();
+        private static readonly System.Collections.Generic.Dictionary<string, bool> s_TerrainHoleLastProbe =
+            new System.Collections.Generic.Dictionary<string, bool>();
+
+        // Door state first; otherwise the ray-based inside test, reused for a quarter second.
+        public static bool IsPlayerInsideForTerrainHole(SeamlessInteriorInstance instance, Vector3 pos)
+        {
+            string key = instance.Config.ResolvedInstanceId;
+            if (PlayerInteriorId == key) return true;
+
+            float now = Time.time;
+            float next;
+            bool last;
+            if (s_TerrainHoleNextProbe.TryGetValue(key, out next) && now < next
+                && s_TerrainHoleLastProbe.TryGetValue(key, out last))
+                return last;
+
+            last = instance.IsPositionInside(pos);
+            s_TerrainHoleNextProbe[key] = now + 0.25f;
+            s_TerrainHoleLastProbe[key] = last;
+            return last;
+        }
+
+        // Buildings whose terrain hole could not be read or written this session. The state is
+        // only recorded after a successful write, so a failure used to repeat on every frame the
+        // player stood inside: a log line per frame, and the rest of OnUpdate aborted with it.
+        private static readonly System.Collections.Generic.HashSet<string> s_TerrainHoleFailed =
+            new System.Collections.Generic.HashSet<string>();
+
         // Digs or fills the terrain hole under a building (cached, reversible).
         public static void SetTerrainHoleState(SeamlessInteriorInstance instance, bool makeHole)
         {
             if (instance == null) return;
             string key = instance.Config.ResolvedInstanceId;
+            if (s_TerrainHoleFailed.Contains(key)) return;
 
+            try
+            {
+                SetTerrainHoleStateCore(instance, key, makeHole);
+            }
+            catch (System.Exception ex)
+            {
+                DisableTerrainHole(key, ex.GetType().Name + ": " + ex.Message);
+            }
+        }
+
+        private static void DisableTerrainHole(string key, string reason)
+        {
+            s_TerrainHoleFailed.Add(key);
+            MelonLoader.MelonLogger.Warning($"[ARAZI-DELIGI] {key}: arazi yuksekligi okunamadi/yazilamadi ({reason}). " +
+                                            "Bu bina icin arazi deligi bu oturumda kapatildi.");
+        }
+
+        private static void SetTerrainHoleStateCore(SeamlessInteriorInstance instance, string key, bool makeHole)
+        {
             bool currentState;
             if (IsTerrainHoleActive.TryGetValue(key, out currentState) && currentState == makeHole)
                 return;
@@ -457,59 +507,107 @@ namespace SeamlessInteriors
                 height = Mathf.Clamp(height, 1, td.heightmapResolution - yBase);
             }
 
-            var heightsObj = td.GetHeights(xBase, yBase, width, height);
-            if (heightsObj != null)
+            int totalElements = width * height;
+            System.IntPtr heights = GetHeightsNative(td, xBase, yBase, width, height);
+            if (heights == System.IntPtr.Zero || Il2CppInterop.Runtime.IL2CPP.il2cpp_array_length(heights) < (uint)totalElements)
+                throw new System.InvalidOperationException("TerrainData.GetHeights beklenen boyutta dizi dondurmedi");
+
+            // The IL2CPP 2D float array is written through a raw pointer: the
+            // managed wrapper would allocate and copy on every element access.
+            // The +32 offset skips the IL2CPP array header.
+            unsafe
             {
-                // The IL2CPP 2D float array is written through a raw pointer: the
-                // managed wrapper would allocate and copy on every element access.
-                // The +32 offset skips the IL2CPP array header.
-                unsafe
+                float* data = (float*)((byte*)heights + 32);
+
+                if (makeHole)
                 {
-                    float* data = (float*)((byte*)heightsObj.Pointer + 32);
-                    int totalElements = width * height;
-
-                    if (makeHole)
+                    // Back up the original heights once, so the hole can be undone.
+                    if (!hasCache)
                     {
-                        // Back up the original heights once, so the hole can be undone.
-                        if (!hasCache)
+                        float[] backup = new float[totalElements];
+                        for (int i = 0; i < totalElements; i++)
+                            backup[i] = data[i];
+
+                        var newCache = new TerrainHoleData
                         {
-                            float[] backup = new float[totalElements];
-                            for (int i = 0; i < totalElements; i++)
-                                backup[i] = data[i];
+                            xBase = xBase, yBase = yBase, width = width, height = height, originalHeights = backup
+                        };
+                        TerrainHoleCache[key] = newCache;
+                    }
 
-                            var newCache = new TerrainHoleData
-                            {
-                                xBase = xBase, yBase = yBase, width = width, height = height, originalHeights = backup
-                            };
-                            TerrainHoleCache[key] = newCache;
-                        }
+                    // Sink by 10m rather than a very deep -30f.
+                    float targetNormalizedY = Mathf.Clamp01(((terrain.transform.position.y - 10f) - terrain.transform.position.y) / td.size.y);
 
-                        // Sink by 10m rather than a very deep -30f.
-                        float targetNormalizedY = Mathf.Clamp01(((terrain.transform.position.y - 10f) - terrain.transform.position.y) / td.size.y);
-
-                        // Only lower - never raise ground that is already below the target.
+                    // Only lower - never raise ground that is already below the target.
+                    for (int i = 0; i < totalElements; i++)
+                    {
+                        if (data[i] > targetNormalizedY) data[i] = targetNormalizedY;
+                    }
+                }
+                else
+                {
+                    if (hasCache)
+                    {
+                        float[] backup = cache.originalHeights;
                         for (int i = 0; i < totalElements; i++)
                         {
-                            if (data[i] > targetNormalizedY) data[i] = targetNormalizedY;
-                        }
-                    }
-                    else
-                    {
-                        if (hasCache)
-                        {
-                            float[] backup = cache.originalHeights;
-                            for (int i = 0; i < totalElements; i++)
-                            {
-                                data[i] = backup[i];
-                            }
+                            data[i] = backup[i];
                         }
                     }
                 }
-
-                td.SetHeightsDelayLOD(xBase, yBase, heightsObj);
-                terrain.ApplyDelayedHeightmapModification();
-                IsTerrainHoleActive[key] = makeHole;
             }
+
+            SetHeightsDelayLODNative(td, xBase, yBase, heights);
+            terrain.ApplyDelayedHeightmapModification();
+            IsTerrainHoleActive[key] = makeHole;
+        }
+
+        // TerrainData.GetHeights / SetHeightsDelayLOD, invoked on the native methods. The heightmap
+        // travels as a float[,], and not every Il2CppInterop version can wrap a two-dimensional
+        // IL2CPP array: the managed GetHeights threw a NullReferenceException inside
+        // Il2CppObjectPool after the native call had already returned the array. Here the array is
+        // only ever handled as a pointer.
+        private static System.IntPtr s_TerrainGetHeights = System.IntPtr.Zero;
+        private static System.IntPtr s_TerrainSetHeightsDelayLOD = System.IntPtr.Zero;
+
+        private static System.IntPtr ResolveTerrainDataMethod(ref System.IntPtr cached, string name, int argCount)
+        {
+            if (cached == System.IntPtr.Zero)
+            {
+                cached = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_method_from_name(
+                    Il2CppInterop.Runtime.Il2CppClassPointerStore<TerrainData>.NativeClassPtr, name, argCount);
+                if (cached == System.IntPtr.Zero)
+                    throw new System.InvalidOperationException("TerrainData." + name + " bulunamadi");
+            }
+            return cached;
+        }
+
+        private static unsafe System.IntPtr GetHeightsNative(TerrainData td, int xBase, int yBase, int width, int height)
+        {
+            System.IntPtr method = ResolveTerrainDataMethod(ref s_TerrainGetHeights, "GetHeights", 4);
+            System.IntPtr* args = stackalloc System.IntPtr[4];
+            args[0] = (System.IntPtr)(&xBase);
+            args[1] = (System.IntPtr)(&yBase);
+            args[2] = (System.IntPtr)(&width);
+            args[3] = (System.IntPtr)(&height);
+
+            System.IntPtr exc = System.IntPtr.Zero;
+            System.IntPtr result = Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(method, td.Pointer, (void**)args, ref exc);
+            Il2CppInterop.Runtime.Il2CppException.RaiseExceptionIfNecessary(exc);
+            return result;
+        }
+
+        private static unsafe void SetHeightsDelayLODNative(TerrainData td, int xBase, int yBase, System.IntPtr heights)
+        {
+            System.IntPtr method = ResolveTerrainDataMethod(ref s_TerrainSetHeightsDelayLOD, "SetHeightsDelayLOD", 3);
+            System.IntPtr* args = stackalloc System.IntPtr[3];
+            args[0] = (System.IntPtr)(&xBase);
+            args[1] = (System.IntPtr)(&yBase);
+            args[2] = heights;
+
+            System.IntPtr exc = System.IntPtr.Zero;
+            Il2CppInterop.Runtime.IL2CPP.il2cpp_runtime_invoke(method, td.Pointer, (void**)args, ref exc);
+            Il2CppInterop.Runtime.Il2CppException.RaiseExceptionIfNecessary(exc);
         }
     }
 }

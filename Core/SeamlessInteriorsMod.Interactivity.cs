@@ -34,58 +34,82 @@ namespace SeamlessInteriors
         // that periodically repairs the clone the player is standing in.
         // ─────────────────────────────────────────────────────────────────
 
-        private static int ReenableCollidersOn(GameObject go)
-        {
-            if (go == null) return 0;
-
-            int count = 0;
-            foreach (var c in go.GetComponentsInChildren<Collider>(true))
-            {
-                if (c == null || c.enabled) continue;
-
-                // THE SAME RULE AS SetObjectVisualState, AND FOR THE SAME REASON.
-                //
-                // This repair exists for colliders the mod's own hide pass switched off
-                // and failed to switch back on. It was written as "enable everything that
-                // is off", which also switched on colliders the SCENE ships disabled - and
-                // a safe whose MeshCollider is supposed to stay off became impossible to
-                // click, because the game drives its interaction off the box collider and
-                // the mesh was now in the way.
-                if (!WeDisabled(c)) continue;
-
-                c.enabled = true;
-                ForgetDisabledCollider(c);
-                count++;
-            }
-            return count;
-        }
-
+        // ─────────────────────────────────────────────────────────────────
+        // THE REPAIR READS THE DEBT, IT DOES NOT SEARCH FOR IT
+        //
+        // This used to walk every GearItem and every Placeable in the building and ask
+        // each one's colliders "did we switch you off?". The answer was yes for a
+        // handful and no for thousands, and finding that out cost 8500 component scans
+        // and 220 ms per door transition on a full base.
+        //
+        // The question only has one honest source: s_CollidersWeDisabled, which IS the
+        // list of colliders this mod owes. Reading it directly gives the same colliders
+        // - the old scan could never have re-enabled one that was not in the set, since
+        // WeDisabled() gated every single decision - at a cost that follows the debt
+        // instead of the size of the base.
+        //
+        // MEASURED on a 15-building Mystery Lake save: 9627 colliders in the clones, 1190
+        // of them off, 1086 of those owed by this mod (the other 104 the scene ships
+        // disabled - exactly what WeDisabled protects). The list held 4836 entries, so
+        // 3750 were dead: colliders destroyed with the objects the gear restore replaces.
+        //
+        // DEAD ENTRIES ARE DROPPED, LIVE ONES ARE NOT. The set is deliberately kept for
+        // the whole session (see s_CollidersWeDisabled) because a building can be hidden
+        // when a scene reset lands, and forgetting the debt would strand its colliders off
+        // for good. A destroyed collider is the one case where there is genuinely nothing
+        // left to owe, so clearing those keeps the intent and stops the list growing.
+        //
+        // The filters the old pass applied are kept one for one: only this building's
+        // objects, never anything the player is carrying, and - when the caller asks for
+        // it - only objects that are actually live in the hierarchy.
+        // ─────────────────────────────────────────────────────────────────
         public static int RestoreInteriorItemColliders(SeamlessInteriorInstance instance, bool onlyActive = false)
         {
             if (instance == null || instance.MasterInterior == null) return 0;
+            if (s_CollidersWeDisabled.Count == 0) return 0;
 
+            Transform masterT = instance.MasterInterior.transform;
             int repaired = 0;
 
-            foreach (var gear in instance.MasterInterior.GetComponentsInChildren<Il2Cpp.GearItem>(true))
+            // Collected first: the loop settles the debt, and settling it writes to the
+            // very dictionary being walked.
+            s_ColliderDebtScratch.Clear();
+            foreach (var pair in s_CollidersWeDisabled)
             {
-                if (gear == null || gear.gameObject == null) continue;
-                if (onlyActive && !gear.gameObject.activeInHierarchy) continue;
-                if (PlayerRefs.IsPlayerRoot(gear.transform.root)) continue;   // never touch carried gear
+                Collider c = pair.Value;
 
-                repaired += ReenableCollidersOn(gear.gameObject);
+                // Destroyed with its scene: nothing to give back, and nothing to keep.
+                if (c == null) { s_ColliderDebtSettled.Add(pair.Key); continue; }
+
+                // Someone else already switched it on - the debt is paid, by them.
+                if (c.enabled) { s_ColliderDebtSettled.Add(pair.Key); continue; }
+
+                Transform t = c.transform;
+                if (!t.IsChildOf(masterT)) continue;             // another building's debt
+                if (PlayerRefs.IsPlayerRoot(t.root)) continue;   // never touch carried gear
+                if (onlyActive && !c.gameObject.activeInHierarchy) continue;
+
+                s_ColliderDebtScratch.Add(c);
+                s_ColliderDebtSettled.Add(pair.Key);
             }
 
-            foreach (var p in instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true))
+            for (int i = 0; i < s_ColliderDebtScratch.Count; i++)
             {
-                if (p == null || p.gameObject == null) continue;
-                if (onlyActive && !p.gameObject.activeInHierarchy) continue;
-                if (PlayerRefs.IsPlayerRoot(p.transform.root)) continue;
-
-                repaired += ReenableCollidersOn(p.gameObject);
+                s_ColliderDebtScratch[i].enabled = true;
+                repaired++;
             }
+
+            for (int i = 0; i < s_ColliderDebtSettled.Count; i++)
+                s_CollidersWeDisabled.Remove(s_ColliderDebtSettled[i]);
+
+            s_ColliderDebtScratch.Clear();
+            s_ColliderDebtSettled.Clear();
 
             return repaired;
         }
+
+        private static readonly List<Collider> s_ColliderDebtScratch = new List<Collider>();
+        private static readonly List<int> s_ColliderDebtSettled = new List<int>();
 
         public static SeamlessInteriorInstance GetInstancePlayerIsIn()
         {
@@ -846,7 +870,7 @@ namespace SeamlessInteriors
         {
             int total = 0, brokenCount = 0;
 
-            foreach (var gear in instance.MasterInterior.GetComponentsInChildren<Il2Cpp.GearItem>(true))
+            foreach (var gear in InteriorScan.Gear(instance.MasterInterior))
             {
                 if (gear == null || gear.gameObject == null) continue;
                 if (Vector3.Distance(gear.transform.position, playerPos) > DIAG_RADIUS) continue;
@@ -855,7 +879,7 @@ namespace SeamlessInteriors
 
                 GameObject go = gear.gameObject;
                 int colTotal = 0, colOn = 0;
-                foreach (var c in go.GetComponentsInChildren<Collider>(true))
+                foreach (var c in InteriorScan.Colliders(go))
                 {
                     if (c == null) continue;
                     colTotal++;
@@ -863,7 +887,7 @@ namespace SeamlessInteriors
                 }
 
                 int rendTotal = 0, rendOn = 0;
-                foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+                foreach (var r in InteriorScan.Renderers(go))
                 {
                     if (r == null) continue;
                     rendTotal++;

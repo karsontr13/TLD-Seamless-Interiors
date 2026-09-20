@@ -91,8 +91,7 @@ namespace SeamlessInteriors
         }
 
         // First-time setup: creates the ParticleKiller object, its trigger volume,
-        // the particle killer slices and the IndoorSpaceTrigger that makes the game
-        // treat the clone as an indoor space.
+        // the particle killer slices and the building's vanilla indoor space.
         private void SetupWeatherAndParticles(SeamlessInteriorInstance instance, Bounds localBounds)
         {
             Bounds expandedBounds = localBounds;
@@ -114,17 +113,8 @@ namespace SeamlessInteriors
 
             BuildParticleKillerSlices(instance, particleKillerObj, expandedBounds);
 
-            IndoorSpaceTrigger spaceTrigger = particleKillerObj.AddComponent<IndoorSpaceTrigger>();
-            // Outdoor mode: keep using outdoor lighting (the existing behaviour).
-            // Dark mode: let the interior light itself.
-            spaceTrigger.m_UseOutdoorLighting = !IsDarkAtmosphereMode;
-            spaceTrigger.m_UseOutdoorTemperature = false;
-            spaceTrigger.m_AllowCampfires = true;
-            spaceTrigger.m_TemperatureDeltaCelsius = 10f;
-            spaceTrigger.m_ValidSafehouse = true;
-            spaceTrigger.m_DontCountAsInterior = true;
-            spaceTrigger.m_IgnoreCabinFever = false;
-            spaceTrigger.m_TriggerID = $"Custom_{instance.Config.InteriorSceneBaseName}_Trigger";
+            // The box stays a plain volume: the doors, not physics, move the player in and out.
+            CreateVanillaIndoorSpace(instance);
         }
 
         // Unregisters an instance's particle killer from the weather manager.
@@ -237,7 +227,7 @@ namespace SeamlessInteriors
                 if (reallyInside)
                 {
                     playerInside = true;
-                    s_IsPlayerInsideClone = true;
+                    MarkPlayerInside(savedInstance, "ruzgar duzeltmesi");
                     SetAudioOcclusion(true);
                     if (s_DebugBounds) MelonLogger.Msg($"[WIND-POST-RUN] Flag false ama oyuncu gercekten {savedId} icinde, duzeltildi.");
                 }

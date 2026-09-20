@@ -1263,7 +1263,7 @@ namespace SeamlessInteriors
 
             // Guid -> the clone's own copy of a template placeable.
             var existing = new Dictionary<string, Il2CppTLD.Placement.Placeable>();
-            foreach (var p in instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true))
+            foreach (var p in InteriorScan.Placeables(instance.MasterInterior))
             {
                 if (p == null || p.gameObject == null || string.IsNullOrEmpty(p.m_Guid)) continue;
                 if (!existing.ContainsKey(p.m_Guid)) existing[p.m_Guid] = p;
@@ -1693,7 +1693,7 @@ namespace SeamlessInteriors
             Transform interiorT = instance.MasterInterior.transform;
             int checked_ = 0, odd = 0;
 
-            foreach (var gear in instance.MasterInterior.GetComponentsInChildren<GearItem>(true))
+            foreach (var gear in InteriorScan.Gear(instance.MasterInterior))
             {
                 if (gear == null || gear.gameObject == null) continue;
 
@@ -1750,14 +1750,14 @@ namespace SeamlessInteriors
             int offTemplate = 0, offSpawned = 0, offBrokenDown = 0;
             int shown = 0;
 
-            foreach (var p in instance.MasterInterior.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true))
+            foreach (var p in InteriorScan.Placeables(instance.MasterInterior))
             {
                 if (p == null || p.gameObject == null) continue;
 
                 bool isOff = !p.gameObject.activeSelf;
 
                 int renderers = 0, enabledRenderers = 0;
-                foreach (var r in p.gameObject.GetComponentsInChildren<Renderer>(true))
+                foreach (var r in InteriorScan.Renderers(p.gameObject))
                 {
                     if (r == null) continue;
                     renderers++;

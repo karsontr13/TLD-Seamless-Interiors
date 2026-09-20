@@ -172,19 +172,30 @@ namespace SeamlessInteriors
                 // any warning - a teleport, or a save loaded right on the doorstep. The
                 // door is the point of no return: one frame later they are inside and
                 // looking at the room, so this call blocks until the room is real.
+                long perf = SeamlessInteriorsMod.PerfProbe.Begin();
                 SeamlessInteriorsMod.EnsureHydratedNow(matchedInstance, "kapidan giris");
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalHydrate, perf);
 
                 if (matchedInstance.MasterInterior != null)
                 {
+                    // Timed apart: SetActive is Unity walking the hierarchy and cannot be
+                    // avoided, the renderer sweep is this mod's own and might be.
+                    perf = SeamlessInteriorsMod.PerfProbe.Begin();
                     matchedInstance.MasterInterior.SetActive(true);
+                    SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalActivate, perf);
+
                     // Force every structural renderer on (they can get lost across an
                     // activate/deactivate cycle).
-                    foreach (var r in matchedInstance.MasterInterior.GetComponentsInChildren<Renderer>(true))
+                    perf = SeamlessInteriorsMod.PerfProbe.Begin();
+                    foreach (var r in InteriorScan.Renderers(matchedInstance.MasterInterior))
                         if (r != null) r.enabled = true;
+                    SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalForceRenderers, perf);
 
                     // Renderers forced on means colliders must be too, otherwise items are
                     // visible but non-interactive (Interactivity.cs).
+                    perf = SeamlessInteriorsMod.PerfProbe.Begin();
                     SeamlessInteriorsMod.RestoreInteriorItemColliders(matchedInstance);
+                    SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalColliders, perf);
                 }
                 if (matchedInstance.ExteriorShell != null) matchedInstance.ExteriorShell.SetActive(false);
 
@@ -209,15 +220,22 @@ namespace SeamlessInteriors
 
                 // Hiding outside-world objects: applied once, after ALL activity changes
                 // are done, and independently of order.
+                perf = SeamlessInteriorsMod.PerfProbe.Begin();
                 SeamlessInteriorsMod.SyncExternalHiddenObjects();
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalHideSync, perf);
 
+                perf = SeamlessInteriorsMod.PerfProbe.Begin();
                 SeamlessInteriorsMod.SetInteriorItemsVisible(matchedInstance, true);
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalItemsVisible, perf);
+
+                perf = SeamlessInteriorsMod.PerfProbe.Begin();
                 SeamlessInteriorsMod.SetAudioOcclusion(true);
-                SeamlessInteriorsMod.s_IsPlayerInsideClone = true;
+                SeamlessInteriorsMod.MarkPlayerInside(matchedInstance, "kapidan giris");
 
                 Vector3 spawnPos = GetDoorEntryPosition(matchedInstance, __instance);
                 spawnPos = SnapToGround(spawnPos);
                 GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalMarkInside, perf);
 
                 return false;
             }
@@ -250,43 +268,13 @@ namespace SeamlessInteriors
                     }
                 }
 
-                // ORDER MATTERS: hide the items and deactivate MasterInterior FIRST.
+                // ORDER MATTERS: close the building FIRST - hide the items, deactivate
+                // MasterInterior, bring the shell (and a sub-interior's parent shell) back.
                 // Teleporting before that lets the game's own mechanics (or TeleportPlayer)
                 // collide with the still-active clone scene colliders up in the air and
                 // fling the player upwards (the "spawned in mid-air" bug).
-                SeamlessInteriorsMod.HideInteriorCompletely(matchedInstance);
-                if (matchedInstance.ExteriorShell != null) matchedInstance.ExteriorShell.SetActive(true);
-
-                // SUB-INTERIOR FIX: if the exited instance has no shell (a sub-interior),
-                // bring the parent instance's shell and external objects back too.
-                if (matchedInstance.ExteriorShell == null)
-                {
-                    foreach (var parentInst in SeamlessInteriorsMod.ActiveInteriors.Values)
-                    {
-                        if (parentInst.Config.SubInteriorLinks == null) continue;
-                        foreach (var link in parentInst.Config.SubInteriorLinks)
-                        {
-                            if (link.TargetInstanceId == matchedInstance.Config.ResolvedInstanceId)
-                            {
-                                SeamlessInteriorsMod.HideInteriorCompletely(parentInst);
-                                if (parentInst.ExteriorShell != null) parentInst.ExteriorShell.SetActive(true);
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                SeamlessInteriorsMod.SyncExternalHiddenObjects();
-
-                SeamlessInteriorsMod.SetAudioOcclusion(false);
-                SeamlessInteriorsMod.s_IsPlayerInsideClone = false;
-
-                // Make sure wind is running again (ForceStopped may have been left set).
-                var windExit = UnityEngine.Object.FindObjectOfType<Il2Cpp.Wind>();
-                if (windExit != null)
-                {
-                    windExit.m_WindAudioForceStopped = false;
-                }
+                // The door-less exit runs the very same sequence (PlayerLocation.cs).
+                SeamlessInteriorsMod.ExitInteriorState(matchedInstance, "kapidan cikis", true);
 
                 // Ground is resolved and the teleport performed LAST, so the outside
                 // world's ground is the reference.
@@ -469,7 +457,7 @@ namespace SeamlessInteriors
                     if (targetInstance.MasterInterior != null)
                     {
                         targetInstance.MasterInterior.SetActive(true);
-                        foreach (var r in targetInstance.MasterInterior.GetComponentsInChildren<Renderer>(true))
+                        foreach (var r in InteriorScan.Renderers(targetInstance.MasterInterior))
                             if (r != null) r.enabled = true;
 
                         SeamlessInteriorsMod.RestoreInteriorItemColliders(targetInstance);
@@ -493,7 +481,7 @@ namespace SeamlessInteriors
                     GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
 
                     SeamlessInteriorsMod.SetAudioOcclusion(true);
-                    SeamlessInteriorsMod.s_IsPlayerInsideClone = true;
+                    SeamlessInteriorsMod.MarkPlayerInside(targetInstance, "alt-mekan gecisi");
 
                     return false;
                 }
@@ -539,7 +527,7 @@ namespace SeamlessInteriors
                     if (parentInstance.MasterInterior != null)
                     {
                         parentInstance.MasterInterior.SetActive(true);
-                        foreach (var r in parentInstance.MasterInterior.GetComponentsInChildren<Renderer>(true))
+                        foreach (var r in InteriorScan.Renderers(parentInstance.MasterInterior))
                             if (r != null) r.enabled = true;
 
                         SeamlessInteriorsMod.RestoreInteriorItemColliders(parentInstance);
@@ -565,7 +553,7 @@ namespace SeamlessInteriors
                     GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
 
                     SeamlessInteriorsMod.SetAudioOcclusion(true);
-                    SeamlessInteriorsMod.s_IsPlayerInsideClone = true;
+                    SeamlessInteriorsMod.MarkPlayerInside(parentInstance, "alt-mekandan geri donus");
 
                     return false;
                 }

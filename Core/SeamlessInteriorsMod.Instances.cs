@@ -251,6 +251,22 @@ namespace SeamlessInteriors
         public readonly List<Il2Cpp.Fire> ClosedFires = new List<Il2Cpp.Fire>();
         public readonly List<Il2Cpp.CookingPotItem> ClosedCookingPots = new List<Il2Cpp.CookingPotItem>();
 
+        // Burning light sources: their fuel and burn time run down while the building is shut,
+        // as the vanilla save's catch-up does when an interior scene comes back.
+        public readonly List<Il2CppTLD.Gear.KeroseneLampItem> ClosedLamps = new List<Il2CppTLD.Gear.KeroseneLampItem>();
+        public readonly List<Il2Cpp.TorchItem> ClosedTorches = new List<Il2Cpp.TorchItem>();
+        public readonly List<Il2Cpp.FlareItem> ClosedFlares = new List<Il2Cpp.FlareItem>();
+
+        // ─── HEAT WHILE THE CLONE IS PARKED FOR ANOTHER REGION ───
+        //
+        // A parked clone's fires keep heating the building, as the vanilla mod bookkeeping does
+        // once the interior scene is gone. Each fire is given the life it had left when it was
+        // parked and heats until that runs out; the fire's own timers are left to the game's
+        // catch-up on the way back. The list is dropped when the clone is reattached.
+        public readonly List<Il2Cpp.Fire> ParkedFires = new List<Il2Cpp.Fire>();
+        public readonly List<float> ParkedFireSecondsLeft = new List<float>();
+        public bool ParkedHeatCacheBuilt = false;
+
         // Was the clone open the last time the tick looked? The open -> closed edge is what
         // triggers the rescan, and it is detected here rather than in the many places that
         // call SetActive(false), so no path can be forgotten.
@@ -278,6 +294,23 @@ namespace SeamlessInteriors
         // Only these may be re-enabled: touching objects the scene template itself
         // left disabled would break the look of the interior.
         public List<GameObject> JunkClearedObjects = new List<GameObject>();
+
+        // Objects standing inside this building that are NOT children of its clone -
+        // items dropped on the porch side of a doorway, furniture the adoption pass could
+        // not claim. Deactivating the clone cannot hide those, so the hide pass switches
+        // their renderers and colliders off by hand.
+        //
+        // Written down so the SHOW pass does not have to search for them again. Finding
+        // them costs two whole-scene searches (FindObjectsOfType over ~5000 gear and
+        // ~1300 placeables, 43-176 ms each); giving them back costs a walk of this list,
+        // which normally holds a handful of objects.
+        //
+        // OutsidersRecorded says whether this list can be trusted yet. Straight after a
+        // load nothing has been hidden, so there is nothing written down, and a building
+        // entered for the first time still has to search once - something outside the
+        // mod may have left an object dark in there.
+        public readonly List<GameObject> HiddenOutsiders = new List<GameObject>();
+        public bool OutsidersRecorded = false;
 
         // When the ParticleKiller trigger is built, the real interior bounds are
         // expanded by (1, 3, 1) (SetupWeatherAndParticles / ReattachPersistedInterior).
@@ -427,6 +460,10 @@ namespace SeamlessInteriors
 
                 // 3. Pass through dropped GearItems and Placeables (furniture).
                 if (col.GetComponentInParent<Il2Cpp.GearItem>() != null || col.GetComponentInParent<Il2CppTLD.Placement.Placeable>() != null)
+                    continue;
+
+                // 4. And through what mods built in the world (an Architect wall): not the building's own geometry.
+                if (SeamlessInteriorsMod.IsModOwnedRoot(ct.root))
                     continue;
 
                 // Is the FIRST valid object hit part of MasterInterior?

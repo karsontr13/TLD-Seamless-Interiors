@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+// The measurement lives on the mod class; the helpers here are top level.
+using Probe = SeamlessInteriors.SeamlessInteriorsMod.PerfProbe;
+
 namespace SeamlessInteriors
 {
     // ─────────────────────────────────────────────────────────────────────────
@@ -81,7 +84,9 @@ namespace SeamlessInteriors
         public static Il2Cpp.GearItem[] GearAll()
         {
             if (s_BatchDepth > 0 && s_Gear != null) return s_Gear;
+            long perf = Probe.Begin();
             var r = UnityEngine.Object.FindObjectsOfType<Il2Cpp.GearItem>(true);
+            Probe.Scanned(Probe.Scan.SceneGear, r.Length, perf);
             if (s_BatchDepth > 0) s_Gear = r;
             return r;
         }
@@ -89,7 +94,9 @@ namespace SeamlessInteriors
         public static Il2CppTLD.Placement.Placeable[] PlaceablesAll()
         {
             if (s_BatchDepth > 0 && s_Placeables != null) return s_Placeables;
+            long perf = Probe.Begin();
             var r = UnityEngine.Object.FindObjectsOfType<Il2CppTLD.Placement.Placeable>(true);
+            Probe.Scanned(Probe.Scan.ScenePlaceables, r.Length, perf);
             if (s_BatchDepth > 0) s_Placeables = r;
             return r;
         }
@@ -97,7 +104,9 @@ namespace SeamlessInteriors
         public static Il2Cpp.ObjectGuid[] GuidsAll()
         {
             if (s_BatchDepth > 0 && s_Guids != null) return s_Guids;
+            long perf = Probe.Begin();
             var r = UnityEngine.Object.FindObjectsOfType<Il2Cpp.ObjectGuid>(true);
+            Probe.Scanned(Probe.Scan.SceneGuids, r.Length, perf);
             if (s_BatchDepth > 0) s_Guids = r;
             return r;
         }
@@ -105,7 +114,9 @@ namespace SeamlessInteriors
         public static Il2Cpp.Container[] ContainersAll()
         {
             if (s_BatchDepth > 0 && s_Containers != null) return s_Containers;
+            long perf = Probe.Begin();
             var r = UnityEngine.Object.FindObjectsOfType<Il2Cpp.Container>(true);
+            Probe.Scanned(Probe.Scan.SceneContainers, r.Length, perf);
             if (s_BatchDepth > 0) s_Containers = r;
             return r;
         }
@@ -116,10 +127,91 @@ namespace SeamlessInteriors
             bool shared = s_LoadPhase || s_BatchDepth > 0;
             if (shared && s_Renderers != null) return s_Renderers;
 
+            long perf = Probe.Begin();
             var r = UnityEngine.Object.FindObjectsOfType<Renderer>();
+            Probe.Scanned(Probe.Scan.SceneRenderers, r.Length, perf);
             if (shared) s_Renderers = r;
             return r;
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // WHAT IS INSIDE ONE BUILDING
+    //
+    // Every "walk this clone's contents" in the mod goes through here instead of
+    // calling GetComponentsInChildren at the call site. Two reasons:
+    //
+    //   1. MEASUREMENT. These walks are what scales with how full a base is - a
+    //      thousand-day base is thousands of objects, and the same walk is done by
+    //      the watchdog, the door, the save and the stray sweep. One funnel makes
+    //      the report say which of them is spending the time.
+    //
+    //   2. ONE PLACE TO FIX. Caching the result per building is the actual
+    //      optimisation; it can only be done once every caller reads from the same
+    //      function. Today these are straight pass-throughs.
+    //
+    // The shape is deliberately the array GetComponentsInChildren returns, so no
+    // call site has to change when the body behind it does.
+    // ─────────────────────────────────────────────────────────────────────────
+    internal static class InteriorScan
+    {
+        public static Il2Cpp.GearItem[] Gear(GameObject master)
+        {
+            if (master == null) return s_NoGear;
+
+            long perf = Probe.Begin();
+            var r = master.GetComponentsInChildren<Il2Cpp.GearItem>(true);
+            Probe.Scanned(Probe.Scan.CloneGear, r.Length, perf);
+            return r;
+        }
+
+        public static Il2CppTLD.Placement.Placeable[] Placeables(GameObject master)
+        {
+            if (master == null) return s_NoPlaceables;
+
+            long perf = Probe.Begin();
+            var r = master.GetComponentsInChildren<Il2CppTLD.Placement.Placeable>(true);
+            Probe.Scanned(Probe.Scan.ClonePlaceables, r.Length, perf);
+            return r;
+        }
+
+        /// <summary>Renderers under one object - a whole clone, or a single item.</summary>
+        public static Renderer[] Renderers(GameObject root)
+        {
+            if (root == null) return s_NoRenderers;
+
+            long perf = Probe.Begin();
+            var r = root.GetComponentsInChildren<Renderer>(true);
+            Probe.Scanned(Probe.Scan.CloneRenderers, r.Length, perf);
+            return r;
+        }
+
+        /// <summary>Colliders under one object. Called per ITEM, so the call count matters as much as the time.</summary>
+        public static Collider[] Colliders(GameObject go)
+        {
+            if (go == null) return s_NoColliders;
+
+            long perf = Probe.Begin();
+            var r = go.GetComponentsInChildren<Collider>(true);
+            Probe.Scanned(Probe.Scan.CloneColliders, r.Length, perf);
+            return r;
+        }
+
+        /// <summary>Anything else a building is asked for: fires, cooking pots, junk tags, lighting managers.</summary>
+        public static T[] Components<T>(GameObject root) where T : Component
+        {
+            if (root == null) return new T[0];
+
+            long perf = Probe.Begin();
+            T[] r = root.GetComponentsInChildren<T>(true);
+            Probe.Scanned(Probe.Scan.CloneComponents, r != null ? r.Length : 0, perf);
+            return r ?? new T[0];
+        }
+
+        private static readonly Il2Cpp.GearItem[] s_NoGear = new Il2Cpp.GearItem[0];
+        private static readonly Il2CppTLD.Placement.Placeable[] s_NoPlaceables = new Il2CppTLD.Placement.Placeable[0];
+        private static readonly Renderer[] s_NoRenderers = new Renderer[0];
+        private static readonly Collider[] s_NoColliders = new Collider[0];
     }
 
     internal static class SceneObjectIndex

@@ -15,12 +15,10 @@ namespace SeamlessInteriors
         public static void Postfix(ref bool __result)
         {
             if (__result) return;
+            SeamlessInteriorsMod.PerfProbe.Count(SeamlessInteriorsMod.PerfProbe.Hit.CustomizableSafehouse);
 
-            Transform playerT = GameManager.GetPlayerTransform();
-            if (playerT != null && SeamlessInteriorsMod.IsPositionInsideAnyInstance(playerT.position))
-            {
-                __result = true;
-            }
+            // The HUD asks every frame: the door state answers without raycasts.
+            if (SeamlessInteriorsMod.s_IsPlayerInsideClone) __result = true;
         }
     }
 
@@ -92,31 +90,12 @@ namespace SeamlessInteriors
         public static void Postfix(Il2Cpp.DecorationItem item, ref bool __result)
         {
             if (__result) return;
+            SeamlessInteriorsMod.PerfProbe.Count(SeamlessInteriorsMod.PerfProbe.Hit.DecorationInside);
 
             Transform playerT = GameManager.GetPlayerTransform();
             if (playerT != null && SeamlessInteriorsMod.IsPositionInsideAnyInstance(playerT.position))
             {
                 __result = true;
-            }
-        }
-    }
-
-    // Placement mode has its own indoor check; report indoors while an object is
-    // being placed inside an instance.
-    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Weather), nameof(Il2Cpp.Weather.IsIndoorEnvironment))]
-    public class FakeIndoorForPlacementPatch
-    {
-        public static void Postfix(ref bool __result)
-        {
-            if (__result) return;
-
-            PlayerManager pm = GameManager.GetPlayerManagerComponent();
-            if (pm != null && pm.m_ObjectToPlace != null)
-            {
-                if (SeamlessInteriorsMod.IsPositionInsideAnyInstance(pm.transform.position))
-                {
-                    __result = true;
-                }
             }
         }
     }
@@ -132,6 +111,8 @@ namespace SeamlessInteriors
     {
         public static bool Prefix(ref Collider __result)
         {
+            SeamlessInteriorsMod.PerfProbe.Count(SeamlessInteriorsMod.PerfProbe.Hit.PlacementChecks);
+
             Transform playerT = GameManager.GetPlayerTransform();
             if (playerT != null && SeamlessInteriorsMod.IsPositionInsideAnyInstance(playerT.position))
             {
@@ -148,6 +129,8 @@ namespace SeamlessInteriors
     {
         public static bool Prefix(ref bool __result)
         {
+            SeamlessInteriorsMod.PerfProbe.Count(SeamlessInteriorsMod.PerfProbe.Hit.PlacementChecks);
+
             Transform playerT = GameManager.GetPlayerTransform();
             if (playerT != null && SeamlessInteriorsMod.IsPositionInsideAnyInstance(playerT.position))
             {
@@ -164,6 +147,8 @@ namespace SeamlessInteriors
     {
         public static bool Prefix(ref bool __result)
         {
+            SeamlessInteriorsMod.PerfProbe.Count(SeamlessInteriorsMod.PerfProbe.Hit.PlacementChecks);
+
             Transform playerT = GameManager.GetPlayerTransform();
             if (playerT != null && SeamlessInteriorsMod.IsPositionInsideAnyInstance(playerT.position))
             {

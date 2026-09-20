@@ -99,7 +99,7 @@ namespace SeamlessInteriors
             //    m_PlacementListSerialized ended up holding nothing but "Removed"
             //    tombstones, so there were no transforms left for the transcode to carry
             //    across. (see IsInteriorLoadedAsCloneTemplate)
-            if (SeamlessInteriorsMod.IsInteriorLoadedAsCloneTemplate(placeable.gameObject.scene.name))
+            if (SeamlessInteriorsMod.IsInteriorLoadedAsCloneTemplate(SeamlessInteriorsMod.RealSceneName(placeable.gameObject.scene)))
                 return false;
 
             return true;
@@ -115,6 +115,9 @@ namespace SeamlessInteriors
         // can only ever carry the same tag.
         public static void Postfix(Il2Cpp.SlotData __0)
         {
+            // The whole write is one synchronous block in the middle of a frame, so the
+            // step timings say which part of it the player feels.
+            long savePerf = SeamlessInteriorsMod.PerfProbe.Begin();
             SceneScan.Begin();
             try
             {
@@ -124,21 +127,31 @@ namespace SeamlessInteriors
                 // Which interior the player is currently in.
                 SeamlessInteriorsMod.SavePlayerInsideState();
 
+                long perf = SeamlessInteriorsMod.PerfProbe.Begin();
                 // Placed-object positions for every building.
                 SeamlessInteriorsMod.SaveAllPlaceablePositions();
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.SavePlaceables, perf);
 
+                perf = SeamlessInteriorsMod.PerfProbe.Begin();
                 // Loose GearItems sitting in deactivated clone scenes.
                 SeamlessInteriorsMod.SaveAllInactiveSceneGearItems();
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.SaveGear, perf);
 
+                perf = SeamlessInteriorsMod.PerfProbe.Begin();
                 // Container contents inside clone scenes.
                 SeamlessInteriorsMod.SaveAllContainerData();
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.SaveContainers, perf);
 
+                perf = SeamlessInteriorsMod.PerfProbe.Begin();
                 // State of broken / harvested / opened objects
                 // (BreakDown, Harvestable, Smashable, OpenClose, Lock).
                 SeamlessInteriorsMod.SaveAllInteractiveStates();
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.SaveState, perf);
 
+                perf = SeamlessInteriorsMod.PerfProbe.Begin();
                 // Safehouse "clear junk" (R) state.
                 SeamlessInteriorsMod.SaveAllJunkStates();
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.SaveJunk, perf);
             }
             catch (System.Exception ex)
             {
@@ -147,6 +160,7 @@ namespace SeamlessInteriors
             finally
             {
                 SceneScan.End();
+                SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.Save, savePerf);
             }
         }
     }
