@@ -238,6 +238,7 @@ namespace SeamlessInteriors
                 // NEVER touch objects on the player, in their hands, in their inventory or
                 // under WorldView.
                 if (IsPlayerOrInventory(p.transform)) continue;
+                if (IsOnExteriorShell(p.transform)) continue;
 
                 if (verdict == StrayVerdict.NeedsRaycast)
                 {
@@ -831,6 +832,9 @@ namespace SeamlessInteriors
 
                     // NEVER touch objects on the player, in their hands or in their inventory.
                     if (IsPlayerOrInventory(p.transform)) continue;
+
+                    // Files written before shells were excluded may still claim shell decorations.
+                    if (IsOnExteriorShell(p.transform)) continue;
 
                     var entry = guidToPosRot[p.m_Guid];
 
@@ -1608,6 +1612,7 @@ namespace SeamlessInteriors
 
                 if (gear.transform.IsChildOf(masterT)) continue; // already saved above
                 if (IsPlayerOrInventory(gear.transform)) continue; // in the player's hands
+                if (IsOnExteriorShell(gear.transform)) continue; // outdoor scenery
 
                 // Only items truly standing in the world (see ShouldPersistGear).
                 // A disabled item was picked up, is in a container, or was eliminated.
@@ -1979,6 +1984,7 @@ namespace SeamlessInteriors
                 if (gear == null || gear.gameObject == null) continue;
                 if (hasDelFilter && !delFilter.Contains(gear.transform.position)) continue;
                 if (IsPlayerOrInventory(gear.transform)) continue;
+                if (IsOnExteriorShell(gear.transform)) continue; // never saved as building gear
 
                 // Anything the player set down themselves lives under the game's own
                 // placement root, and this loop DESTROYS what it matches. Being wrong

@@ -951,13 +951,27 @@ namespace SeamlessInteriors
             // 3) Already under this clone?
             if (t.IsChildOf(instance.MasterInterior.transform)) return false;
 
-            // 4) NEVER touch objects on the player, in their hands or in their inventory.
+            // 4) Fixed to a building's outside walls: it stays with the shell.
+            if (IsOnExteriorShell(t)) return false;
+
+            // 5) NEVER touch objects on the player, in their hands or in their inventory.
             if (IsPlayerOrInventory(t)) return false;
 
-            // 5) If it is part of another clone scene, or inside the volume of another
+            // 6) If it is part of another clone scene, or inside the volume of another
             //    clone that is currently OPEN (a basement and the floor above can overlap),
             //    leave it to that instance.
             return !BelongsToAnotherInstance(instance, t);
+        }
+
+        // Part of an exterior shell (the hangar's door signs): outdoor scenery, never building content.
+        private static bool IsOnExteriorShell(Transform t)
+        {
+            foreach (var inst in ActiveInteriors.Values)
+            {
+                GameObject shell = inst.ExteriorShell;
+                if (shell != null && t.IsChildOf(shell.transform)) return true;
+            }
+            return false;
         }
 
         public static void SetInteriorItemsVisible(SeamlessInteriorInstance instance, bool visible)
@@ -1114,6 +1128,7 @@ namespace SeamlessInteriors
                     if (gear == null || gear.gameObject == null) continue;
                     if (!filterBounds.Contains(gear.transform.position)) continue; // AABB pre-filter
                     if (gear.transform.IsChildOf(masterT)) continue; // already handled above
+                    if (IsOnExteriorShell(gear.transform)) continue; // shown and hidden with its shell
                     if (IsPlayerOrInventory(gear.transform)) continue;
                     if (BelongsToAnotherInstance(instance, gear.transform)) continue;
 
@@ -1129,6 +1144,7 @@ namespace SeamlessInteriors
                     if (p == null || p.gameObject == null) continue;
                     if (!filterBounds.Contains(p.transform.position)) continue;
                     if (p.transform.IsChildOf(masterT)) continue;
+                    if (IsOnExteriorShell(p.transform)) continue;
                     if (IsPlayerOrInventory(p.transform)) continue;
                     if (BelongsToAnotherInstance(instance, p.transform)) continue;
 

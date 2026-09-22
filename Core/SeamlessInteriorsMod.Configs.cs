@@ -368,7 +368,7 @@ namespace SeamlessInteriors
                 InteriorSceneBaseName = "FarmHouseABasement",
                 ExteriorShellPrefabName = "", // no shell of its own: it shares the FarmHouse shell
                 YOffset = 0f,
-                ScaleAdjustment = new Vector3(1.01f, 1f, 1f),
+                ScaleAdjustment = new Vector3(1.02f, 1f, 1.02f),
                 FallbackPosition = new Vector3(1448.7f, 41.5001f, 1027.8f),
                 ForceExactPosition = true,
 
@@ -446,8 +446,8 @@ namespace SeamlessInteriors
                 EntrySpawnPosition = new Vector3(163.1478f, 162.594f, -617.2457f),
                 ExitSpawnPosition = new Vector3(163.1478f, 161.594f, -617.2457f),
                 RotationOffset = new Vector3(0f, 300f, 0f),
-                TerrainHoleSize = new Vector3(10f, 10f, 10f), // hole size (X width, Y depth, Z length)
-                TerrainHoleOffset = new Vector3(166.4297f, 158.3126f, -622.0966f), // hole centre in world space
+                TerrainHoleSize = new Vector3(27f, 10f, 50f), // hole size (X width, Y depth, Z length)
+                TerrainHoleOffset = new Vector3(166.4297f, 158.3126f, -642.0966f), // hole centre in world space
                 DoorSpawnPoints = new List<DoorSpawnPoint>
                 {
                     

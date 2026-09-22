@@ -60,8 +60,7 @@ namespace SeamlessInteriors
             {
                 if (inst.RunCompleted && inst.MasterInterior != null)
                 {
-                    foreach (var r in InteriorScan.Renderers(inst.MasterInterior))
-                        if (r != null) r.enabled = true;
+                    ShowCloneRenderers(inst);
 
                     // Wherever renderers are enabled unconditionally the colliders have to
                     // be enabled too, otherwise items are visible but non-interactive
@@ -112,9 +111,11 @@ namespace SeamlessInteriors
             if (s_LoadedSceneTemplates.ContainsKey(baseName) && s_LoadedSceneTemplates[baseName] != null)
             {
                 // Deep copy from the template.
-                instance.MasterInterior = UnityEngine.Object.Instantiate(s_LoadedSceneTemplates[baseName]);
+                GameObject template = s_LoadedSceneTemplates[baseName];
+                instance.MasterInterior = UnityEngine.Object.Instantiate(template);
                 instance.MasterInterior.name = $"Master_{instance.Config.ResolvedInstanceId}_Interior";
                 instance.MasterInterior.SetActive(false);
+                instance.SceneDisabledRenderers = MapSceneDisabledRenderers(template, instance.MasterInterior);
 
                 var exteriorScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(instance.Config.ExteriorSceneName);
                 if (exteriorScene.isLoaded)
@@ -204,6 +205,9 @@ namespace SeamlessInteriors
                 }
             }
 
+            // Nothing has touched the renderers yet, so this is the state the scene shipped.
+            instance.SceneDisabledRenderers = CollectDisabledRenderers(instance.MasterInterior);
+
             // --- FIX 2: RESTORE THE OUTDOOR LIGHTMAPS AFTER THE INTERIOR IS LOADED ---
             if (!IsDarkAtmosphereMode)
             {
@@ -222,6 +226,76 @@ namespace SeamlessInteriors
             // Store as a template so other instances of the same scene can copy it.
             s_LoadedSceneTemplates[baseName] = instance.MasterInterior;
         }
+
+        private static List<Renderer> CollectDisabledRenderers(GameObject root)
+        {
+            var result = new List<Renderer>();
+            foreach (var r in InteriorScan.Renderers(root))
+                if (r != null && !r.enabled) result.Add(r);
+            return result;
+        }
+
+        // The copy's counterparts of the template's scene-disabled renderers, found by sibling path.
+        // By now the template's own renderers may all be switched on or off by the clone pipeline.
+        private static List<Renderer> MapSceneDisabledRenderers(GameObject template, GameObject copy)
+        {
+            var result = new List<Renderer>();
+
+            List<Renderer> source = null;
+            foreach (var inst in ActiveInteriors.Values)
+            {
+                if (inst.MasterInterior == template) { source = inst.SceneDisabledRenderers; break; }
+            }
+            if (source == null) return result;
+
+            Transform templateT = template.transform;
+            var path = new List<int>();
+
+            foreach (var r in source)
+            {
+                if (r == null) continue;
+
+                path.Clear();
+                Transform t = r.transform;
+                while (t != null && t != templateT)
+                {
+                    path.Add(t.GetSiblingIndex());
+                    t = t.parent;
+                }
+                if (t == null) continue;
+
+                Transform c = copy.transform;
+                for (int i = path.Count - 1; i >= 0 && c != null; i--)
+                    c = path[i] < c.childCount ? c.GetChild(path[i]) : null;
+
+                // A GameObject holds at most one Renderer.
+                Renderer match = c != null ? c.GetComponent<Renderer>() : null;
+                if (match != null) result.Add(match);
+            }
+
+            return result;
+        }
+
+        // Turns the clone's renderers on, except the scene-disabled ones: those keep their current state.
+        public static void ShowCloneRenderers(SeamlessInteriorInstance instance)
+        {
+            if (instance == null || instance.MasterInterior == null) return;
+
+            var keepOff = s_KeepOffScratch;
+            keepOff.Clear();
+            foreach (var r in instance.SceneDisabledRenderers)
+                if (r != null && !r.enabled) keepOff.Add(r);
+
+            foreach (var r in InteriorScan.Renderers(instance.MasterInterior))
+                if (r != null) r.enabled = true;
+
+            for (int i = 0; i < keepOff.Count; i++)
+                keepOff[i].enabled = false;
+            keepOff.Clear();
+        }
+
+        private static readonly List<Renderer> s_KeepOffScratch = new List<Renderer>();
+
         public void AutoResolveOverlappingExternalObjects(SeamlessInteriorInstance instance)
         {
             instance.ResolvedExternalHiddenObjects.Clear();

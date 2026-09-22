@@ -149,6 +149,10 @@ namespace SeamlessInteriors
         public GameObject MasterInterior = null;
         public BoxCollider InteriorTrigger = null;
 
+        // Renderers the interior scene ships switched off (AFHangar's stair collision ramps).
+        // ShowCloneRenderers leaves them as they are.
+        public List<Renderer> SceneDisabledRenderers = new List<Renderer>();
+
         public List<WeatherParticleManager.ParticleKillerInstance> CustomKillers = new List<WeatherParticleManager.ParticleKillerInstance>();
         public WeatherParticleManager.ParticleKillerInstance ParticleKiller = null;
 

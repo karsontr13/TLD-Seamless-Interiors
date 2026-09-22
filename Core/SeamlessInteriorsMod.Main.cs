@@ -1162,6 +1162,7 @@ namespace SeamlessInteriors
                     instance.ExteriorFx = null;
                     instance.MasterInterior = null;
                     instance.InteriorTrigger = null;
+                    instance.SceneDisabledRenderers.Clear();
                     instance.WatchdogStarted = false;
                     instance.WatchdogGeneration++;
                     instance.InteriorPersisted = false;
@@ -1617,8 +1618,7 @@ namespace SeamlessInteriors
             if (playerSavedInside && instance.MasterInterior != null)
             {
                 UpdateGlobalEnvironment(instance);
-                foreach (var r in InteriorScan.Renderers(instance.MasterInterior))
-                    if (r != null) r.enabled = true;
+                ShowCloneRenderers(instance);
 
                 // Renderers were enabled unconditionally, so the colliders must be too,
                 // otherwise items are visible but non-interactive

@@ -187,8 +187,7 @@ namespace SeamlessInteriors
                     // Force every structural renderer on (they can get lost across an
                     // activate/deactivate cycle).
                     perf = SeamlessInteriorsMod.PerfProbe.Begin();
-                    foreach (var r in InteriorScan.Renderers(matchedInstance.MasterInterior))
-                        if (r != null) r.enabled = true;
+                    SeamlessInteriorsMod.ShowCloneRenderers(matchedInstance);
                     SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalForceRenderers, perf);
 
                     // Renderers forced on means colliders must be too, otherwise items are
@@ -457,8 +456,7 @@ namespace SeamlessInteriors
                     if (targetInstance.MasterInterior != null)
                     {
                         targetInstance.MasterInterior.SetActive(true);
-                        foreach (var r in InteriorScan.Renderers(targetInstance.MasterInterior))
-                            if (r != null) r.enabled = true;
+                        SeamlessInteriorsMod.ShowCloneRenderers(targetInstance);
 
                         SeamlessInteriorsMod.RestoreInteriorItemColliders(targetInstance);
                     }
@@ -527,8 +525,7 @@ namespace SeamlessInteriors
                     if (parentInstance.MasterInterior != null)
                     {
                         parentInstance.MasterInterior.SetActive(true);
-                        foreach (var r in InteriorScan.Renderers(parentInstance.MasterInterior))
-                            if (r != null) r.enabled = true;
+                        SeamlessInteriorsMod.ShowCloneRenderers(parentInstance);
 
                         SeamlessInteriorsMod.RestoreInteriorItemColliders(parentInstance);
                     }
