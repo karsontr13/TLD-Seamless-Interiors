@@ -26,7 +26,8 @@ namespace SeamlessInteriors
                 // ─── breakdowns, not counted again ───
                 PortalHydrate, PortalActivate, PortalForceRenderers, PortalColliders, PortalHideSync,
                 PortalItemsVisible, PortalMarkInside,
-                SaveGear, SavePlaceables, SaveContainers, SaveState, SaveJunk, Count
+                SaveGear, SavePlaceables, SaveContainers, SaveState, SaveJunk,
+                ModLoad, ModFirstBuild, Count
             }
 
             internal enum Hit
@@ -41,7 +42,7 @@ namespace SeamlessInteriors
             {
                 SceneGear, ScenePlaceables, SceneGuids, SceneContainers, SceneRenderers,
                 CloneGear, ClonePlaceables, CloneRenderers, CloneColliders, CloneComponents,
-                ViewCaller, ViewFilter, Count
+                ViewCaller, ViewFilter, RootView, Count
             }
 
             private static readonly string[] s_SectionNames =
@@ -52,7 +53,8 @@ namespace SeamlessInteriors
                 "kayit", "kapi-gecisi",
                 "giris-dolum", "giris-acma", "giris-renderer", "giris-collider", "giris-gizleme",
                 "giris-esya", "giris-konum",
-                "kayit-esya", "kayit-mobilya", "kayit-konteyner", "kayit-durum", "kayit-cop"
+                "kayit-esya", "kayit-mobilya", "kayit-konteyner", "kayit-durum", "kayit-cop",
+                "mod-yukleme", "mod-ilk-kurulum"
             };
 
             private static readonly string[] s_HitNames =
@@ -64,7 +66,7 @@ namespace SeamlessInteriors
             {
                 "sahne-esya", "sahne-mobilya", "sahne-guid", "sahne-konteyner", "sahne-renderer",
                 "klon-esya", "klon-mobilya", "klon-renderer", "klon-collider", "klon-bilesen",
-                "gorunum-yigin", "gorunum-filtre"
+                "gorunum-yigin", "gorunum-filtre", "kok-gorunum"
             };
 
             private const float REPORT_SECONDS = 5f;

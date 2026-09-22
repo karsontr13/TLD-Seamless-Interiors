@@ -115,9 +115,10 @@ namespace SeamlessInteriors
                 instance.MasterInterior = UnityEngine.Object.Instantiate(template);
                 instance.MasterInterior.name = $"Master_{instance.Config.ResolvedInstanceId}_Interior";
                 instance.MasterInterior.SetActive(false);
+                CleanTemplateCopy(template, instance.MasterInterior);
                 instance.SceneDisabledRenderers = MapSceneDisabledRenderers(template, instance.MasterInterior);
 
-                var exteriorScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(instance.Config.ExteriorSceneName);
+                var exteriorScene = RealSceneByName(instance.Config.ExteriorSceneName);
                 if (exteriorScene.isLoaded)
                     UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(instance.MasterInterior, exteriorScene);
 
@@ -188,7 +189,7 @@ namespace SeamlessInteriors
             instance.MasterInterior = new GameObject($"Master_{instance.Config.ResolvedInstanceId}_Interior");
             instance.MasterInterior.SetActive(false);
 
-            var exteriorScene2 = UnityEngine.SceneManagement.SceneManager.GetSceneByName(instance.Config.ExteriorSceneName);
+            var exteriorScene2 = RealSceneByName(instance.Config.ExteriorSceneName);
             UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(instance.MasterInterior, exteriorScene2);
 
             // Reparent the roots of all three scenes under MasterInterior; the now empty
@@ -198,7 +199,7 @@ namespace SeamlessInteriors
             foreach (var scn in loadedScenes)
             {
                 if (!scn.isLoaded) continue;
-                foreach (GameObject rootObj in scn.GetRootGameObjects())
+                foreach (GameObject rootObj in RealRootObjects(scn))
                 {
                     if (rootObj == instance.MasterInterior) continue;
                     rootObj.transform.SetParent(instance.MasterInterior.transform, false);

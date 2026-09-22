@@ -180,6 +180,8 @@
     <Compile Include="Core\SeamlessInteriorsMod.SaveData.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.SaveDeletion.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.SaveIdentity.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.SceneLoadReplay.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.SceneRootView.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Spawning.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Utility.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.VanillaView.cs" />

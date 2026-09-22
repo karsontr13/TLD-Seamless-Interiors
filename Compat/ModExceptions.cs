@@ -141,6 +141,23 @@ namespace SeamlessInteriors
             return assembly != null && assembly == s_WeatherOverhaul;
         }
 
+        private static readonly Dictionary<Assembly, bool> s_DebugTools = new Dictionary<Assembly, bool>();
+
+        // UnityExplorer and its UniverseLib walk scenes for the person debugging; the scene root view leaves them alone.
+        // Code typed into its console compiles into its own assembly and still counts as a mod.
+        internal static bool IsDebugTool(Assembly assembly)
+        {
+            if (assembly == null) return false;
+
+            bool tool;
+            if (s_DebugTools.TryGetValue(assembly, out tool)) return tool;
+
+            string name = assembly.GetName().Name ?? "";
+            tool = name.StartsWith("UnityExplorer", StringComparison.Ordinal) || name.StartsWith("UniverseLib", StringComparison.Ordinal);
+            s_DebugTools[assembly] = tool;
+            return tool;
+        }
+
         // ─── Helpers ───
 
         private static MethodInfo StaticMethod(Assembly assembly, string typeName, string methodName)

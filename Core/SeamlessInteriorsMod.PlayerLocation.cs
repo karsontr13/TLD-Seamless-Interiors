@@ -225,7 +225,7 @@ namespace SeamlessInteriors
         public static bool IsExteriorSceneLoaded(SeamlessInteriorInstance instance)
         {
             if (instance == null || string.IsNullOrEmpty(instance.Config.ExteriorSceneName)) return false;
-            return UnityEngine.SceneManagement.SceneManager.GetSceneByName(instance.Config.ExteriorSceneName).isLoaded;
+            return RealSceneByName(instance.Config.ExteriorSceneName).isLoaded;
         }
     }
 }

@@ -54,6 +54,8 @@ namespace SeamlessInteriors
         // Brings the game's indoor space in line with PlayerInteriorId; returns at once when nothing changed.
         internal static void SyncVanillaIndoorSpace()
         {
+            TickPendingBuildingLoad();
+
             string wanted = PlayerInteriorId;
             bool enteredAlive = s_EnteredSpace != null;
             if (wanted == s_EnteredSpaceId && (wanted == null || enteredAlive)) return;
@@ -76,6 +78,8 @@ namespace SeamlessInteriors
                 }
 
                 ForgetSpaceOnPlayer(s_EnteredSpace);
+                // Its interior unloads for mods (SeamlessInteriorsMod.SceneLoadReplay.cs).
+                UnloadBuildingForMods();
                 if (s_DebugBounds) MelonLogger.Msg($"[VANILLA-ALAN] {s_EnteredSpaceId}: ic mekan alanindan cikildi.");
                 s_EnteredSpace = null;
                 s_EnteredSpaceId = null;
@@ -100,6 +104,9 @@ namespace SeamlessInteriors
             try { space.OnTriggerEnter(player); }
             finally { s_SyncingSpace = false; }
             MakeSureSpaceTaken(space, wanted);
+
+            // With the view on, the interior loads for mods as a vanilla door would load it.
+            LoadBuildingForMods(instance);
         }
 
         // ─── INDOOR READOUT ───
@@ -481,6 +488,7 @@ namespace SeamlessInteriors
 
             InstallWorldView(hookCtor);
             InstallSaveNameGuard(hookCtor);
+            InstallSceneRootView(hookCtor);
         }
 
         // MonoMod is reached by reflection: its constructors cannot be bound from a net472 project.
@@ -537,7 +545,7 @@ namespace SeamlessInteriors
         {
             string real = orig();
             if (s_WeatherRegionView > 0) return real;
-            if (InPlaceTick) return real != null && real == s_ContextRegion ? s_TickPlace.Scene : real;
+            if (InPlaceTick) return real != null && real == s_TickPlace.Region ? s_TickPlace.Scene : real;
             return real != null && real == s_ViewRegionScene && IsSceneViewActive() ? s_ViewInteriorScene : real;
         }
 
@@ -548,7 +556,7 @@ namespace SeamlessInteriors
         {
             string real = orig(ref self);
             if (s_WeatherRegionView > 0) return real;
-            if (InPlaceTick) return real != null && real == s_ContextRegion ? s_TickPlace.Scene : real;
+            if (InPlaceTick) return real != null && real == s_TickPlace.Region ? s_TickPlace.Scene : real;
             return real != null && real == s_ViewRegionScene && IsSceneViewActive() ? s_ViewInteriorScene : real;
         }
 
@@ -844,6 +852,32 @@ namespace SeamlessInteriors
     [HarmonyLib.HarmonyPatch(typeof(UnityEngine.SceneManagement.SceneManager), "Internal_SceneUnloaded")]
     internal static class SceneUnloadedViewGuardPatch
     {
+        [HarmonyLib.HarmonyPriority(HarmonyLib.Priority.First)]
+        private static void Prefix() { SeamlessInteriorsMod.EnterUnitySceneCallback(); }
+
+        private static void Finalizer() { SeamlessInteriorsMod.ExitUnitySceneCallback(); }
+    }
+
+    // The game's own load and save steps: mods see the scene the game really loads or saves, the region.
+    // SI's replays for a building call other mods' patches directly and never pass through here.
+    [HarmonyLib.HarmonyPatch]
+    internal static class RealSceneLifecycleGuardPatch
+    {
+        private static System.Collections.Generic.IEnumerable<System.Reflection.MethodBase> TargetMethods()
+        {
+            var targets = new System.Reflection.MethodBase[]
+            {
+                HarmonyLib.AccessTools.Method(typeof(Il2Cpp.GameManager), "Awake"),
+                HarmonyLib.AccessTools.Method(typeof(Il2Cpp.GameManager), "Start"),
+                HarmonyLib.AccessTools.Method(typeof(Il2Cpp.GameManager), "InstantiatePlayerObject"),
+                HarmonyLib.AccessTools.Method(typeof(Il2Cpp.QualitySettingsManager), "ApplyCurrentQualitySettings"),
+                HarmonyLib.AccessTools.Method(typeof(Il2Cpp.SaveGameSystem), "LoadSceneData"),
+                HarmonyLib.AccessTools.Method(typeof(Il2Cpp.SaveGameSystem), "SaveSceneData")
+            };
+            foreach (var target in targets)
+                if (target != null) yield return target;
+        }
+
         [HarmonyLib.HarmonyPriority(HarmonyLib.Priority.First)]
         private static void Prefix() { SeamlessInteriorsMod.EnterUnitySceneCallback(); }
 

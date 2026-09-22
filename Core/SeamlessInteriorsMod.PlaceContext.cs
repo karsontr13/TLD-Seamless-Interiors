@@ -46,6 +46,8 @@ namespace SeamlessInteriors
             internal string Building;
             internal bool Indoor;
             internal string Scene;
+            // The loaded region whose name reads as Scene.
+            internal string Region;
             internal float Temperature;
         }
 
@@ -453,7 +455,7 @@ namespace SeamlessInteriors
             PlaceSnapshot snapshot;
             if (s_PlaceSnapshots.TryGetValue(where, out snapshot)) return snapshot;
 
-            snapshot = new PlaceSnapshot { Building = where == REGION_PLACE ? null : where, Indoor = where != REGION_PLACE, Scene = s_ContextRegion };
+            snapshot = new PlaceSnapshot { Building = where == REGION_PLACE ? null : where, Indoor = where != REGION_PLACE, Scene = s_ContextRegion, Region = s_ContextRegion };
             SeamlessInteriorInstance instance;
             if (snapshot.Building != null && ActiveInteriors.TryGetValue(where, out instance) && instance != null
                 && !string.IsNullOrEmpty(instance.Config.InteriorSceneBaseName))

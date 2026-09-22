@@ -302,6 +302,9 @@ namespace SeamlessInteriors
 
             // The two cases no vanilla answer can cover (see Compat/ModExceptions.cs).
             ModExceptions.Install(HarmonyInstance);
+
+            // Which mods' scene load hooks a building's load will run (SeamlessInteriorsMod.SceneLoadReplay.cs).
+            ReportBuildingLoadHooks();
         }
 
         public override void OnUpdate()
@@ -1104,6 +1107,10 @@ namespace SeamlessInteriors
             // leaves the audio permanently muffled or inaudible.
             ResetAudioOcclusionCounters("unload");
 
+            // What mods made while a building of this region was loaded for them goes with the region.
+            if (unloadedSupportedExterior)
+                ForgetBuildingLoads();
+
             // A mod-triggered load takes the player out of the building, whatever the save says.
             string savedIdOnUnload = IsModSceneLoadPending() ? "" : GetSavedPlayerInsideInstanceId();
             if (string.IsNullOrEmpty(savedIdOnUnload))
@@ -1287,7 +1294,7 @@ namespace SeamlessInteriors
                 elapsed += 0.5f;
             }
 
-            var exteriorScene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(instance.Config.ExteriorSceneName);
+            var exteriorScene = RealSceneByName(instance.Config.ExteriorSceneName);
             if (exteriorScene.isLoaded && instance.MasterInterior != null)
             {
                 UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(instance.MasterInterior, exteriorScene);
@@ -1524,6 +1531,11 @@ namespace SeamlessInteriors
             DisableInteriorContainerSerialization(instance.MasterInterior);
             RestoreSceneSaveData(instance);
             yield return null;
+
+            // Nothing saved for this building yet: its interior loads for mods as on a first visit, before the
+            // spawn chance roll below so what they spawn rolls with the rest (SeamlessInteriorsMod.SceneLoadReplay.cs).
+            if (!HasPersistedLootRecord(instance))
+                LoadBuildingContentForMods(instance);
 
             // Activate the scene invisibly (so container Awake fires) with the renderers
             // switched off, so the player does not notice.

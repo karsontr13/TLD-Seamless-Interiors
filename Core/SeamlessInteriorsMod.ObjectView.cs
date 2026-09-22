@@ -200,9 +200,10 @@ namespace SeamlessInteriors
             string region = inside.Config.ExteriorSceneName;
             s_ViewRegionScenes.Clear();
             UnityEngine.SceneManagement.Scene regionScene = default(UnityEngine.SceneManagement.Scene);
-            for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++)
+            int sceneCount = RealSceneCount();
+            for (int i = 0; i < sceneCount; i++)
             {
-                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                var scene = RealSceneAt(i);
                 string name = RealSceneName(scene);
                 if (name != region && (name == null || !name.StartsWith(region + "_"))) continue;
                 s_ViewRegionScenes.Add(scene.handle);
@@ -214,7 +215,7 @@ namespace SeamlessInteriors
             s_ViewSystemRootsRegion = region;
             s_ViewSystemRootsScene = regionScene.handle;
             s_ViewSystemRoots.Clear();
-            foreach (GameObject root in regionScene.GetRootGameObjects())
+            foreach (GameObject root in RealRootObjects(regionScene))
             {
                 string name = root.name;
                 if (name.StartsWith("SCRIPT_") || name.StartsWith("Skill_")) s_ViewSystemRoots.Add(root.transform.GetInstanceID());
@@ -225,6 +226,12 @@ namespace SeamlessInteriors
         // and the runtime. Null for SI and for native callers, which get everything.
         private static string ModCaller()
         {
+            return ModCaller(nameof(FindObjectsView), false);
+        }
+
+        // Same walk past any of SI's view hooks; with toolsSeeAll, debugging tools get the real world too.
+        private static string ModCaller(string hook, bool toolsSeeAll)
+        {
             var trace = new StackTrace(false);
             bool pastHook = false;
             for (int i = 0; i < trace.FrameCount; i++)
@@ -233,13 +240,14 @@ namespace SeamlessInteriors
                 Type declaring = method != null ? method.DeclaringType : null;
                 if (!pastHook)
                 {
-                    pastHook = declaring == typeof(SeamlessInteriorsMod) && method.Name == nameof(FindObjectsView);
+                    pastHook = declaring == typeof(SeamlessInteriorsMod) && method.Name == hook;
                     continue;
                 }
                 if (declaring == null) continue;
 
                 Assembly assembly = declaring.Assembly;
                 if (assembly == typeof(SeamlessInteriorsMod).Assembly || ModExceptions.SeesWholeRegion(assembly)) return null;
+                if (toolsSeeAll && ModExceptions.IsDebugTool(assembly)) return null;
                 if (!IsPlumbing(assembly)) return assembly.GetName().Name;
             }
             return null;
@@ -254,7 +262,7 @@ namespace SeamlessInteriors
             plumbing = name.StartsWith("UnityEngine") || name.StartsWith("Unity.") || name.StartsWith("Il2Cpp")
                 || name == "Assembly-CSharp" || name == "Assembly-CSharp-firstpass"
                 || name.StartsWith("System") || name == "mscorlib" || name == "netstandard"
-                || name.StartsWith("MonoMod") || name == "0Harmony";
+                || name.StartsWith("MonoMod") || name == "0Harmony" || name == "MelonLoader";
             s_PlumbingAssemblies[assembly] = plumbing;
             return plumbing;
         }

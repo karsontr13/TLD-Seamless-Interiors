@@ -142,10 +142,10 @@ namespace SeamlessInteriors
 
             try
             {
-                int count = UnityEngine.SceneManagement.SceneManager.sceneCount;
+                int count = RealSceneCount();
                 for (int i = 0; i < count; i++)
                 {
-                    string name = RealSceneName(UnityEngine.SceneManagement.SceneManager.GetSceneAt(i));
+                    string name = RealSceneName(RealSceneAt(i));
                     if (string.IsNullOrEmpty(name)) continue;
 
                     foreach (var cfg in SupportedInteriors)
