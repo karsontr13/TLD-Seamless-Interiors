@@ -389,6 +389,79 @@ namespace SeamlessInteriors
                 },
             },
 
+            // 3. BarnSmall
+            new InteriorConfig
+            {
+                 InstanceId = "BarnSmallA",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "BarnHouseB",
+                 ExteriorShellPrefabName = "STR_BarnSmallA_Exterior_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(1711.393f, 49.61f, 924.9883f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "DarkLightingManager_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_Barn_B_GlassGlow" },
+                 EntrySpawnPosition = new Vector3(1711.84f, 51.4353f, 910.4988f),
+                 ExitSpawnPosition = new Vector3(1718.404f, 50.6233f, 913.3584f),
+                 RotationOffset = new Vector3(0f, 160f, 0f),
+            },
+
+            // 4. RadioControlHut
+            new InteriorConfig
+            {
+                 InstanceId = "RadioControlHut",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "RadioControlHut",
+                 ExteriorShellPrefabName = "STRSPAWN_RadioControlHut_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(1915.77f, 200.9601f, 635.4105f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "Beam Geometry", "Glow_Plane", "Glow_Plane (1)", "Glow_Plane (2)", "Day Lights", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_RadioControlHutInteriorWindowGlow_Prefab" },
+                 EntrySpawnPosition = new Vector3(1916.541f, 202.7901f, 631.2899f),
+                 ExitSpawnPosition = new Vector3(1918.394f, 201.45f, 631.263f),
+                 RotationOffset = new Vector3(0f, 50f, 0f),
+            },
+
+            // 5. Barn
+            new InteriorConfig
+            {
+                 InstanceId = "BarnA",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "BarnHouseA",
+                 ExteriorShellPrefabName = "STRSPAWN_BarnHouseA_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(1675.61f, 43.42f, 1841.659f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "FX_LightShaft_C", "BarnHouseA_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_BarnHouseAWindowsGlow_Prefab" },
+                 EntrySpawnPosition = new Vector3(1675.586f, 45.17f, 1833.239f),
+                 ExitSpawnPosition = new Vector3(1683.351f, 43.5867f, 1840.032f),
+                 RotationOffset = new Vector3(0f, 325f, 0f),
+                 DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "BarnHouseAFrontEnterPoint",
+                    DoorTransformPosition = new Vector3(1664.721f, 43.65f, 1845.217f),
+                    EntryPosition = new Vector3(1664.802f, 45.17f, 1845.277f),
+                    ExitPosition = new Vector3(1683.351f, 43.5867f, 1840.032f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BarnHouseASideEnterPoint",
+                    DoorTransformPosition = new Vector3(1675.579f, 43.82f, 1833.318f),
+                    EntryPosition = new Vector3(1675.586f, 45.17f, 1833.239f),
+                    ExitPosition = new Vector3(1677.822f, 43.5726f, 1827.994f)
+
+                    },
+                }
+            },
+
             //COASTAL HIGHWAY:
 
             // 1. Quonset

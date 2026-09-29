@@ -12,6 +12,9 @@ namespace SeamlessInteriors
 
         private void InitializeVisibilityAndWatchdog(SeamlessInteriorInstance instance)
         {
+            try { ReviveHiddenPlacedDecorations(instance); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[PLACED-FIX] {instance.Config.ResolvedInstanceId}: {ex.Message}"); }
+
             // Prefer the real player position; fall back to the transform-less path
             // when the player has not been placed in the world yet.
             PlayerManager pmInit = GameManager.GetPlayerManagerComponent();
@@ -84,6 +87,8 @@ namespace SeamlessInteriors
                     GameObject obj = list[i];
                     if (obj == null) { list.RemoveAt(i); continue; }
                     if (IsUnderAnyMasterInterior(obj.transform)) list.RemoveAt(i);
+                    // Picked up since: it belongs to the backpack now and must stay off.
+                    else if (PlayerRefs.IsPlayerRoot(obj.transform.root)) list.RemoveAt(i);
                 }
             }
 

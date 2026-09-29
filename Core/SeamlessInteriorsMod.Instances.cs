@@ -261,6 +261,9 @@ namespace SeamlessInteriors
         public readonly List<Il2Cpp.TorchItem> ClosedTorches = new List<Il2Cpp.TorchItem>();
         public readonly List<Il2Cpp.FlareItem> ClosedFlares = new List<Il2Cpp.FlareItem>();
 
+        // Curing items (saplings, hides, guts): their evolve time runs on as well.
+        public readonly List<Il2Cpp.EvolveItem> ClosedEvolveItems = new List<Il2Cpp.EvolveItem>();
+
         // ─── HEAT WHILE THE CLONE IS PARKED FOR ANOTHER REGION ───
         //
         // A parked clone's fires keep heating the building, as the vanilla mod bookkeeping does

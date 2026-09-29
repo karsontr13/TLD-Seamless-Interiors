@@ -311,6 +311,7 @@ namespace SeamlessInteriors
             Transform shellT = (instance.ExteriorShell != null) ? instance.ExteriorShell.transform : null;
 
             var hiddenIds = new HashSet<int>();
+            var placeableInside = new Dictionary<int, bool>();
             var allRenderers = SceneScan.RenderersActive();
 
             // What mods built there (an Architect wall rebuilt by its own load) is the building's content, not scenery.
@@ -334,6 +335,12 @@ namespace SeamlessInteriors
                 if (PlayerRefs.IsPlayerRoot(rt.root)) continue;
                 if (modOwned.Contains(rt.root.GetInstanceID())) continue;
                 if (renderer.gameObject.scene.name == "DontDestroyOnLoad") continue;
+
+                // Gear can be picked up: once in the backpack the hide list would switch it on at the player's feet.
+                if (rt.GetComponentInParent<GearItem>() != null) continue;
+
+                // A placeable standing inside the building is its content (the player's furniture), not scenery.
+                if (IsPlaceableInsideBuilding(instance, rt, placeableInside)) continue;
 
                 // CRITICAL: skip anything that is a child of another instance's
                 // MasterInterior or ExteriorShell. Otherwise the basement meshes
@@ -360,10 +367,61 @@ namespace SeamlessInteriors
             }
         }
 
+        // Is the renderer part of a placeable whose origin stands inside this building? Cached per placeable.
+        private static bool IsPlaceableInsideBuilding(SeamlessInteriorInstance instance, Transform t, Dictionary<int, bool> cache)
+        {
+            var p = t.GetComponentInParent<Il2CppTLD.Placement.Placeable>();
+            if (p == null) return false;
+
+            int id = p.GetInstanceID();
+            bool inside;
+            if (!cache.TryGetValue(id, out inside))
+            {
+                inside = IsPositionInsideFull(instance, p.transform.position);
+                cache[id] = inside;
+            }
+            return inside;
+        }
+
+        // Saves hit by the old hide pass hold the player's furniture as Inactive; switch it back on.
+        // Only " (PLACED)" objects standing inside an SI building are touched.
+        private static void ReviveHiddenPlacedDecorations(SeamlessInteriorInstance instance)
+        {
+            var dict = Il2CppTLD.Placement.PlaceableManager.s_Placeables;
+            if (dict == null) return;
+
+            var revive = new List<GameObject>();
+            foreach (var entry in dict)
+            {
+                var info = entry.Value;
+                if (info == null || info.m_State != Il2CppTLD.Placement.PlacementState.Inactive) continue;
+
+                var p = info.m_Handle;
+                if (p == null || p.gameObject == null || p.gameObject.activeSelf) continue;
+                if (PlayerRefs.IsPlayerRoot(p.transform.root)) continue;
+                if (IsUnderAnyMasterInterior(p.transform)) continue;
+                if (p.gameObject.name.IndexOf(SpawnedNameSuffix(), System.StringComparison.Ordinal) < 0) continue;
+                if (!instance.IsPositionInVolume(p.transform.position)) continue;
+
+                revive.Add(p.gameObject);
+            }
+
+            // Switched on after the walk: OnEnable writes back into the registry.
+            foreach (var go in revive)
+            {
+                go.SetActive(true);
+                MelonLogger.Msg($"[PLACED-FIX] {instance.Config.ResolvedInstanceId}: '{go.name}' kapali kalmisti, geri acildi.");
+            }
+        }
+
         // Adds an object to the hide list, guarding against duplicates.
         private static void AddHidden(SeamlessInteriorInstance instance, HashSet<int> seen, GameObject go)
         {
             if (go == null) return;
+
+            // Never a placeable's own object: switching it off marks it Inactive in the save for good.
+            if (go.GetComponent<Il2CppTLD.Placement.Placeable>() != null) return;
+
             if (!seen.Add(go.GetInstanceID())) return;
             instance.ResolvedExternalHiddenObjects.Add(go);
         }

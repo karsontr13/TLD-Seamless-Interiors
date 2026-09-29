@@ -123,6 +123,7 @@ namespace SeamlessInteriors
                     instance.ClosedLamps.Clear();
                     instance.ClosedTorches.Clear();
                     instance.ClosedFlares.Clear();
+                    instance.ClosedEvolveItems.Clear();
                     instance.ClosedTimeCacheDirty = false;
                     instance.ClosedTimeNextRescan = Time.time + CLOSED_INTERIOR_RESCAN_INTERVAL;
 
@@ -212,6 +213,7 @@ namespace SeamlessInteriors
             instance.ClosedLamps.Clear();
             instance.ClosedTorches.Clear();
             instance.ClosedFlares.Clear();
+            instance.ClosedEvolveItems.Clear();
 
             GameObject master = instance.MasterInterior;
             if (master == null) return;
@@ -239,14 +241,18 @@ namespace SeamlessInteriors
             foreach (var flare in flares)
                 if (flare != null) instance.ClosedFlares.Add(flare);
 
+            var evolvers = InteriorScan.Components<Il2Cpp.EvolveItem>(master);
+            foreach (var evolve in evolvers)
+                if (evolve != null) instance.ClosedEvolveItems.Add(evolve);
+
             if (s_DebugBounds && (instance.ClosedFires.Count > 0 || instance.ClosedCookingPots.Count > 0
                                   || instance.ClosedLamps.Count > 0 || instance.ClosedTorches.Count > 0
-                                  || instance.ClosedFlares.Count > 0))
+                                  || instance.ClosedFlares.Count > 0 || instance.ClosedEvolveItems.Count > 0))
             {
                 MelonLogger.Msg($"[KAPALI-ZAMAN] {instance.Config.ResolvedInstanceId}: " +
                                 $"{instance.ClosedFires.Count} ates, {instance.ClosedCookingPots.Count} tencere, " +
                                 $"{instance.ClosedLamps.Count} lamba, {instance.ClosedTorches.Count} mesale, " +
-                                $"{instance.ClosedFlares.Count} fisek takip ediliyor.");
+                                $"{instance.ClosedFlares.Count} fisek, {instance.ClosedEvolveItems.Count} kurutma takip ediliyor.");
             }
         }
 
@@ -308,6 +314,36 @@ namespace SeamlessInteriors
             }
 
             AdvanceClosedLightSources(instance, todHours);
+            AdvanceClosedEvolveItems(instance, todHours);
+        }
+
+        // Only the evolve clock moves; EvolveItem.Update turns the item into its cured
+        // form on the first frame after the building opens (same as its Deserialize catch-up).
+        private static void AdvanceClosedEvolveItems(SeamlessInteriorInstance instance, float todHours)
+        {
+            var items = instance.ClosedEvolveItems;
+            for (int i = items.Count - 1; i >= 0; i--)
+            {
+                Il2Cpp.EvolveItem evolve = items[i];
+                if (evolve == null) { items.RemoveAt(i); continue; }
+
+                // Full already: nothing more to count until Update evolves it.
+                if (evolve.m_TimeSpentEvolvingGameHours >= evolve.m_TimeToEvolveGameDays * 24f) continue;
+                if (!evolve.CanEvolve()) continue;
+
+                evolve.m_TimeSpentEvolvingGameHours += todHours;
+            }
+        }
+
+        // Is this point inside any SI building? Used where the game looks for an indoor trigger.
+        public static bool IsInsideAnyInteriorVolume(Vector3 pos)
+        {
+            foreach (var instance in ActiveInteriors.Values)
+            {
+                if (instance == null || !instance.RunCompleted) continue;
+                if (instance.IsPositionInVolume(pos)) return true;
+            }
+            return false;
         }
 
         // Lamps, torches and flares burning inside the closed building. Only their fuel and burn
