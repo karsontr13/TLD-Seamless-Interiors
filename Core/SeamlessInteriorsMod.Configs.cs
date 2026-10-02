@@ -462,6 +462,80 @@ namespace SeamlessInteriors
                 }
             },
 
+            //6. ThompsonShop
+            new InteriorConfig
+            {
+                 InstanceId = "ThompsonStore",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "RuralStoreA",
+                 ExteriorShellPrefabName = "STR_Thompson_Store_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(2443.04f, 54.5864f, 2256.31f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "RuralStoreA_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_RuralStoreAInteriorWindowsGlow_Prefab" },
+                 EntrySpawnPosition = new Vector3(2439.719f, 56.4164f, 2253.688f),
+                 ExitSpawnPosition = new Vector3(2438.583f, 55.0228f, 2255.389f),
+                 RotationOffset = new Vector3(0f, 262.0424f, 0f),
+                 DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorInteriorExit",
+                    DoorTransformPosition = new Vector3(2439.111f, 55.8784f, 2253.656f),
+                    EntryPosition = new Vector3(2439.719f, 56.4164f, 2253.688f),
+                    ExitPosition = new Vector3(2438.583f, 55.0228f, 2255.389f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorInteriorExit",
+                    DoorTransformPosition = new Vector3(2449.093f, 55.8764f, 2257.844f),
+                    EntryPosition = new Vector3(2449.377f, 56.4164f, 2256.939f),
+                    ExitPosition = new Vector3(2448.145f, 54.8628f, 2257.532f)
+
+                    },
+                }
+            },
+
+            //7. Community Hall
+            new InteriorConfig
+            {
+                 InstanceId = "CommunityHall",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "CommunityHallA",
+                 ExteriorShellPrefabName = "STR_CommunityHallA_Exterior_Prefab (1)",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1.17f, 1.17f, 1.17f),
+                 FallbackPosition = new Vector3(2366.928f, 55.84f, 2258.868f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_E", "Light_CommunityHallA_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_CommunityHallA_WindowMatte" },
+                 EntrySpawnPosition = new Vector3(2375.028f, 57.7066f, 2254.784f),
+                 ExitSpawnPosition = new Vector3(2374.767f, 56.9728f, 2255.162f),
+                 RotationOffset = new Vector3(0f, 17.8673f, 0f),
+                 DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorInteriorExit",
+                    DoorTransformPosition = new Vector3(2375.626f, 56.606f, 2254.572f),
+                    EntryPosition = new Vector3(2375.028f, 57.7066f, 2254.784f),
+                    ExitPosition = new Vector3(2374.767f, 56.9728f, 2255.162f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorInteriorExit",
+                    DoorTransformPosition = new Vector3(2361.78f, 56.613f, 2265.771f),
+                    EntryPosition = new Vector3(2362.393f, 57.6871f, 2265.505f),
+                    ExitPosition = new Vector3(2365.669f, 56.8886f, 2268.47f)
+
+                    },
+                }
+            },
+
             //COASTAL HIGHWAY:
 
             // 1. Quonset
