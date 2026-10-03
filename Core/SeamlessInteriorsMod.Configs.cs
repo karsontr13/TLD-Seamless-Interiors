@@ -535,6 +535,156 @@ namespace SeamlessInteriors
                     },
                 }
             },
+            
+            // 8. ThompsonHouse1
+            new InteriorConfig
+            {
+                 InstanceId = "ThompsonHouse_1",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "MiltonHouseA",
+                 ExteriorShellPrefabName = "STRSPAWN_HouseExteriorA_Prefab (1)",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(2341.9f, 53.88f, 2211.561f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "MiltonHouseA_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_CoastalHouseAWindowGlow_Prefab" },
+                 EntrySpawnPosition = new Vector3(2341.937f, 55.7321f, 2216.193f),
+                 ExitSpawnPosition = new Vector3(2342.267f, 55.103f, 2215.657f),
+                 RotationOffset = new Vector3(0f, 90f, 0f),
+
+            },
+
+            //9. ThompsonHouse2
+            new InteriorConfig
+            {
+                 InstanceId = "ThompsonHouse_2",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "CoastalHouseD",
+                 ExteriorShellPrefabName = "STRSPAWN_HouseExteriorD_Thomp_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(2285.409f, 56.2f, 2261.801f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "CoastalHouseD_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_CoastalHouseDWindowGlow_Prefab" },
+                 EntrySpawnPosition = new Vector3(2291.108f, 58.0521f, 2253.522f),
+                 ExitSpawnPosition = new Vector3(2291.244f, 56.067f, 2255.125f),
+                 RotationOffset = new Vector3(0f, 240, 0f),
+                 DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorExitCollider",
+                    DoorTransformPosition = new Vector3(2291.422f, 57.3115f, 2253.076f),
+                    EntryPosition = new Vector3(2291.108f, 58.0521f, 2253.522f),
+                    ExitPosition = new Vector3(2291.085f, 56.1598f, 2254.99f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorInteriorExitCollider",
+                    DoorTransformPosition = new Vector3(2289.991f, 57.3115f, 2261.248f),
+                    EntryPosition = new Vector3(2289.425f, 58.0521f, 2261.013f),
+                    ExitPosition = new Vector3(2289.965f, 56.4982f, 2261.125f)
+
+                    },
+                }
+            },
+
+            // 10. ThompsonHouse3
+            new InteriorConfig
+            {
+                 InstanceId = "ThompsonHouse_3",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "CoastalHouseF",
+                 ExteriorShellPrefabName = "STRSPAWN_HouseExteriorF_Thomp_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(2298.559f, 54f, 2245.528f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "CoastalHouseF_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_CoastalHouseFWindowGlow_Prefab" },
+                 EntrySpawnPosition = new Vector3(2300.927f, 55.8521f, 2250.822f),
+                 ExitSpawnPosition = new Vector3(2300.884f, 55.5052f, 2250.901f),
+                 RotationOffset = new Vector3(0f, 320f, 0f),
+
+            },
+
+            //11. ThompsonHouse4
+            new InteriorConfig
+            {
+                 InstanceId = "ThompsonHouse_4",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "CoastalHouseH",
+                 ExteriorShellPrefabName = "STRSPAWN_HouseExteriorHRural_Tomp_Prefab Variant",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(2311.729f, 53.5f, 2268.92f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "CoastalHouseH_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_CoastalHouseHWindowGlow_Prefab" },
+                 EntrySpawnPosition = new Vector3(2308.653f, 55.13f, 2270.068f),
+                 ExitSpawnPosition = new Vector3(2309.035f, 54.4062f, 2268.997f),
+                 RotationOffset = new Vector3(0f, 270, 0f),
+                 DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorExitCollider",
+                    DoorTransformPosition = new Vector3(2308.029f, 54.433f, 2270.104f),
+                    EntryPosition = new Vector3(2308.655f, 55.13f, 2270.133f),
+                    ExitPosition = new Vector3(2309.04f, 54.4886f, 2269.054f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorInteriorExitCollider",
+                    DoorTransformPosition = new Vector3(2310.8f, 54.433f, 2263.679f),
+                    EntryPosition = new Vector3(2310.725f, 55.13f, 2264.305f),
+                    ExitPosition = new Vector3(2313.518f, 54.6897f, 2265.395f)
+
+                    },
+                }
+            },
+
+            // 12. Thompson Church
+            new InteriorConfig
+            {
+                 InstanceId = "ThompsonChurch",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "ChurchC",
+                 ExteriorShellPrefabName = "STR_ChurchC_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(2266.723f, 55.53f, 2286.753f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_E", "ChurchC_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "STR_ChurchCGlowMesh_Prefab", "STR_ChurchCInt_Glass_Prefab" },
+                 EntrySpawnPosition = new Vector3(2270.964f, 57.3307f, 2286.781f),
+                 ExitSpawnPosition = new Vector3(2272.547f, 57.6147f, 2288.157f),
+                 RotationOffset = new Vector3(0f, 180f, 0f),
+
+            },
+
+            // 13. Forest Cabin
+            new InteriorConfig
+            {
+                 InstanceId = "ForestCabin",
+                 ExteriorSceneName = "RuralRegion",
+                 InteriorSceneBaseName = "FishingCabinA",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinA_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(940.7402f, 38.17f, 1670.38f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "FishingCabinA_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(942.5097f, 40.0221f, 1669.246f),
+                 ExitSpawnPosition = new Vector3(943.7504f, 38.955f, 1669.042f),
+                 RotationOffset = new Vector3(0f, 180f, 0f),
+
+            },
 
             //COASTAL HIGHWAY:
 
