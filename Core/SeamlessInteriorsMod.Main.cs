@@ -331,6 +331,9 @@ namespace SeamlessInteriors
             // (see SeamlessInteriorsMod.CarriedDecorations.cs)
             TickCarriedDecorationGuard();
 
+            // A shell left in a RandomBurnedHouses group the game switched off after the load.
+            TickShellVariantGuard();
+
             // While the player customizes inside a clone, the game's single "junk cleared"
             // flag has to answer for that clone. (see SeamlessInteriorsMod.Junk.cs)
             TickJunkFlagView();
@@ -505,6 +508,9 @@ namespace SeamlessInteriors
             // The game's own indoor space follows the building the player is recorded in; a load may build it late.
             SyncVanillaIndoorSpace();
             TickIndoorReadout();
+
+            // Inside a building the player gets the vanilla indoor capsule (SeamlessInteriorsMod.IndoorMovement.cs).
+            TickIndoorPlayerCapsule();
 
             // Other mods' components where the player is not run in their own place's context.
             // (see SeamlessInteriorsMod.PlaceContext.cs)
@@ -1204,20 +1210,8 @@ namespace SeamlessInteriors
                 }
             }
 
-            // Clear the template cache: templates loaded for this scene are now invalid.
-            var keysToRemove = new List<string>();
-            foreach (var kvp in s_LoadedSceneTemplates)
-            {
-                foreach (var config in SupportedInteriors)
-                {
-                    if (config.InteriorSceneBaseName == kvp.Key && config.ExteriorSceneName == sceneName)
-                    {
-                        keysToRemove.Add(kvp.Key);
-                        break;
-                    }
-                }
-            }
-            foreach (var k in keysToRemove) s_LoadedSceneTemplates.Remove(k);
+            // Clear the template snapshots: a load cut short by this unload never reached its own cleanup.
+            DestroyPristineTemplates();
         }
 
 

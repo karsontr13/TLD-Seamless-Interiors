@@ -163,6 +163,7 @@
     <Compile Include="Core\SeamlessInteriorsMod.FrozenTime.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.GearLeak.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Hydration.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.IndoorMovement.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InsideFlag.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.LegacyImport.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InteractiveState.cs" />

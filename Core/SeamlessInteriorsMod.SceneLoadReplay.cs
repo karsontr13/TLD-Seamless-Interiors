@@ -198,45 +198,6 @@ namespace SeamlessInteriors
             s_PendingLoadId = null;
         }
 
-        // Buildings sharing an interior copy the first one's clone. What mods did to that clone is its own load's
-        // doing, so the copy starts without it and has its own load later.
-        internal static void CleanTemplateCopy(GameObject template, GameObject copy)
-        {
-            if (template == null || copy == null) return;
-
-            ModLoadRecord record = s_LoadedForMods;
-            if (record != null)
-            {
-                foreach (var pair in record.ActiveBefore)
-                {
-                    GameObject original = pair.Key;
-                    if (original == null) continue;
-                    Transform counterpart = Counterpart(original.transform, template.transform, copy.transform);
-                    if (counterpart != null && counterpart.gameObject.activeSelf != pair.Value) counterpart.gameObject.SetActive(pair.Value);
-                }
-            }
-
-            foreach (string name in new[] { MOD_VISIT_CONTENT, MOD_FIRST_CONTENT })
-            {
-                Transform content = copy.transform.Find(name);
-                if (content != null) UnityEngine.Object.DestroyImmediate(content.gameObject);
-            }
-        }
-
-        // The object at the same sibling path under another root; null when original is not under fromRoot.
-        private static Transform Counterpart(Transform original, Transform fromRoot, Transform toRoot)
-        {
-            var path = new List<int>();
-            Transform t = original;
-            for (; t != null && t != fromRoot; t = t.parent) path.Add(t.GetSiblingIndex());
-            if (t == null) return null;
-
-            Transform c = toRoot;
-            for (int i = path.Count - 1; i >= 0 && c != null; i--)
-                c = path[i] < c.childCount ? c.GetChild(path[i]) : null;
-            return c;
-        }
-
         // ─── First build ───
 
         // A building filled for the first time in this save loads for mods once, as its scene would on a first visit.

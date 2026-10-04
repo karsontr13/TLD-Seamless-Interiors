@@ -65,14 +65,19 @@ namespace SeamlessInteriors
                     // redirect to it.
                     else if (isShellDoor)
                     {
+                        // Several buildings can share that scene: take the one nearest the door, not the first.
+                        float bestRedirectDist = float.MaxValue;
                         foreach (var otherInstance in SeamlessInteriorsMod.ActiveInteriors.Values)
                         {
                             if (otherInstance == instance) continue;
-                            if (__instance.m_SceneToLoad == otherInstance.Config.InteriorSceneBaseName)
+                            if (__instance.m_SceneToLoad != otherInstance.Config.InteriorSceneBaseName) continue;
+
+                            float d = Vector3.Distance(__instance.transform.position, otherInstance.Config.FallbackPosition);
+                            if (d < bestRedirectDist)
                             {
+                                bestRedirectDist = d;
                                 matchedInstance = otherInstance;
                                 isEntering = true;
-                                break;
                             }
                         }
                         if (matchedInstance != null) break;
@@ -165,6 +170,9 @@ namespace SeamlessInteriors
 
             if (isEntering)
             {
+                // A shell left in a switched-off variant group would stay up around the player.
+                SeamlessInteriorsMod.RevalidateExteriorShellAtDoor(matchedInstance);
+
                 // LAST CHANCE TO FILL THE BUILDING.
                 //
                 // Content is normally restored by the prefetch while the player walks up

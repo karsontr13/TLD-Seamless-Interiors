@@ -19,13 +19,13 @@ namespace SeamlessInteriors
                 InteriorSceneBaseName = "CampOffice",
                 ExteriorShellPrefabName = "STRSPAWN_CampOffice_Prefab",
                 YOffset = 2f,
-                ScaleAdjustment = new Vector3(1.05f, 0.98f, 1.05f),
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
                 FallbackPosition = new Vector3(1019.738f, 28.7883f, 440.6331f),
                 ForceExactPosition = false,
 
                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLight", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daytime" },
                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
-                EntrySpawnPosition = new Vector3(1018.956f, 29.1809f, 444.5092f),
+                EntrySpawnPosition = new Vector3(1018.993f, 29.1481f, 444.3246f),
                 ExitSpawnPosition = new Vector3(1019.351f, 28.1647f, 444.2208f),
                 RotationOffset = Vector3.zero,
                 DoorSpawnPoints = new List<DoorSpawnPoint>
@@ -34,7 +34,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "INTERACTIVE_CampOfficeInteriorDoorFront_Prefab",
                     DoorTransformPosition = new Vector3(1018.951f, 28.6588f, 445.1257f),
-                    EntryPosition = new Vector3(1018.956f, 29.1809f, 444.5092f),
+                    EntryPosition = new Vector3(1018.993f, 29.1481f, 444.3246f),
                     ExitPosition = new Vector3(1019.351f, 28.1647f, 444.2208f)
 
                     },
@@ -42,7 +42,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "INTERACTIVE_CampOfficeInteriorDoorBack_Prefab",
                     DoorTransformPosition = new Vector3(1016.483f, 28.6588f, 435.9877f),
-                    EntryPosition = new Vector3(1017.126f, 29.1593f, 436.104f),
+                    EntryPosition = new Vector3(1017.25f, 29.1261f, 436.3197f),
                     ExitPosition = new Vector3(1017.201f, 27.912f, 437.6288f)
 
                     },
@@ -310,13 +310,13 @@ namespace SeamlessInteriors
                 InteriorSceneBaseName = "FarmHouseA",
                 ExteriorShellPrefabName = "STRSPAWN_FarmHouseA_Prefab",
                 YOffset = 0f,
-                ScaleAdjustment = new Vector3(1.15f, 1f, 1.15f),
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
                 FallbackPosition = new Vector3(1448.9f, 49.7f, 1027.8f),
                 ForceExactPosition = true,
 
                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLight", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daytime", "Nighttime", "NightTime" },
                 ObjectsToDisable = new List<string> { "STR_FarmHouseWindowGlowB", "STR_FarmHouseWindowGlowA", "STR_FarmHouseWindowGlow", "STR_FarmHouseParlourRoomWindowGlow_Prefab", "STR_FarmHouseWindowDoubleGlow" },
-                EntrySpawnPosition = new Vector3(1452.784f, 51.5464f, 1033.838f),
+                EntrySpawnPosition = new Vector3(1452.277f, 51.5464f, 1033.05f),
                 ExitSpawnPosition = new Vector3(1454.619f, 50.5074f, 1032.469f),
                 RotationOffset = new Vector3(0f, 0f, 0f),
                 DoorSpawnPoints = new List<DoorSpawnPoint>
@@ -325,7 +325,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "STR_FarmHouseDoor_Prefab",
                     DoorTransformPosition = new Vector3(1448.9f, 49.7f, 1020.762f),
-                    EntryPosition = new Vector3(1448.936f, 51.5521f, 1021.433f),
+                    EntryPosition = new Vector3(1448.931f, 51.5521f, 1022.264f),
                     ExitPosition = new Vector3(1447.433f, 50.5513f, 1020.128f)
 
                     },
@@ -333,7 +333,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "STR_FarmHouseDoor_Prefab",
                     DoorTransformPosition = new Vector3(1444.637f, 49.7f, 1030.627f),
-                    EntryPosition = new Vector3(1445.267f, 51.5521f, 1030.662f),
+                    EntryPosition = new Vector3(1445.741f, 51.5521f, 1030.289f),
                     ExitPosition = new Vector3(1444.241f, 50.5513f, 1031.159f)
 
                     },
@@ -341,7 +341,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "STR_FarmHouseDoor_Prefab",
                     DoorTransformPosition = new Vector3(1453.155f, 49.7f, 1033.919f),
-                    EntryPosition = new Vector3(1452.784f, 51.5464f, 1033.838f),
+                    EntryPosition = new Vector3(1452.277f, 51.5464f, 1033.05f),
                     ExitPosition = new Vector3(1454.619f, 50.5074f, 1032.469f)
 
                     },
@@ -353,9 +353,9 @@ namespace SeamlessInteriors
                     {
                         TargetInstanceId = "FarmHouseABasement_1",
                         // TODO: refresh these by locating the basement door in-game
-                        ParentDoorPosition = new Vector3(1450.66f, 50.723f, 1028.214f),
-                        ChildSpawnPosition = new Vector3(1445.968f, 43.3751f, 1024.733f),
-                        ParentSpawnPosition = new Vector3(1450.087f, 51.4499f, 1028.341f),
+                        ParentDoorPosition = new Vector3(1450.43f, 50.723f, 1028.16f),
+                        ChildSpawnPosition = new Vector3(1446.022f, 43.3751f, 1024.793f),
+                        ParentSpawnPosition = new Vector3(1449.932f, 51.4499f, 1028.27f),
                     },
                 },
             },
@@ -366,24 +366,23 @@ namespace SeamlessInteriors
                 InstanceId = "FarmHouseABasement_1",
                 ExteriorSceneName = "RuralRegion",
                 InteriorSceneBaseName = "FarmHouseABasement",
-                ExteriorShellPrefabName = "", // no shell of its own: it shares the FarmHouse shell
+                ExteriorShellPrefabName = "", 
                 YOffset = 0f,
-                ScaleAdjustment = new Vector3(1.02f, 1f, 1.02f),
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
                 FallbackPosition = new Vector3(1448.7f, 41.5001f, 1027.8f),
                 ForceExactPosition = true,
 
                 ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear" },
                 ObjectsToDisable = new List<string> { "DarkLightingManager_Prefab" },
-                EntrySpawnPosition = new Vector3(1450.683f, 43.2501f, 1032.666f),
+                EntrySpawnPosition = new Vector3(1450.644f, 43.2501f, 1032.571f),
                 ExitSpawnPosition = new Vector3(1450.803f, 49.9805f, 1040.556f),
                 RotationOffset = new Vector3(0f, 270f, 0f),
                 DoorSpawnPoints = new List<DoorSpawnPoint>
                 {
-                    // The basement's own outer door
                     new DoorSpawnPoint {
                         DoorName = "STR_FarmHouseABasementDoor_Prefab",
                         DoorTransformPosition = new Vector3(1448.7f, 47.8f, 1027.8f),
-                        EntryPosition = new Vector3(1450.683f, 43.2501f, 1032.666f),
+                        EntryPosition = new Vector3(1450.644f, 43.2501f, 1032.571f),
                         ExitPosition = new Vector3(1450.803f, 49.9805f, 1040.556f)
                     },
                 },
@@ -507,12 +506,12 @@ namespace SeamlessInteriors
                  InteriorSceneBaseName = "CommunityHallA",
                  ExteriorShellPrefabName = "STR_CommunityHallA_Exterior_Prefab (1)",
                  YOffset = 0f,
-                 ScaleAdjustment = new Vector3(1.17f, 1.17f, 1.17f),
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
                  FallbackPosition = new Vector3(2366.928f, 55.84f, 2258.868f),
                  ForceExactPosition = true,
                  ObjectsToDestroy = new List<string> { "FX_LightShaft_E", "Light_CommunityHallA_Prefab", "CONTAINER_InaccessibleGear" },
                  ObjectsToDisable = new List<string> { "STR_CommunityHallA_WindowMatte" },
-                 EntrySpawnPosition = new Vector3(2375.028f, 57.7066f, 2254.784f),
+                 EntrySpawnPosition = new Vector3(2373.851f, 57.4354f, 2255.377f),
                  ExitSpawnPosition = new Vector3(2374.767f, 56.9728f, 2255.162f),
                  RotationOffset = new Vector3(0f, 17.8673f, 0f),
                  DoorSpawnPoints = new List<DoorSpawnPoint>
@@ -521,7 +520,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "FrontDoorInteriorExit",
                     DoorTransformPosition = new Vector3(2375.626f, 56.606f, 2254.572f),
-                    EntryPosition = new Vector3(2375.028f, 57.7066f, 2254.784f),
+                    EntryPosition = new Vector3(2373.851f, 57.4354f, 2255.377f),
                     ExitPosition = new Vector3(2374.767f, 56.9728f, 2255.162f)
 
                     },
@@ -529,7 +528,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "BackDoorInteriorExit",
                     DoorTransformPosition = new Vector3(2361.78f, 56.613f, 2265.771f),
-                    EntryPosition = new Vector3(2362.393f, 57.6871f, 2265.505f),
+                    EntryPosition = new Vector3(2363.052f, 57.4187f, 2264.541f),
                     ExitPosition = new Vector3(2365.669f, 56.8886f, 2268.47f)
 
                     },
@@ -695,13 +694,13 @@ namespace SeamlessInteriors
                 InteriorSceneBaseName = "QuonsetGasStation",
                 ExteriorShellPrefabName = "STRSPAWN_QuonsetGasStation_Prefab",
                 YOffset = 0f,
-                ScaleAdjustment = new Vector3(1.04f, 1f, 1.02f),
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
                 FallbackPosition = new Vector3(772.6199f, 25.58f, 648.0303f),
                 ForceExactPosition = true,
 
                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLight", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daytime" },
                 ObjectsToDisable = new List<string> { "STR_GarageWindowsGlow_Prefab" },
-                EntrySpawnPosition = new Vector3(761.7346f, 27.41f, 646.8323f),
+                EntrySpawnPosition = new Vector3(762.0394f, 27.41f, 646.7645f),
                 ExitSpawnPosition = new Vector3(761.3817f, 25.7838f, 646.5969f),
                 RotationOffset = new Vector3(0f, 225f, 0f),
                 DoorSpawnPoints = new List<DoorSpawnPoint>
@@ -710,7 +709,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "GasStationFrontEnterPoint",
                     DoorTransformPosition = new Vector3(762.0077f, 26.5441f, 647.0829f),
-                    EntryPosition = new Vector3(761.7346f, 27.41f, 646.8323f),
+                    EntryPosition = new Vector3(762.0394f, 27.41f, 646.7645f),
                     ExitPosition = new Vector3(761.3817f, 25.7838f, 646.5969f)
 
                     },
@@ -718,11 +717,737 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "GasStationBackEnterPoint",
                     DoorTransformPosition = new Vector3(775.7552f, 26.3226f, 655.2833f),
-                    EntryPosition = new Vector3(776.0081f, 27.42f, 655.4044f),
+                    EntryPosition = new Vector3(775.9792f, 27.42f, 655.2222f),
                     ExitPosition = new Vector3(775.7437f, 25.7775f, 657.7051f)
 
                     },
                 },
+            },
+
+            // 2. Coastal House
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_1",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseA",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorA_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(816.7708f, 26.8216f, 675.7695f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "CoastalHouseA_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseAWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(815.4048f, 28.6737f, 679.5962f),
+                ExitSpawnPosition = new Vector3(815.1755f, 27.4621f, 680.5235f),
+                RotationOffset = new Vector3(0f, 70f, 0f),
+            },
+
+            // 3. Coastal House
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_2",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseB",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorB_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(863.8964f, 27.1491f, 582.6648f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_B (1)", "FX_LightShaft_E", "CoastalHouse_B_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseBWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(863.6965f, 25.2491f, 582.2649f),
+                ExitSpawnPosition = new Vector3(858.0344f, 28.1529f, 587.3011f),
+                RotationOffset = new Vector3(0f, 322.7789f, 0f),
+                DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorExitCollider",
+                    DoorTransformPosition = new Vector3(859.7379f, 28.2558f, 579.5021f),
+                    EntryPosition = new Vector3(860.2061f, 29.0012f, 579.8844f),
+                    ExitPosition = new Vector3(859.6492f, 27.9727f, 579.3168f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorExitCollider",
+                    DoorTransformPosition = new Vector3(857.1047f, 28.2558f, 588.8203f),
+                    EntryPosition = new Vector3(857.4016f, 29.0012f, 588.3153f),
+                    ExitPosition = new Vector3(858.1386f, 28.2344f, 587.3943f)
+
+                    },
+                }
+            },
+
+            // 4. Coastal House
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_3",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseC",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorC_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(824.8581f, 26.3498f, 604.3293f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "CoastalHouseC_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseCWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(826.3577f, 24.5498f, 606.1289f),
+                ExitSpawnPosition = new Vector3(827.4914f, 26.9234f, 613.829f),
+                RotationOffset = new Vector3(0f, 153.1841f, 0f),
+                DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorExitCollider",
+                    DoorTransformPosition = new Vector3(830.4583f, 27.4702f, 604.8818f),
+                    EntryPosition = new Vector3(829.9447f, 28.2019f, 604.5207f),
+                    ExitPosition = new Vector3(831.4586f, 26.8295f, 606.4385f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorExitCollider",
+                    DoorTransformPosition = new Vector3(827.8194f, 27.4702f, 613.3392f),
+                    EntryPosition = new Vector3(828.1426f, 28.1798f, 612.8f),
+                    ExitPosition = new Vector3(827.5281f, 26.9966f, 613.8232f)
+
+                    },
+                }
+            },
+
+            // 5. Coastal House 
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_4",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseC",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorC_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(779.8056f, 27.5008f, 704.9326f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "CoastalHouseC_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseCWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(778.9058f, 25.2008f, 702.6331f),
+                ExitSpawnPosition = new Vector3(779.5317f, 27.0772f, 694.9141f),
+                RotationOffset = new Vector3(0f, 320f, 0f),
+                DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorExitCollider",
+                    DoorTransformPosition = new Vector3(774.479f, 28.6212f, 703.1174f),
+                    EntryPosition = new Vector3(775.0165f, 29.3529f, 703.4276f),
+                    ExitPosition = new Vector3(774.0581f, 27.1732f, 701.1549f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorExitCollider",
+                    DoorTransformPosition = new Vector3(778.9774f, 28.6212f, 695.4847f),
+                    EntryPosition = new Vector3(778.5887f, 29.3308f, 695.9797f),
+                    ExitPosition = new Vector3(779.465f, 27.1487f, 694.8745f)
+
+                    },
+                }
+            },
+
+            // 6. Coastal House
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_5",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseA",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorA_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(726.0771f, 25.9805f, 721.9538f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "CoastalHouseA_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseAWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(722.4268f, 27.8326f, 719.1019f),
+                ExitSpawnPosition = new Vector3(722.0412f, 26.3217f, 718.3496f),
+                RotationOffset = new Vector3(0f, 321.3171f, 0f),
+            },
+
+            // 7. Coastal House
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_6",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseE",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorE_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(767.9241f, 26.1269f, 754.658f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_C", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daytime", "Midday" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseEWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(769.7935f, 27.979f, 758.5815f),
+                ExitSpawnPosition = new Vector3(770.9746f, 26.9453f, 759.1284f),
+                RotationOffset = new Vector3(0f, 250f, 0f),
+            },
+
+            // 8. Coastal House 
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_7",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseC",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorC_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(727.7393f, 26.38f, 589.0101f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "CoastalHouseC_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseCWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(725.04f, 24.38f, 589.9099f),
+                ExitSpawnPosition = new Vector3(718.4892f, 26.3029f, 585.816f),
+                RotationOffset = new Vector3(0f, 28.4475f, 0f),
+                DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorExitCollider",
+                    DoorTransformPosition = new Vector3(724.0943f, 27.5004f, 593.2975f),
+                    EntryPosition = new Vector3(725.317f, 28.21f, 592.45f),
+                    ExitPosition = new Vector3(721.5091f, 26.1501f, 593.5695f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorExitCollider",
+                    DoorTransformPosition = new Vector3(718.6478f, 27.5004f, 586.3097f),
+                    EntryPosition = new Vector3(718.9332f, 28.21f, 586.8604f),
+                    ExitPosition = new Vector3(718.5116f, 26.3913f, 585.8107f)
+
+                    },
+                }
+            },
+
+            // 9. Coastal House 
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_8",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseF",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorF_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(719.935f, 26.1788f, 549.7385f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_E", "FX_LightShaft_B", "CoastalHouseF_Lighting_Prefab", "CONTAINER_InaccessibleGear", },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseFWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(714.713f, 28.0309f, 547.075f),
+                ExitSpawnPosition = new Vector3(720.7502f, 26.2444f, 549.8903f),
+                RotationOffset = new Vector3(0f, 180f, 0f),
+            },
+
+            // 10. Coastal House
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_9",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseA",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorA_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(765.3765f, 25.4085f, 576.5338f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "CoastalHouseA_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseAWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(768.324f, 27.2606f, 572.9363f),
+                ExitSpawnPosition = new Vector3(768.5502f, 26.2285f, 575.2491f),
+                RotationOffset = new Vector3(0f, 230f, 0f),
+            },
+
+            //11. Coastal House 
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_10",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseB",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorB_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(686.9126f, 26.6491f, 639.7988f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_B (1)", "FX_LightShaft_E", "CoastalHouse_B_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseBWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(686.9126f, 25.2491f, 640.7986f),
+                ExitSpawnPosition = new Vector3(681.313f, 28.2316f, 635.7045f),
+                RotationOffset = new Vector3(0f, 234.9675f, 0f),
+                DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorExitCollider",
+                    DoorTransformPosition = new Vector3(689.9141f, 27.7557f, 635.5226f),
+                    EntryPosition = new Vector3(689.5259f, 28.5012f, 635.9818f),
+                    ExitPosition = new Vector3(689.5574f, 27.9772f, 636.5552f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorExitCollider",
+                    DoorTransformPosition = new Vector3(680.5023f, 27.7557f, 633.2471f),
+                    EntryPosition = new Vector3(681.0156f, 28.5012f, 633.5239f),
+                    ExitPosition = new Vector3(681.2908f, 28.2384f, 635.7122f)
+
+                    },
+                }
+            },
+
+            // 12. Coastal House
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_11",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseE",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorE_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(703.503f, 31.4127f, -90.3462f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_C", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daytime", "Midday" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseEWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(705.726f, 33.2648f, -93.96f),
+                ExitSpawnPosition = new Vector3(705.7604f, 32.4901f, -95.266f),
+                RotationOffset = new Vector3(0f, 10.7255f, 0f),
+            },
+
+            //13. Coastal House 
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_12", //BİTTİ ///////////////////////////////////////////////////////
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseB",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorB_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(706.7186f, 32.3186f, -155.2179f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_B (1)", "FX_LightShaft_E", "CoastalHouse_B_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseBWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(686.9126f, 25.2491f, 640.7986f),
+                ExitSpawnPosition = new Vector3(701.0604f, 33.4109f, -156.9868f),
+                RotationOffset = new Vector3(0f, 266.3776f, 0f),
+                DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorExitCollider",
+                    DoorTransformPosition = new Vector3(707.0517f, 33.4252f, -160.4318f),
+                    EntryPosition = new Vector3(707.0333f, 34.1707f, -159.8185f),
+                    ExitPosition = new Vector3(708.7142f, 33.1421f, -160.1186f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorExitCollider",
+                    DoorTransformPosition = new Vector3(697.8332f, 33.4252f, -157.4687f),
+                    EntryPosition = new Vector3(698.4178f, 34.1707f, -157.4171f),
+                    ExitPosition = new Vector3(701.0771f, 33.4014f, -156.9636f)
+
+                    },
+                }
+            },
+
+            // 14. Coastal House 
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_13",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseF",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorF_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(666.0112f, 31.3049f, -141.1522f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_E", "FX_LightShaft_B", "CoastalHouseF_Lighting_Prefab", "CONTAINER_InaccessibleGear", },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseFWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(671.2271f, 33.157f, -138.5155f),
+                ExitSpawnPosition = new Vector3(672.4543f, 31.8323f, -138.6627f),
+                RotationOffset = new Vector3(0f, 0f, 0f),
+            },
+
+            // 15. Coastal House
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_14",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseE",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorE_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(942.0154f, 49.1201f, 499.9244f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_C", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daytime", "Midday" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseEWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(943.9118f, 50.8922f, 503.7778f),
+                ExitSpawnPosition = new Vector3(945.0051f, 50.3745f, 504.2267f),
+                RotationOffset = new Vector3(0f, 250f, 0f),
+            },
+
+            // 16. Camp Trailer
+            new InteriorConfig
+            {
+                 InstanceId = "CampTrailerB_2",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "TrailerB",
+                 ExteriorShellPrefabName = "STRSPAWN_CampTrailerB_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(829.5067f, 86.9032f, 913.3613f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_TrailerWindow" },
+                 EntrySpawnPosition = new Vector3(825.031f, 88.6532f, 915.2846f),
+                 ExitSpawnPosition = new Vector3(824.5615f, 87.2018f, 914.7861f),
+                 RotationOffset = new Vector3(0f, 220f, 0f),
+            },
+
+            // 17. Lake Cabin
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinC_2",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "LakeCabinC",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinC_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(351.5066f, 87.1127f, 1026.092f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(352.912f, 88.8848f, 1027.881f),
+                 ExitSpawnPosition = new Vector3(351.9158f, 88.1976f, 1028.517f),
+                 RotationOffset = new Vector3(0f, 90f, 0f),
+            },
+
+            // 18. Lake Cabin
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinC_3",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "LakeCabinC",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinC_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(336.7627f, 86.7468f, 1025.875f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(338.0737f, 88.5989f, 1027.633f),
+                 ExitSpawnPosition = new Vector3(336.8512f, 88.1317f, 1028.26f),
+                 RotationOffset = new Vector3(0f, 90f, 0f),
+            },
+
+            // 19. LakeCabin
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinF_2",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "LakeCabinF",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinF_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(337.6167f, 87.68f, 1060.673f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(337.5035f, 89.527f, 1057.818f),
+                 ExitSpawnPosition = new Vector3(337.8156f, 88.1649f, 1058.483f),
+                 RotationOffset = new Vector3(0f, 0f, 0f),
+            },
+
+            // 20. LakeCabin
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinE",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "LakeCabinE",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinE_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(325.5593f, 87.5984f, 1063.775f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "LakeCabinE_Prefab", "CONTAINER_InaccessibleGear" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(325.5246f, 89.4504f, 1062.001f),
+                 ExitSpawnPosition = new Vector3(325.7714f, 88.0971f, 1061.371f),
+                 RotationOffset = new Vector3(0f, 270f, 0f),
+            },
+
+            // 21. CampTrailer
+            new InteriorConfig
+            {
+                 InstanceId = "CampTrailerC_2",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "TrailerC",
+                 ExteriorShellPrefabName = "STRSPAWN_CampTrailerC_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-235.0721f, 121.9007f, 1148.722f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_TrailerWindow" },
+                 EntrySpawnPosition = new Vector3(-234.2166f, 123.7307f, 1147.62f),
+                 ExitSpawnPosition = new Vector3(-233.7691f, 122.6004f, 1146.785f),
+                 RotationOffset = new Vector3(0f, 148.3544f, 0f),
+            },
+
+            // 22. Coastal House 
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_15",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseF",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorF_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(-82.2333f, 26.1395f, 903.1144f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_E", "FX_LightShaft_B", "CoastalHouseF_Lighting_Prefab", "CONTAINER_InaccessibleGear", },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseFWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(-79.3302f, 27.9916f, 908.1478f),
+                ExitSpawnPosition = new Vector3(-78.2415f, 26.6952f, 908.7671f),
+                RotationOffset = new Vector3(0f, 325.967f, 0f),
+            },
+
+            // 23. CampTrailer 
+            new InteriorConfig
+            {
+                 InstanceId = "CampTrailerA_2",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "TrailerA",
+                 ExteriorShellPrefabName = "STRSPAWN_CampTrailerA_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-39.1301f, 26.42f, 867.1301f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_TrailerWindow" },
+                 EntrySpawnPosition = new Vector3(-39.7146f, 28.25f, 869.7007f),
+                 ExitSpawnPosition = new Vector3(-39.3958f, 26.9079f, 870.6727f),
+                 RotationOffset = new Vector3(0f, 45.1599f, 0f),
+            },
+
+            // 24. LakeCabin
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinD_2",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "LakeCabinD",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinD_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-488.84f, 100.765f, 1106.3f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(-490.4361f, 102.6289f, 1105.53f),
+                 ExitSpawnPosition = new Vector3(-491.3864f, 101.1343f, 1105.136f),
+                 RotationOffset = new Vector3(0f, 337.6966f, 0f),
+            },
+
+            // 25. CampTrailer 
+            new InteriorConfig
+            {
+                 InstanceId = "CampTrailerA_3",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "TrailerA",
+                 ExteriorShellPrefabName = "STRSPAWN_CampTrailerA_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-808.21f, 125.83f, 1013.88f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_TrailerWindow" },
+                 EntrySpawnPosition = new Vector3(-806.8217f, 127.66f, 1016.205f),
+                 ExitSpawnPosition = new Vector3(-806.0568f, 126.8285f, 1015.51f),
+                 RotationOffset = new Vector3(0f, 90f, 0f),
+            },
+
+            // 26. CampTrailer
+            new InteriorConfig
+            {
+                 InstanceId = "CampTrailerC_3",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "TrailerC",
+                 ExteriorShellPrefabName = "STRSPAWN_CampTrailerC_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-746.3333f, 205.2566f, 1262.638f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_TrailerWindow" },
+                 EntrySpawnPosition = new Vector3(-747.2574f, 207.0866f, 1263.668f),
+                 ExitSpawnPosition = new Vector3(-747.4169f, 206.3574f, 1263.978f),
+                 RotationOffset = new Vector3(0f, 320.2021f, 0f),
+            },
+
+            // 27. LakeCabin
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinD_3",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "LakeCabinD",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinD_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-921.8821f, 72.186f, 658.2991f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(-921.9888f, 74.0499f, 660.0662f),
+                 ExitSpawnPosition = new Vector3(-922.0863f, 72.6304f, 660.687f),
+                 RotationOffset = new Vector3(0f, 90f, 0f),
+            },
+
+            // 28. LakeCabin
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinD_4",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "FishingCabinD",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinD_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-751.7756f, 28.792f, 660.6635f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(-751.2855f, 30.5759f, 662.3611f),
+                 ExitSpawnPosition = new Vector3(-751.1953f, 29.3918f, 662.4866f),
+                 RotationOffset = new Vector3(0f, 105f, 0f),
+            },
+
+            // 29. LakeCabin
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinA_4",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "FishingCabinA",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinA_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-710.3699f, 27.72f, 662.6203f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(-710.4674f, 29.4921f, 664.7117f),
+                 ExitSpawnPosition = new Vector3(-710.861f, 29.3226f, 665.4387f),
+                 RotationOffset = new Vector3(0f, 55f, 0f),
+            },
+
+            // 30. Lake Cabin
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinC_4",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "FishingCabinC",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinC_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-700.8101f, 28.58f, 669.5401f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(-700.6646f, 30.3521f, 671.7798f),
+                 ExitSpawnPosition = new Vector3(-702.4091f, 29.5649f, 671.7916f),
+                 RotationOffset = new Vector3(0f, 55f, 0f),
+            },
+
+            // 31. LakeCabinB
+            new InteriorConfig
+            {
+                 InstanceId = "LakeCabinB_2",
+                 ExteriorSceneName = "CoastalRegion",
+                 InteriorSceneBaseName = "LakeCabinB",
+                 ExteriorShellPrefabName = "STRSPAWN_LakeCabinB_Prefab",
+                 YOffset = 0f,
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                 FallbackPosition = new Vector3(-690.45f, 27.64f, 676.05f),
+                 ForceExactPosition = true,
+                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
+                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                 EntrySpawnPosition = new Vector3(-691.8919f, 29.47f, 678.5127f),
+                 ExitSpawnPosition = new Vector3(-692.0897f, 29.2249f, 678.8051f),
+                 RotationOffset = new Vector3(0f, 150f, 0f),
+            },
+
+            //32. Coastal House 
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_16",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseD",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorD_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(-273.104f, 76.2579f, 280.2721f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_B (1)", "FX_LightShaft_E", "CoastalHouse_B_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseDWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(-271.6039f, 74.5579f, 284.0723f),
+                ExitSpawnPosition = new Vector3(-272.0056f, 76.9111f, 291.7282f),
+                RotationOffset = new Vector3(0f, 90f, 0f),
+                DoorSpawnPoints = new List<DoorSpawnPoint>
+                {
+
+                    new DoorSpawnPoint {
+                    DoorName = "FrontDoorExitCollider",
+                    DoorTransformPosition = new Vector3(-273.9495f, 77.3694f, 290.8345f),
+                    EntryPosition = new Vector3(-273.9495f, 78.11f, 290.2255f),
+                    ExitPosition = new Vector3(-272.0056f, 76.9111f, 291.7282f)
+
+                    },
+
+                    new DoorSpawnPoint {
+                    DoorName = "BackDoorExitCollider",
+                    DoorTransformPosition = new Vector3(-276.7951f, 77.3694f, 283.0423f),
+                    EntryPosition = new Vector3(-276.1878f, 78.11f, 282.9903f),
+                    ExitPosition = new Vector3(-275.5518f, 77.0709f, 286.3218f)
+
+                    },
+                }
+            },
+
+            // 33. Coastal House
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouse_17",
+                ExteriorSceneName = "CoastalRegion",
+                InteriorSceneBaseName = "CoastalHouseE",
+                ExteriorShellPrefabName = "STRSPAWN_HouseExteriorE_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(365.5192f, 58.4654f, 219.2763f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "FX_LightShaft_C", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daytime", "Midday" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseEWindowGlow_Prefab" },
+                EntrySpawnPosition = new Vector3(365.383f, 60.3175f, 223.5576f),
+                ExitSpawnPosition = new Vector3(366.2148f, 59.0428f, 224.5376f),
+                RotationOffset = new Vector3(0f, 221.5674f, 0f),
             },
 
             //FORSAKEN AIRFIELD:
@@ -734,13 +1459,13 @@ namespace SeamlessInteriors
                 InteriorSceneBaseName = "AFHangar",
                 ExteriorShellPrefabName = "STR_AF_Hangar_Prefab",
                 YOffset = 0f,
-                ScaleAdjustment = new Vector3(1.049f, 1.035f, 1.03f),
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
                 FallbackPosition = new Vector3(161.8379f, 161.5894f, -649.4945f),
                 ForceExactPosition = true,
 
                 ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear", "DLM_AFHangar_LGT_Prefab" },
                 ObjectsToDisable = new List<string> { "STR_AF_Hangar_Interior_Main_Windows_Glow_Prefab", "STR_AF_Hangar_Interior_Side_Window_Glow_Prefab" },
-                EntrySpawnPosition = new Vector3(163.1478f, 162.594f, -617.2457f),
+                EntrySpawnPosition = new Vector3(162.8583f, 162.56f, -618.6203f),
                 ExitSpawnPosition = new Vector3(163.1478f, 161.594f, -617.2457f),
                 RotationOffset = new Vector3(0f, 300f, 0f),
                 TerrainHoleSize = new Vector3(27f, 10f, 50f), // hole size (X width, Y depth, Z length)
@@ -751,7 +1476,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "STR_MetalDoorExt_E_Left_Prefab",
                     DoorTransformPosition = new Vector3(163.1364f, 160.9523f, -618.2877f),
-                    EntryPosition = new Vector3(162.5694f, 163.3959f, -617.3921f),
+                    EntryPosition = new Vector3(162.3004f, 163.3348f, -618.7561f),
                     ExitPosition = new Vector3(163.1478f, 161.594f, -617.2457f)
 
                     },
@@ -759,7 +1484,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "STR_MetalDoorExt_E_Left_Prefab (1)",
                     DoorTransformPosition = new Vector3(135.5295f, 163.0083f, -665.3468f),
-                    EntryPosition = new Vector3(134.3205f, 163.3957f, -665.4089f),
+                    EntryPosition = new Vector3(135.3641f, 163.3346f, -664.526f),
                     ExitPosition = new Vector3(134.8359f, 161.8245f, -665.366f)
 
                     },
@@ -767,7 +1492,7 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "STR_MetalDoorExt_E_Left_Prefab (2)",
                     DoorTransformPosition = new Vector3(178.2659f, 168.077f, -662.2448f),
-                    EntryPosition = new Vector3(177.8745f, 168.6338f, -662.8293f),
+                    EntryPosition = new Vector3(177.4385f, 168.3956f, -662.3871f),
                     ExitPosition = new Vector3(179.0541f, 166.8872f, -662.8561f)
 
                     },
@@ -776,19 +1501,19 @@ namespace SeamlessInteriors
 
             // MILTON
 
-            // 1. GreyMothers House
+            // 1. GreyMother's House
             new InteriorConfig
             {
                  ExteriorSceneName = "MountainTownRegion",
                  InteriorSceneBaseName = "GreyMothersHouseA",
                  ExteriorShellPrefabName = "STR_GreyMothersHouse_Prefab",
                  YOffset = 0f,
-                 ScaleAdjustment = new Vector3(1.15f, 1f, 1.15f),
+                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
                  FallbackPosition = new Vector3(1107.28f, 271.2501f, 1785.27f),
                  ForceExactPosition = true,
                  ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "FX_LightShaft_E", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear" },
                  ObjectsToDisable = new List<string> { "STR_GreyMothersHouseInteriorGlow_D_Prefab", "STR_GreyMothersHouseInteriorGlow_C_Prefab", "STR_GreyMothersHouseInteriorGlow_B_Prefab", "STR_GreyMothersHouseInteriorGlow_A_Prefab" },
-                 EntrySpawnPosition = new Vector3(1106.097f, 272.4972f, 1782.773f),
+                 EntrySpawnPosition = new Vector3(1106.251f, 272.4972f, 1783.099f),
                  ExitSpawnPosition = new Vector3(1104.889f, 269.7428f, 1783.645f),
                  RotationOffset = new Vector3(0f, 0f, 0f),
             },

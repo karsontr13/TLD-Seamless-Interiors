@@ -74,6 +74,9 @@ namespace SeamlessInteriors
             // a registration the game is making for its own reasons.
             if (SeamlessInteriorsMod.IsCreatingClonePlaceable) return false;
 
+            // 0b) A template being copied for another building of the same scene.
+            if (SeamlessInteriorsMod.IsCopyingCloneTemplate) return false;
+
             // 1) Already part of a clone. The mod's own save files own these.
             //    NOTE: no RunCompleted check - a placeable waking up midway through the
             //    build is just as much clone content as one that wakes up after.
@@ -358,6 +361,41 @@ namespace SeamlessInteriors
             catch (System.Exception ex)
             {
                 MelonLogger.Warning($"[PLACEABLE-FIX] Hata: {ex.Message}");
+            }
+
+            PruneCloneEntries("kayit oncesi");
+        }
+
+        // Active/Inactive entries whose object lives in a clone can only have leaked in (template copies
+        // before IsCopyingCloneTemplate); saved, they switch clone furniture off. OnPlayer/Removed stay.
+        public static void PruneCloneEntries(string where)
+        {
+            try
+            {
+                var dict = Il2CppTLD.Placement.PlaceableManager.s_Placeables;
+                if (dict == null) return;
+
+                var toRemove = new System.Collections.Generic.List<string>();
+                foreach (var entry in dict)
+                {
+                    var info = entry.Value;
+                    if (info == null) continue;
+                    if (info.m_State != Il2CppTLD.Placement.PlacementState.Active &&
+                        info.m_State != Il2CppTLD.Placement.PlacementState.Inactive) continue;
+
+                    var handle = info.m_Handle;
+                    if (handle == null || handle.gameObject == null) continue;
+                    if (SeamlessInteriorsMod.IsUnderAnyMasterInteriorPublic(handle.transform)) toRemove.Add(entry.Key);
+                }
+
+                foreach (var key in toRemove) dict.Remove(key);
+
+                if (toRemove.Count > 0)
+                    MelonLogger.Msg($"[PLACEABLE-FIX] {toRemove.Count} klon placeable kaydi oyunun yerlestirme listesinden cikarildi ({where}).");
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[PLACEABLE-FIX] Klon kaydi temizligi: {ex.Message}");
             }
         }
     }

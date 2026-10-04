@@ -9,9 +9,12 @@ namespace SeamlessInteriors
     public partial class SeamlessInteriorsMod
     {
         // When several instances share the same scene, it is loaded once and copied for
-        // each instance. This dictionary is used during loading and cleared when the
-        // scene unloads.
-        private static Dictionary<string, GameObject> s_LoadedSceneTemplates = new Dictionary<string, GameObject>();
+        // each instance from an untouched snapshot. Lives for the load only (DestroyPristineTemplates).
+        private static Dictionary<string, GameObject> s_PristineTemplates = new Dictionary<string, GameObject>();
+
+        // True while a template is being copied. The copy's placeables Awake before it is anyone's
+        // MasterInterior; registered, copies sharing guids made the game destroy each other's furniture.
+        public static bool IsCopyingCloneTemplate { get; private set; }
 
         // Is a batched environment fix already scheduled? Stops several coroutines starting.
         private static bool s_BatchEnvironmentPending = false;
@@ -81,6 +84,11 @@ namespace SeamlessInteriors
             // thousands of entries) are released here.
             SceneScan.SetLoadPhase(false);
 
+            // After the load window, so the scans are fresh and the variant groups are settled.
+            RevalidateExteriorShells();
+            FixPlaceableManagerSerializeInventoryPatch.PruneCloneEntries("yukleme sonu");
+            DestroyPristineTemplates();
+
             // RELEASE THE SCREEN: all instances are ready.
             if (s_ScreenHeldBlack)
             {
@@ -108,15 +116,18 @@ namespace SeamlessInteriors
 
             // Was this scene already loaded? (Another instance on the same map with the
             // same InteriorSceneBaseName.)
-            if (s_LoadedSceneTemplates.ContainsKey(baseName) && s_LoadedSceneTemplates[baseName] != null)
+            GameObject pristine;
+            if (s_PristineTemplates.TryGetValue(baseName, out pristine) && pristine != null)
             {
-                // Deep copy from the template.
-                GameObject template = s_LoadedSceneTemplates[baseName];
-                instance.MasterInterior = UnityEngine.Object.Instantiate(template);
+                // Deep copy of the scene as it loaded, so this building rolls its own loot from full lists.
+                IsCopyingCloneTemplate = true;
+                try { instance.MasterInterior = UnityEngine.Object.Instantiate(pristine); }
+                finally { IsCopyingCloneTemplate = false; }
                 instance.MasterInterior.name = $"Master_{instance.Config.ResolvedInstanceId}_Interior";
                 instance.MasterInterior.SetActive(false);
-                CleanTemplateCopy(template, instance.MasterInterior);
-                instance.SceneDisabledRenderers = MapSceneDisabledRenderers(template, instance.MasterInterior);
+
+                // Untouched since the load, so its renderer states are the ones the scene shipped.
+                instance.SceneDisabledRenderers = CollectDisabledRenderers(instance.MasterInterior);
 
                 var exteriorScene = RealSceneByName(instance.Config.ExteriorSceneName);
                 if (exteriorScene.isLoaded)
@@ -224,8 +235,37 @@ namespace SeamlessInteriors
                 UnityEngine.SceneManagement.SceneManager.SetActiveScene(exteriorScene2);
             }
 
-            // Store as a template so other instances of the same scene can copy it.
-            s_LoadedSceneTemplates[baseName] = instance.MasterInterior;
+            // The other buildings of this scene copy a snapshot taken now, before this clone's loot roll,
+            // spawn chance, destroy lists and content touch it. Inactive, so nothing in it wakes up; parked
+            // in the emptied interior scene, which other mods are shown as empty.
+            if (IsSceneSharedInRegion(instance.Config))
+            {
+                GameObject snapshot = UnityEngine.Object.Instantiate(instance.MasterInterior);
+                snapshot.name = $"SI_PristineTemplate_{baseName}";
+                if (s_InteriorMain.isLoaded)
+                    UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(snapshot, s_InteriorMain);
+                s_PristineTemplates[baseName] = snapshot;
+            }
+        }
+
+        private static bool IsSceneSharedInRegion(InteriorConfig config)
+        {
+            int count = 0;
+            foreach (var other in SupportedInteriors)
+            {
+                if (other.ExteriorSceneName == config.ExteriorSceneName &&
+                    other.InteriorSceneBaseName == config.InteriorSceneBaseName && ++count > 1) return true;
+            }
+            return false;
+        }
+
+        // Every building of the region has copied what it needs by the end of the load. A later rebuild
+        // without a snapshot loads the scene again.
+        private static void DestroyPristineTemplates()
+        {
+            foreach (var snapshot in s_PristineTemplates.Values)
+                if (snapshot != null) UnityEngine.Object.Destroy(snapshot);
+            s_PristineTemplates.Clear();
         }
 
         private static List<Renderer> CollectDisabledRenderers(GameObject root)
@@ -233,47 +273,6 @@ namespace SeamlessInteriors
             var result = new List<Renderer>();
             foreach (var r in InteriorScan.Renderers(root))
                 if (r != null && !r.enabled) result.Add(r);
-            return result;
-        }
-
-        // The copy's counterparts of the template's scene-disabled renderers, found by sibling path.
-        // By now the template's own renderers may all be switched on or off by the clone pipeline.
-        private static List<Renderer> MapSceneDisabledRenderers(GameObject template, GameObject copy)
-        {
-            var result = new List<Renderer>();
-
-            List<Renderer> source = null;
-            foreach (var inst in ActiveInteriors.Values)
-            {
-                if (inst.MasterInterior == template) { source = inst.SceneDisabledRenderers; break; }
-            }
-            if (source == null) return result;
-
-            Transform templateT = template.transform;
-            var path = new List<int>();
-
-            foreach (var r in source)
-            {
-                if (r == null) continue;
-
-                path.Clear();
-                Transform t = r.transform;
-                while (t != null && t != templateT)
-                {
-                    path.Add(t.GetSiblingIndex());
-                    t = t.parent;
-                }
-                if (t == null) continue;
-
-                Transform c = copy.transform;
-                for (int i = path.Count - 1; i >= 0 && c != null; i--)
-                    c = path[i] < c.childCount ? c.GetChild(path[i]) : null;
-
-                // A GameObject holds at most one Renderer.
-                Renderer match = c != null ? c.GetComponent<Renderer>() : null;
-                if (match != null) result.Add(match);
-            }
-
             return result;
         }
 
@@ -851,9 +850,11 @@ namespace SeamlessInteriors
                 float bestDist = float.MaxValue;
                 foreach (var go in fallbackCandidates)
                 {
-                    if (go == null) continue;
+                    if (go == null || !go.activeInHierarchy) continue;
+                    // Never a piece of a clone (its window glow or lighting prefab) or another building's shell.
+                    if (IsUnderAnyCloneOrClaimedShell(go.transform)) continue;
                     float dist = Vector3.Distance(go.transform.position, instance.Config.FallbackPosition);
-                    if (dist < bestDist)
+                    if (dist <= SHELL_MATCH_MAX_DISTANCE && dist < bestDist)
                     {
                         bestDist = dist;
                         instance.ExteriorShell = go;
@@ -1008,6 +1009,8 @@ namespace SeamlessInteriors
 
             Weather wFinal = GameManager.GetWeatherComponent();
             if (wFinal != null) wFinal.ForceOutdoorEnvironment();
+            // It also set the outdoor player capsule; a player inside a building keeps the indoor one.
+            TickIndoorPlayerCapsule();
 
             LightingManager.m_LevelLoadComplete = true;
             LightingManager.OnLevelLoadComplete();
@@ -1333,6 +1336,127 @@ namespace SeamlessInteriors
             return combined;
         }
 
+        // Further than this, the shell is another building's: with a house burned in this save
+        // (RandomBurnedHouses), its door used to lead into this clone. Real shells sit within ~4m.
+        private const float SHELL_MATCH_MAX_DISTANCE = 10f;
+
+        // The game switches the RandomBurnedHouses groups 1-3 s after their RandomSpawnObject starts,
+        // which can be after AlignWithExteriorShell ran: re-match shells left in a group it turned off.
+        private static void RevalidateExteriorShells()
+        {
+            SceneObjectIndex.Invalidate();
+            try
+            {
+                foreach (var inst in ActiveInteriors.Values)
+                    RevalidateExteriorShell(inst, "yukleme sonu");
+            }
+            finally
+            {
+                SceneObjectIndex.Invalidate();
+            }
+        }
+
+        // When the groups switch varies per load, often after the load's own revalidation. A parent check
+        // every 2 s catches it; the re-match itself runs once per stale shell.
+        private const float SHELL_VARIANT_CHECK_INTERVAL = 2f;
+        private static float s_NextShellVariantCheck;
+
+        public static void TickShellVariantGuard()
+        {
+            float now = Time.realtimeSinceStartup;
+            if (now < s_NextShellVariantCheck) return;
+            s_NextShellVariantCheck = now + SHELL_VARIANT_CHECK_INTERVAL;
+            if (s_ScreenHeldBlack || SceneScan.InLoadPhase) return;
+
+            bool stale = false;
+            foreach (var inst in ActiveInteriors.Values)
+            {
+                if (inst.RunCompleted && IsShellInDisabledVariant(inst.ExteriorShell)) { stale = true; break; }
+            }
+            if (!stale) return;
+
+            // A load window for the duration: one renderer scan shared by every hide list rebuilt here.
+            SceneScan.SetLoadPhase(true);
+            try { RevalidateExteriorShells(); }
+            finally { SceneScan.SetLoadPhase(false); }
+        }
+
+        // Is this shell in a variant group the game switched off? (activeSelf false alone is the mod hiding it.)
+        private static bool IsShellInDisabledVariant(GameObject shell)
+        {
+            if (shell == null) return false;
+            Transform parent = shell.transform.parent;
+            return parent != null && !parent.gameObject.activeInHierarchy;
+        }
+
+        internal static bool RevalidateExteriorShell(SeamlessInteriorInstance instance, string reason)
+        {
+            if (instance == null || !instance.RunCompleted || instance.MasterInterior == null) return false;
+            if (string.IsNullOrEmpty(instance.Config.ExteriorShellPrefabName)) return false;
+
+            // Parked clones of other regions have no shell to look for.
+            if (RealSceneName(instance.MasterInterior.scene) != instance.Config.ExteriorSceneName) return false;
+
+            // No shell stays no shell: the groups are only ever switched off during a load.
+            GameObject old = instance.ExteriorShell;
+            if (!IsShellInDisabledVariant(old)) return false;
+
+            instance.ExteriorShell = null;
+            GameObject found = FindClosestShell(instance.Config.ExteriorShellPrefabName, instance.Config.FallbackPosition);
+            if (found == null)
+            {
+                // Burned in this save: no shell, as if it had never matched. Undo the mod's hiding of the old one.
+                if (!old.activeSelf) old.SetActive(true);
+                MelonLogger.Msg($"[SHELL-MATCH] {instance.Config.ResolvedInstanceId}: shell kapali varyant grubundaydi " +
+                                $"('{old.transform.parent.name}'), bu kayitta bina yok - shell birakildi ({reason}).");
+                return true;
+            }
+
+            bool inside = PlayerInteriorId == instance.Config.ResolvedInstanceId;
+
+            // Give the old one back the state the scene had; the mod may have hidden it.
+            if (old != null && !old.activeSelf) old.SetActive(true);
+            instance.ExteriorShell = found;
+            found.SetActive(!inside);
+
+            // The hide list was built around the wrong shell, so the real one's walls are in it.
+            // Its inside test needs the clone's colliders, as in IsPositionInsideFull.
+            bool wasActive = instance.MasterInterior.activeSelf;
+            if (!wasActive) instance.MasterInterior.SetActive(true);
+            try
+            {
+                if (s_Instance != null) s_Instance.AutoResolveOverlappingExternalObjects(instance);
+            }
+            finally
+            {
+                if (!wasActive) instance.MasterInterior.SetActive(false);
+            }
+            SyncExternalHiddenObjects();
+
+            MelonLogger.Msg($"[SHELL-MATCH] {instance.Config.ResolvedInstanceId}: shell kapali varyant grubundaydi " +
+                            $"('{old.transform.parent.name}'), '{found.transform.parent.name}' ile degistirildi ({reason}).");
+            return true;
+        }
+
+        // Door-time safety net for a shell that went stale after the load.
+        internal static void RevalidateExteriorShellAtDoor(SeamlessInteriorInstance instance)
+        {
+            if (instance == null || !IsShellInDisabledVariant(instance.ExteriorShell)) return;
+            SceneObjectIndex.Invalidate();
+            try { RevalidateExteriorShell(instance, "kapidan giris"); }
+            finally { SceneObjectIndex.Invalidate(); }
+        }
+
+        private static bool IsUnderAnyCloneOrClaimedShell(Transform t)
+        {
+            foreach (var inst in ActiveInteriors.Values)
+            {
+                if (inst.MasterInterior != null && t.IsChildOf(inst.MasterInterior.transform)) return true;
+                if (inst.ExteriorShell != null && t.IsChildOf(inst.ExteriorShell.transform)) return true;
+            }
+            return false;
+        }
+
         private static GameObject FindClosestShell(string shellPrefabName, Vector3 fallbackPosition)
         {
             if (string.IsNullOrEmpty(shellPrefabName)) return null;
@@ -1355,10 +1479,11 @@ namespace SeamlessInteriors
             foreach (var go in candidates)
             {
                 if (go == null) continue;
+                if (!go.activeInHierarchy) continue; // the name index can predate the variant pick
                 if (usedShells.Contains(go.GetInstanceID())) continue; // already in use
 
                 float dist = Vector3.Distance(go.transform.position, fallbackPosition);
-                if (dist < bestDist)
+                if (dist <= SHELL_MATCH_MAX_DISTANCE && dist < bestDist)
                 {
                     bestDist = dist;
                     best = go;
@@ -1367,6 +1492,8 @@ namespace SeamlessInteriors
 
             if (s_DebugBounds && best != null)
                 MelonLogger.Msg($"[SHELL-MATCH] '{shellPrefabName}' -> '{best.name}' pos={best.transform.position} dist={bestDist:F1} (fallback={fallbackPosition})");
+            else if (s_DebugBounds)
+                MelonLogger.Msg($"[SHELL-MATCH] '{shellPrefabName}': {SHELL_MATCH_MAX_DISTANCE}m icinde aktif shell yok (fallback={fallbackPosition}) - bu kayitta bina yok/yanmis olabilir.");
 
             return best;
         }
