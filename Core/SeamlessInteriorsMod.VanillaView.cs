@@ -66,6 +66,10 @@ namespace SeamlessInteriors
                 s_ViewInteriorScene = null;
                 s_ViewRegionScene = null;
 
+                // The interior scene's own triggers (the ship's TRIGGER_IndoorSpace_all) went dark
+                // with the clone and never sent their exit: drop them, or the region stays indoors.
+                DropInactiveIndoorTriggers();
+
                 if (enteredAlive)
                 {
                     Collider leaving = GetPlayerCollider();
@@ -231,6 +235,25 @@ namespace SeamlessInteriors
         }
 
         // Leaves no reference to this space, or to any destroyed one, on the player.
+        // A switched-off trigger cannot hold the player; Unity sends no exit for it.
+        private static void DropInactiveIndoorTriggers()
+        {
+            PlayerManager pm = GameManager.GetPlayerManagerComponent();
+            if (pm == null) return;
+
+            var list = pm.m_IndoorSpaceTriggers;
+            if (list != null)
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    IndoorSpaceTrigger entry = list[i];
+                    if (entry == null || !entry.gameObject.activeInHierarchy) list.RemoveAt(i);
+                }
+
+            IndoorSpaceTrigger current = pm.m_IndoorSpaceTrigger;
+            if (current == null || !current.gameObject.activeInHierarchy)
+                pm.m_IndoorSpaceTrigger = list != null && list.Count > 0 ? list[list.Count - 1] : null;
+        }
+
         private static void ForgetSpaceOnPlayer(IndoorSpaceTrigger space)
         {
             PlayerManager pm = GameManager.GetPlayerManagerComponent();

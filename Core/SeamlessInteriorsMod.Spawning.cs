@@ -1162,7 +1162,22 @@ namespace SeamlessInteriors
             if (instance == null || instance.MasterInterior == null) return;
 
             SetInteriorItemsVisible(instance, false);
+            LeaveAudioZones(instance);
             instance.MasterInterior.SetActive(false);
+        }
+
+        // The interior's own audio occlusion zones get no exit once switched off: a player standing
+        // in one when the clone closes would keep the wind muffled (the concentrator's conveyor).
+        private static void LeaveAudioZones(SeamlessInteriorInstance instance)
+        {
+            var gam = GameAudioManager.Instance;
+            if (gam == null || !instance.MasterInterior.activeSelf) return;
+            foreach (var zone in instance.MasterInterior.GetComponentsInChildren<AudioStateZoneTrigger>(false))
+            {
+                if (zone == null || !zone.m_Occluded) continue;
+                zone.m_Occluded = false;
+                gam.ExitOcclusionTrigger(zone.m_OcclusionLevel);
+            }
         }
     }
 }

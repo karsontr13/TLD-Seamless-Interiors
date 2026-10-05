@@ -113,8 +113,49 @@ namespace SeamlessInteriors
                 {
                     if (obj == null) continue;
                     bool shouldHide = s_ExternalHideSet.Contains(obj.GetInstanceID());
+                    if (IsAnimatedDoorPart(obj)) { SetPartsHidden(obj, shouldHide); continue; }
                     if (obj.activeSelf != shouldHide) continue; // already in the right state
                     obj.SetActive(!shouldHide);
+                }
+            }
+        }
+
+        // Door leaves replay their opening tween on OnEnable: hide their renderers and colliders instead.
+        private static readonly Dictionary<int, bool> s_DoorPartCache = new Dictionary<int, bool>();
+        private static readonly Dictionary<int, List<Component>> s_DoorPartsHidden = new Dictionary<int, List<Component>>();
+
+        private static bool IsAnimatedDoorPart(GameObject obj)
+        {
+            int id = obj.GetInstanceID();
+            if (!s_DoorPartCache.TryGetValue(id, out bool door))
+            {
+                door = obj.GetComponentInParent<OpenClose>(true) != null || obj.GetComponentInParent<ObjectAnim>(true) != null
+                    || obj.GetComponentInChildren<OpenClose>(true) != null;
+                s_DoorPartCache[id] = door;
+            }
+            return door;
+        }
+
+        private static void SetPartsHidden(GameObject obj, bool hide)
+        {
+            int id = obj.GetInstanceID();
+            if (!hide && !obj.activeSelf) obj.SetActive(true);   // switched off by an older build
+            if (hide)
+            {
+                if (s_DoorPartsHidden.ContainsKey(id)) return;
+                var off = new List<Component>();   // only what was on, so an open door keeps its collider off
+                foreach (var r in obj.GetComponents<Renderer>()) if (r != null && r.enabled) { r.enabled = false; off.Add(r); }
+                foreach (var c in obj.GetComponents<Collider>()) if (c != null && !c.isTrigger && c.enabled) { c.enabled = false; off.Add(c); }
+                s_DoorPartsHidden[id] = off;
+            }
+            else if (s_DoorPartsHidden.TryGetValue(id, out var off))
+            {
+                s_DoorPartsHidden.Remove(id);
+                foreach (var comp in off)
+                {
+                    if (comp == null) continue;
+                    var r = comp.TryCast<Renderer>(); if (r != null) r.enabled = true;
+                    var c = comp.TryCast<Collider>(); if (c != null) c.enabled = true;
                 }
             }
         }

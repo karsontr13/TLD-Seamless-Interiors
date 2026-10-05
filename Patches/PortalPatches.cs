@@ -9,6 +9,55 @@ namespace SeamlessInteriors
     // The heart of the mod: every door that would normally trigger a scene load is
     // intercepted here and turned into a teleport inside the current region, so the
     // loading screen never appears.
+    // Arriving back from the mine the game spawns the player at a point the region lacks; the drop before
+    // SI places them in the clone must not hurt (sprained ankle).
+    [HarmonyLib.HarmonyPatch(typeof(FallDamage), nameof(FallDamage.ApplyFallDamage))]
+    public class ArrivalFallDamagePatch
+    {
+        public static bool Prefix()
+        {
+            if (!SeamlessInteriorsMod.ArrivalProtected) return true;
+            MelonLogger.Msg("[DONUS] klona varis sirasindaki dusus hasari engellendi.");
+            return false;
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(LoadingZone), nameof(LoadingZone.OnTriggerEnter))]
+    public class LoadingZoneEnterPatch
+    {
+        public static void Prefix(LoadingZone __instance, Collider other)
+        {
+            if (__instance == null || other == null || !PlayerRefs.IsUnderPlayer(other.transform)) return;
+            PortalMagicPatch.OnLoadingZone(__instance.m_PartnerLoadScene);
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(LoadingZone), nameof(LoadingZone.PerformInteraction))]
+    public class LoadingZoneInteractPatch
+    {
+        public static void Prefix(LoadingZone __instance)
+        {
+            if (__instance != null) PortalMagicPatch.OnLoadingZone(__instance.m_PartnerLoadScene);
+        }
+    }
+
+    // Walk-in transitions (the whaling ship's hull opening) fire from OnTriggerEnter and never
+    // reach PerformInteraction; route the player's contact through the same door logic.
+    [HarmonyLib.HarmonyPatch(typeof(LoadScene), nameof(LoadScene.OnTriggerEnter))]
+    public class PortalContactPatch
+    {
+        public static bool Prefix(LoadScene __instance, Collider other)
+        {
+            if (__instance == null || other == null || !__instance.m_TransitionOnContact) return true;
+            if (!PlayerRefs.IsUnderPlayer(other.transform)) return true;
+            if (PortalMagicPatch.Prefix(__instance)) return true;
+
+            // No click ended this one: drop the hovered trigger, or the clone's exit prompt stays on screen.
+            GameManager.GetPlayerManagerComponent()?.ResetInteraction();
+            return false;
+        }
+    }
+
     [HarmonyLib.HarmonyPatch(typeof(LoadScene), nameof(LoadScene.PerformInteraction))]
     public class PortalMagicPatch
     {
@@ -16,6 +65,9 @@ namespace SeamlessInteriors
         {
             PlayerManager pm = GameManager.GetPlayerManagerComponent();
             if (pm == null) return true;
+
+            // Back into a cloned building from a scene SI does not clone: load its region instead.
+            if (TryRedirectIntoClone(__instance)) return true;
 
             // ─── SUB-INTERIOR LINK CHECK ───
             // Transition from inside one interior scene into another
@@ -49,6 +101,15 @@ namespace SeamlessInteriors
                         matchedInstance = instance;
                         isEntering = true;
                         break;
+                    }
+                    // A generated config's door on to another interior (the concentrator's mine shafts)
+                    // is no way out: leave it to the game's own transition.
+                    else if (isInteriorDoor && !LeadsToARegion(__instance.m_SceneToLoad)
+                             && (instance.Config.DoorSpawnPoints == null || instance.Config.DoorSpawnPoints.Count == 0)
+                             && instance.Config.ExitSpawnPosition == Vector3.zero)
+                    {
+                        NoteLeftThrough(instance, __instance);
+                        continue;
                     }
                     // Exiting: the door is a child of MasterInterior and is not an entry.
                     else if (isInteriorDoor)
@@ -115,6 +176,27 @@ namespace SeamlessInteriors
                         isEntering = canEnter;
                         isExiting = !canEnter && canExit;
                     }
+                }
+            }
+
+            // A sprawling interior's far entrances (the mine concentrator's doors lie up to 130 m
+            // from its clone): the region's only clone of that scene takes them.
+            if (matchedInstance == null)
+            {
+                SeamlessInteriorInstance only = null;
+                int count = 0;
+                string doorRegion = SeamlessInteriorsMod.RealSceneName(__instance.gameObject.scene);
+                foreach (var instance in SeamlessInteriorsMod.ActiveInteriors.Values)
+                {
+                    if (instance.MasterInterior == null || !IsRegionScene(doorRegion, instance.Config.ExteriorSceneName)) continue;
+                    if (__instance.m_SceneToLoad != instance.Config.InteriorSceneBaseName) continue;
+                    only = instance;
+                    count++;
+                }
+                if (count == 1)
+                {
+                    matchedInstance = only;
+                    isEntering = true;
                 }
             }
 
@@ -249,12 +331,12 @@ namespace SeamlessInteriors
 
             if (isExiting)
             {
-                Vector3 spawnPos = GetDoorExitPosition(matchedInstance, __instance);
+                Vector3 spawnPos = GetDoorExitPosition(matchedInstance, __instance, out bool vanillaExitPoint);
 
                 // DYNAMIC ELEVATION CORRECTION (guards against config mistakes).
                 // If the author raised ExitPosition by hand instead of using YOffset,
-                // spawnPos.y ends up hanging in the air.
-                if (matchedInstance.ExteriorShell != null && matchedInstance.MasterInterior != null)
+                // spawnPos.y ends up hanging in the air. The game's own exit points are on the ground already.
+                if (!vanillaExitPoint && matchedInstance.ExteriorShell != null && matchedInstance.MasterInterior != null)
                 {
                     float yDelta = matchedInstance.MasterInterior.transform.position.y - matchedInstance.ExteriorShell.transform.position.y;
 
@@ -330,13 +412,24 @@ namespace SeamlessInteriors
 
             // Fallback
             if (instance.Config.EntrySpawnPosition != Vector3.zero) return instance.Config.EntrySpawnPosition;
+
+            // No hand-measured point (generated configs): the clone's copy of the vanilla
+            // spawn point this door names, e.g. "CoastalHouseAEnterPoint".
+            if (instance.MasterInterior != null)
+            {
+                Transform enter = FindNamedNearest(instance.MasterInterior.transform, door.m_ExitPointName, clickedDoorPos);
+                if (enter != null) return enter.position;
+            }
+
             Transform sp = door.transform.Find("SpawnPoint");
             return sp != null ? sp.position : door.transform.position;
         }
 
         // Resolves the outdoor spawn point for the door that was used.
-        private static Vector3 GetDoorExitPosition(SeamlessInteriorInstance instance, LoadScene door)
+        // vanillaPoint: the position is the game's own exit point, already on the outside ground.
+        private static Vector3 GetDoorExitPosition(SeamlessInteriorInstance instance, LoadScene door, out bool vanillaPoint)
         {
+            vanillaPoint = false;
             Vector3 clickedDoorPos = door.transform.position;
 
             if (instance.Config.DoorSpawnPoints != null && instance.Config.DoorSpawnPoints.Count > 0)
@@ -369,12 +462,156 @@ namespace SeamlessInteriors
 
             // Fallback
             if (instance.Config.ExitSpawnPosition != Vector3.zero) return instance.Config.ExitSpawnPosition;
+
+            // No hand-measured point (generated configs): the vanilla exit point this clone door
+            // names, e.g. "CoastalHouseAExitPoint" - a child of the shell or of its variant group.
+            if (instance.ExteriorShell != null)
+            {
+                Transform search = instance.ExteriorShell.transform;
+                for (int level = 0; level < 3 && search != null; level++, search = search.parent)
+                {
+                    Transform exit = FindNamedNearest(search, door.m_ExitPointName, clickedDoorPos);
+                    if (exit == null) continue;
+                    vanillaPoint = true;
+                    return exit.position;
+                }
+            }
+
+            // Entrances outside the shell keep their exit point elsewhere in the region
+            // (Milton trailer: Design/Transitions/MiltonTrailer). Whole-scene search, once per exit.
+            // The region's sub-scenes too: the mine concentrator's exit points live in MiningRegion_SANDBOX.
+            if (!string.IsNullOrEmpty(door.m_ExitPointName))
+            {
+                Transform best = null;
+                float bestDist = 30f * 30f;
+                for (int s = 0; s < UnityEngine.SceneManagement.SceneManager.sceneCount; s++)
+                {
+                    var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(s);
+                    if (!scene.isLoaded || !IsRegionScene(SeamlessInteriorsMod.RealSceneName(scene), instance.Config.ExteriorSceneName)) continue;
+                    foreach (GameObject root in SeamlessInteriorsMod.RealRootObjects(scene))
+                    {
+                        if (root == null || (instance.MasterInterior != null && root == instance.MasterInterior)) continue;
+                        Transform t = FindNamedNearest(root.transform, door.m_ExitPointName, clickedDoorPos);
+                        if (t == null) continue;
+                        float d = (t.position - clickedDoorPos).sqrMagnitude;
+                        if (d < bestDist) { bestDist = d; best = t; }
+                    }
+                }
+                if (best != null)
+                {
+                    vanillaPoint = true;
+                    return best.position;
+                }
+            }
+
             Transform sp = door.transform.Find("SpawnPoint");
             Vector3 fallbackPos = sp != null ? sp.position : door.transform.position;
             // On the way out the door lives in the clone scene, so it is raised on Y.
             // Subtract YOffset to spawn at the outside world's door level.
             fallbackPos.y -= instance.Config.YOffset;
             return fallbackPos;
+        }
+
+        // The building whose door the player last left through into a scene SI does not clone.
+        private static string s_LeftThroughInstance;
+        private static string s_LeftThroughRegionPoint;
+
+        // The region spawn point of the clone's way out nearest a door, so a load into the region lands by the building.
+        // Remembered so the way back from there returns into this clone.
+        private static void NoteLeftThrough(SeamlessInteriorInstance instance, LoadScene door)
+        {
+            s_LeftThroughInstance = instance.Config.ResolvedInstanceId;
+            s_LeftThroughRegionPoint = NearestRegionExitPoint(instance, door.transform.position);
+            if (!string.IsNullOrEmpty(s_LeftThroughRegionPoint)) PlayerPrefs.SetString("SI_RegionPoint_" + s_LeftThroughInstance, s_LeftThroughRegionPoint);
+        }
+
+        // A LoadingZone (the concentrator's conveyor crawl) loads its partner door's scene without PerformInteraction.
+        internal static void OnLoadingZone(LoadScene door)
+        {
+            if (door == null || string.IsNullOrEmpty(door.m_SceneToLoad)) return;
+            var instance = SeamlessInteriorsMod.FindInstanceOwning(door.transform);
+            if (instance == null) { TryRedirectIntoClone(door); return; }
+            if (!LeadsToARegion(door.m_SceneToLoad) && door.m_SceneToLoad != instance.Config.InteriorSceneBaseName
+                && (instance.Config.DoorSpawnPoints == null || instance.Config.DoorSpawnPoints.Count == 0)
+                && instance.Config.ExitSpawnPosition == Vector3.zero)
+                NoteLeftThrough(instance, door);
+        }
+
+        private static string NearestRegionExitPoint(SeamlessInteriorInstance instance, Vector3 near)
+        {
+            string best = null; float bestD = float.MaxValue;
+            foreach (var ls in instance.MasterInterior.GetComponentsInChildren<LoadScene>(true))
+            {
+                if (ls == null || !LeadsToARegion(ls.m_SceneToLoad) || string.IsNullOrEmpty(ls.m_ExitPointName)) continue;
+                float d = Vector3.Distance(ls.transform.position, near);
+                if (d < bestD) { bestD = d; best = ls.m_ExitPointName; }
+            }
+            return best;
+        }
+
+        // In a scene of its own (the mine), a door back to a cloned building's interior scene loads the
+        // building's region instead; SI then puts the player at that door's enter point inside the clone.
+        internal static bool TryRedirectIntoClone(LoadScene door)
+        {
+            string target = door.m_SceneToLoad;
+            if (string.IsNullOrEmpty(target) || LeadsToARegion(target)) return false;
+
+            string here = SeamlessInteriorsMod.RealSceneName(door.gameObject.scene);
+            // only from an interior scene: a region (or its _SANDBOX part) keeps its own doors
+            if (string.IsNullOrEmpty(here) || LeadsToARegion(here.Split('_')[0])) return false;
+            InteriorConfig pick = null;
+            int candidates = 0;
+            foreach (var cfg in SeamlessInteriorsMod.SupportedInteriors)
+            {
+                if (cfg.InteriorSceneBaseName != target || IsRegionScene(here, cfg.ExteriorSceneName)) continue;
+                candidates++;
+                // the building the player came from wins when several share the interior
+                if (pick == null || cfg.ResolvedInstanceId == s_LeftThroughInstance) pick = cfg;
+            }
+            if (pick == null || (candidates > 1 && pick.ResolvedInstanceId != s_LeftThroughInstance)) return false;
+
+            SeamlessInteriorsMod.s_PendingArrivalInstance = pick.ResolvedInstanceId;
+            SeamlessInteriorsMod.s_PendingArrivalPoint = door.m_ExitPointName;
+            door.m_SceneToLoad = pick.ExteriorSceneName;
+            // the interior's point does not exist in the region: the game would drop the player under the map
+            // after a load in the mine the door is unknown: the point remembered from the last time through
+            string regionPoint = pick.ResolvedInstanceId == s_LeftThroughInstance ? s_LeftThroughRegionPoint : null;
+            if (string.IsNullOrEmpty(regionPoint)) regionPoint = PlayerPrefs.GetString("SI_RegionPoint_" + pick.ResolvedInstanceId, "");
+            if (!string.IsNullOrEmpty(regionPoint)) door.m_ExitPointName = regionPoint;
+            MelonLogger.Msg($"[DONUS] '{here}' -> '{target}' kapisi {pick.ExteriorSceneName} bolgesine yonlendirildi, " +
+                            $"varis: {pick.ResolvedInstanceId} / {SeamlessInteriorsMod.s_PendingArrivalPoint}, bolge noktasi {door.m_ExitPointName}");
+            return true;
+        }
+
+        // A shared interior's exit names whichever region it was built for (TrailerB's says LakeRegion
+        // wherever it stands), so any region counts; MiningRegionMine or HouseBasementC do not.
+        private static bool LeadsToARegion(string scene)
+        {
+            return !string.IsNullOrEmpty(scene)
+                && (scene.EndsWith("Region", System.StringComparison.Ordinal) || scene.Contains("Zone"));
+        }
+
+        // The region scene or one of its sub-scenes (MiningRegion_SANDBOX, AshCanyonRegion_EastRidge...).
+        private static bool IsRegionScene(string sceneName, string region)
+        {
+            return !string.IsNullOrEmpty(sceneName) && !string.IsNullOrEmpty(region)
+                && (sceneName == region || sceneName.StartsWith(region + "_", System.StringComparison.Ordinal));
+        }
+
+        // The transform with this exact name under root (inactive ones too) nearest to near; null if none.
+        private static Transform FindNamedNearest(Transform root, string name, Vector3 near)
+        {
+            if (root == null || string.IsNullOrEmpty(name)) return null;
+
+            Transform best = null;
+            float bestDist = float.MaxValue;
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null || t.name != name) continue;
+                float d = (t.position - near).sqrMagnitude;
+                if (d < bestDist) { bestDist = d; best = t; }
+            }
+            return best;
         }
 
         private static Vector3 SnapToGround(Vector3 pos)

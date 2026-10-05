@@ -98,6 +98,7 @@ namespace SeamlessInteriors
                     MelonLogger.Msg($"[SCREEN-RELEASE] Tum instance'lar hazir, ekran aciliyor.");
 
                 CameraFade.FadeIn(0.5f, 0f, null);
+                MelonCoroutines.Start(FinishPendingArrival());
             }
 
             // Cleanly restart the wind audio loop after a save/load. By this point the
@@ -425,13 +426,25 @@ namespace SeamlessInteriors
             instance.ResolvedExternalHiddenObjects.Add(go);
         }
 
+        // Footprint test only: shell pivots sit on the ground, below a clone lifted over the terrain.
+        private static bool ShellStandsInside(SeamlessInteriorInstance instance, Vector3 pivot)
+        {
+            BoxCollider box = instance.InteriorTrigger;
+            if (box == null) return false;
+            pivot.y = box.transform.TransformPoint(box.center).y;
+            return instance.IsPositionInVolume(pivot);
+        }
+
         private static bool BelongsToAnyOtherInstanceHierarchy(SeamlessInteriorInstance instance, Transform t)
         {
             foreach (var other in ActiveInteriors.Values)
             {
                 if (other == instance) continue;
                 if (other.MasterInterior != null && t.IsChildOf(other.MasterInterior.transform)) return true;
-                if (other.ExteriorShell != null && t.IsChildOf(other.ExteriorShell.transform)) return true;
+                // A neighbour's shell stays, unless that building stands inside this clone
+                // (TrailerSShape's middle trailer is CampTrailerB_3's shell).
+                if (other.ExteriorShell != null && t.IsChildOf(other.ExteriorShell.transform)
+                    && !ShellStandsInside(instance, other.ExteriorShell.transform.position)) return true;
             }
             return false;
         }
@@ -811,6 +824,13 @@ namespace SeamlessInteriors
             }
             // ---------------------------------------------------
 
+            // A camera left in the interior scene (HuntingLodgeA's Root/Art/Geo/Camera) takes over
+            // the screen once the clone is active and the player's own FPSCamera switches off.
+            foreach (var cam in instance.MasterInterior.GetComponentsInChildren<Camera>(true))
+                if (cam != null) UnityEngine.Object.Destroy(cam);
+            foreach (var listener in instance.MasterInterior.GetComponentsInChildren<AudioListener>(true))
+                if (listener != null) UnityEngine.Object.Destroy(listener);
+
             // --- STATIC BATCHING FIX ---
             // The clone is moved after loading, and static renderers cannot move.
             foreach (var r in instance.MasterInterior.GetComponentsInChildren<MeshRenderer>(true))
@@ -1096,7 +1116,7 @@ namespace SeamlessInteriors
             electrolizer.m_HasStopped = false;
         }
 
-        public static List<Bounds> ComputeInteriorSubBounds(GameObject root, float cellSize = 2.0f)
+        public static List<Bounds> ComputeInteriorSubBounds(GameObject root, float cellSize = 2.0f, float radius = 30f)
         {
             Renderer[] renderers = InteriorScan.Renderers(root);
             Transform rootT = root.transform;
@@ -1114,7 +1134,7 @@ namespace SeamlessInteriors
                 Bounds wb = r.bounds;
                 if (wb.size.x > 40f || wb.size.y > 40f || wb.size.z > 40f) continue;
                 Vector3 localCenter = rootT.InverseTransformPoint(wb.center);
-                if (Mathf.Abs(localCenter.x) > 30f || Mathf.Abs(localCenter.y) > 30f || Mathf.Abs(localCenter.z) > 30f) continue;
+                if (Mathf.Abs(localCenter.x) > radius || Mathf.Abs(localCenter.y) > radius || Mathf.Abs(localCenter.z) > radius) continue;
 
                 RendererCell rc;
                 rc.world = wb;
@@ -1326,9 +1346,9 @@ namespace SeamlessInteriors
 
         // The old ComputeLocalInteriorBounds, kept for compatibility.
         // It now returns the combined version of ComputeInteriorSubBounds.
-        public static Bounds ComputeLocalInteriorBounds(GameObject root)
+        public static Bounds ComputeLocalInteriorBounds(GameObject root, float radius = 30f)
         {
-            var subs = ComputeInteriorSubBounds(root);
+            var subs = ComputeInteriorSubBounds(root, 2.0f, radius);
             if (subs.Count == 0) return new Bounds(new Vector3(0, 2f, 0), new Vector3(25f, 18f, 25f));
             Bounds combined = subs[0];
             for (int i = 1; i < subs.Count; i++)

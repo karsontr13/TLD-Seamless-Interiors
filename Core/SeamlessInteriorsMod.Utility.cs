@@ -324,6 +324,16 @@ namespace SeamlessInteriors
             return false;
         }
 
+        // The turned rectangles of a config: the single TerrainHoleYaw hole plus TerrainHoles.
+        private static System.Collections.Generic.List<TerrainHoleRect> TurnedHoleRects(InteriorConfig cfg)
+        {
+            var list = new System.Collections.Generic.List<TerrainHoleRect>();
+            if (cfg.TerrainHoleSize != Vector3.zero && cfg.TerrainHoleYaw.HasValue)
+                list.Add(new TerrainHoleRect(cfg.TerrainHoleOffset, cfg.TerrainHoleSize, cfg.TerrainHoleYaw.Value));
+            if (cfg.TerrainHoles != null) list.AddRange(cfg.TerrainHoles);
+            return list;
+        }
+
         // Backup of the terrain heights a hole overwrote, so it can be filled back in.
         public class TerrainHoleData
         {
@@ -352,7 +362,7 @@ namespace SeamlessInteriors
                 return wanted;
 
             // Option 1: explicit size in the config.
-            if (instance.Config.TerrainHoleSize != Vector3.zero)
+            if (instance.Config.TerrainHoleSize != Vector3.zero || (instance.Config.TerrainHoles != null && instance.Config.TerrainHoles.Count > 0))
             {
                 TerrainHoleEnabled[key] = true;
                 return true;
@@ -384,6 +394,7 @@ namespace SeamlessInteriors
         public static bool IsPlayerInsideForTerrainHole(SeamlessInteriorInstance instance, Vector3 pos)
         {
             string key = instance.Config.ResolvedInstanceId;
+
             if (PlayerInteriorId == key) return true;
 
             float now = Time.time;
@@ -474,11 +485,35 @@ namespace SeamlessInteriors
                 if (instance.MasterInterior != null)
                      customHoleT = instance.MasterInterior.transform.Find("TerrainHoleBox");
 
-                if (instance.Config.TerrainHoleSize != Vector3.zero)
+                var rects = TurnedHoleRects(instance.Config);
+                if (rects.Count > 0)
+                {
+                    // The heightmap block read back has to cover every turned rectangle.
+                    float cell = 2f * td.size.x / (td.heightmapResolution - 1);   // rounding slack
+                    targetBounds = default;
+                    for (int k = 0; k < rects.Count; k++)
+                    {
+                        Vector3 s = rects[k].Size;
+                        float r = rects[k].Yaw * Mathf.Deg2Rad;
+                        float ac = Mathf.Abs(Mathf.Cos(r)), asn = Mathf.Abs(Mathf.Sin(r));
+                        var b = new Bounds(rects[k].Offset, new Vector3(ac * s.x + asn * s.z + cell, 1f, asn * s.x + ac * s.z + cell));
+                        if (k == 0) targetBounds = b; else targetBounds.Encapsulate(b);
+                    }
+                }
+                else if (instance.Config.TerrainHoleSize != Vector3.zero)
                 {
                     // Option 1: the config gives world-space values directly.
                     // TerrainHoleOffset is used as the world-space centre here.
                     targetBounds = new Bounds(instance.Config.TerrainHoleOffset, instance.Config.TerrainHoleSize);
+                    if (instance.Config.TerrainHoleYaw.HasValue)
+                    {
+                        // The heightmap block read back has to cover the turned rectangle.
+                        Vector3 s = instance.Config.TerrainHoleSize;
+                        float r = instance.Config.TerrainHoleYaw.Value * Mathf.Deg2Rad;
+                        float ac = Mathf.Abs(Mathf.Cos(r)), asn = Mathf.Abs(Mathf.Sin(r));
+                        float cell = 2f * td.size.x / (td.heightmapResolution - 1);   // rounding slack
+                        targetBounds = new Bounds(instance.Config.TerrainHoleOffset, new Vector3(ac * s.x + asn * s.z + cell, s.y, asn * s.x + ac * s.z + cell));
+                    }
                 }
                 else if (customHoleT != null)
                 {
@@ -538,10 +573,36 @@ namespace SeamlessInteriors
                     // Sink by 10m rather than a very deep -30f.
                     float targetNormalizedY = Mathf.Clamp01(((terrain.transform.position.y - 10f) - terrain.transform.position.y) / td.size.y);
 
-                    // Only lower - never raise ground that is already below the target.
-                    for (int i = 0; i < totalElements; i++)
+                    var rects = TurnedHoleRects(instance.Config);
+                    if (rects.Count > 0)
                     {
-                        if (data[i] > targetNormalizedY) data[i] = targetNormalizedY;
+                        // Turned rectangles, each sunk just below its floor: only the samples under the building.
+                        Vector3 tp = terrain.transform.position;
+                        int res = td.heightmapResolution;
+                        foreach (var rect in rects)
+                        {
+                            Vector3 c = rect.Offset, s = rect.Size;
+                            float yawRad = rect.Yaw * Mathf.Deg2Rad, cos = Mathf.Cos(yawRad), sin = Mathf.Sin(yawRad);
+                            float floorNormalized = Mathf.Clamp01((c.y - tp.y) / td.size.y);
+                            for (int row = 0; row < height; row++)
+                                for (int col = 0; col < width; col++)
+                                {
+                                    float dx = tp.x + (xBase + col) / (float)(res - 1) * td.size.x - c.x;
+                                    float dz = tp.z + (yBase + row) / (float)(res - 1) * td.size.z - c.z;
+                                    float lx = dx * cos - dz * sin, lz = dx * sin + dz * cos;
+                                    if (Mathf.Abs(lx) > s.x * 0.5f || Mathf.Abs(lz) > s.z * 0.5f) continue;
+                                    int i = row * width + col;
+                                    if (data[i] > floorNormalized) data[i] = floorNormalized;
+                                }
+                        }
+                    }
+                    else
+                    {
+                        // Only lower - never raise ground that is already below the target.
+                        for (int i = 0; i < totalElements; i++)
+                        {
+                            if (data[i] > targetNormalizedY) data[i] = targetNormalizedY;
+                        }
                     }
                 }
                 else

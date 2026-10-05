@@ -656,6 +656,11 @@ namespace SeamlessInteriors
         {
             bool geometric = instance.IsPositionInside(pos);
 
+            // Already inside this building and within its volume: a missed ray (the conveyor pipe) must not close it,
+            // nor a save made elsewhere (the mine) before arriving here.
+            if (PlayerInteriorId == instance.Config.ResolvedInstanceId && (geometric || instance.IsPositionInVolume(pos, 2.0f)))
+                return true;
+
             if (!IsLoadStateAuthoritative()) return geometric;
 
             if (GetSavedPlayerInsideInstanceId() == instance.Config.ResolvedInstanceId)
@@ -819,6 +824,14 @@ namespace SeamlessInteriors
                                 $"oyuncuyu sahneyi yukleten mod yerlestiriyor.");
                 ClearSavedPlayerInsideState();
                 savedInsideId = "";
+            }
+
+            // Coming back from a scene SI does not clone (the concentrator's mine): the player
+            // arrives inside the building, as if they had saved there.
+            if (isSupportedExteriorScene && !string.IsNullOrEmpty(s_PendingArrivalInstance))
+            {
+                if (SceneOwnsInstanceId(sceneName, s_PendingArrivalInstance)) savedInsideId = s_PendingArrivalInstance;
+                else { s_PendingArrivalInstance = null; s_PendingArrivalPoint = null; }
             }
 
             // STALE ENTRY FROM ANOTHER SAVE.
@@ -1019,6 +1032,7 @@ namespace SeamlessInteriors
                 s_ScreenHeldBlack = false;
                 HideLoadingOverlay();
                 CameraFade.FadeIn(0.5f, 0f, null);
+                MelonCoroutines.Start(FinishPendingArrival());
 
                 if (s_DebugBounds)
                     MelonLogger.Msg("[SCREEN-RELEASE] Persist akisi: klonlar geri baglandi, ekran aciliyor.");
@@ -1301,6 +1315,13 @@ namespace SeamlessInteriors
             {
                 instance.MasterInterior.SetActive(true);
                 if (instance.ExteriorShell != null) instance.ExteriorShell.SetActive(false);
+
+                // Back from another scene through one of the building's doors.
+                if (TryTakePendingArrival(instance, out Vector3 arrival, false))
+                {
+                    yield return null;   // colliders up first
+                    GameManager.GetPlayerManagerComponent().TeleportPlayer(EnsureAboveGround(arrival, instance), GameManager.GetPlayerTransform().rotation);
+                }
             }
 
             // The trigger reference was lost with the old scene; recover it from the clone.
@@ -1311,7 +1332,7 @@ namespace SeamlessInteriors
                     instance.InteriorTrigger = killer.GetComponent<BoxCollider>();
             }
 
-            Bounds interiorBounds = ComputeLocalInteriorBounds(instance.MasterInterior);
+            Bounds interiorBounds = ComputeLocalInteriorBounds(instance.MasterInterior, instance.Config.BoundsRadius);
 
             // Refresh the InteriorTrigger bounds with the padded version too
             // (used by the IsPositionInside fallback).
@@ -1471,7 +1492,12 @@ namespace SeamlessInteriors
                     Vector3? savedLocalPos = GetSavedPlayerLocalPosition(instanceId);
                     Quaternion? savedLocalRot = GetSavedPlayerLocalRotation(instanceId);
 
-                    if (savedLocalPos.HasValue && instance.MasterInterior != null)
+                    // PRIORITY 0: back from another scene through one of the building's doors.
+                    if (TryTakePendingArrival(instance, out Vector3 arrival, false))
+                    {
+                        safePos = EnsureAboveGround(arrival, instance);
+                    }
+                    else if (savedLocalPos.HasValue && instance.MasterInterior != null)
                     {
                         // Convert the local position into the current clone's world space.
                         safePos = instance.MasterInterior.transform.TransformPoint(savedLocalPos.Value);
@@ -1607,7 +1633,7 @@ namespace SeamlessInteriors
             // environment fix come first. With the renderers on, StripBakedLightmaps would
             // let the player see the broken lighting.
 
-            Bounds interiorBounds = ComputeLocalInteriorBounds(instance.MasterInterior);
+            Bounds interiorBounds = ComputeLocalInteriorBounds(instance.MasterInterior, instance.Config.BoundsRadius);
 
             SetupWeatherAndParticles(instance, interiorBounds);
 

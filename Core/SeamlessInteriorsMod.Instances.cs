@@ -6,6 +6,15 @@ namespace SeamlessInteriors
 {
     // Link definition for nested scene transitions (e.g. FarmHouse -> Basement):
     // doors that lead from one interior scene into another.
+    public class TerrainHoleRect
+    {
+        public Vector3 Offset;   // world centre; y = height the terrain is sunk to
+        public Vector3 Size;     // x/z footprint in the rectangle's own axes
+        public float Yaw;
+
+        public TerrainHoleRect(Vector3 offset, Vector3 size, float yaw) { Offset = offset; Size = size; Yaw = yaw; }
+    }
+
     public class SubInteriorLink
     {
         // InstanceId of the target instance (the key in the ActiveInteriors dictionary).
@@ -66,9 +75,19 @@ namespace SeamlessInteriors
         // Pin the clone to FallbackPosition instead of the shell's own position.
         public bool ForceExactPosition;
 
+        // How far from the clone root its parts may reach and still count as the building's volume.
+        // Raise it for a sprawling interior (the mine concentrator's wings lie 130 m out).
+        public float BoundsRadius = 30f;
+
         // Terrain hole carved under the building (zero = no hole).
         public Vector3 TerrainHoleSize = Vector3.zero;
         public Vector3 TerrainHoleOffset = Vector3.zero;
+        // Set: the hole is a rectangle turned by this yaw, sunk only to TerrainHoleOffset.y
+        // (under a basement floor), a shallow pit beside the walls. Unset: world-axis box, sunk deep.
+        public float? TerrainHoleYaw = null;
+        // More turned rectangles for a building spread over several parts (world centre, size, yaw);
+        // each is sunk to its own Offset.y.
+        public List<TerrainHoleRect> TerrainHoles = null;
 
         // Nested scene transitions (e.g. the basement door inside FarmHouse).
         public List<SubInteriorLink> SubInteriorLinks = new List<SubInteriorLink>();

@@ -22,6 +22,63 @@ namespace SeamlessInteriors
 
         private static string s_PlayerInteriorId = null;
 
+        // ─── ARRIVING FROM ANOTHER SCENE ───
+        // A door in a scene SI does not clone (the concentrator's mine) that leads back into a cloned
+        // building loads the region instead (PortalPatches); the player then arrives at this point in the clone.
+        internal static string s_PendingArrivalInstance;
+        internal static string s_PendingArrivalPoint;
+        internal static float s_ArrivalGraceUntil;
+        internal static bool ArrivalProtected => !string.IsNullOrEmpty(s_PendingArrivalInstance) || Time.realtimeSinceStartup < s_ArrivalGraceUntil;
+
+        // The pending arrival point inside this clone; false when none is waiting for it.
+        internal static bool TryTakePendingArrival(SeamlessInteriorInstance instance, out Vector3 pos, bool consume = true)
+        {
+            pos = Vector3.zero;
+            if (instance == null || instance.MasterInterior == null
+                || s_PendingArrivalInstance != instance.Config.ResolvedInstanceId) return false;
+
+            string pointName = s_PendingArrivalPoint;
+            if (consume) { s_PendingArrivalInstance = null; s_PendingArrivalPoint = null; }
+
+            foreach (Transform t in instance.MasterInterior.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null || t.name != pointName) continue;
+                pos = t.position;
+                MelonLogger.Msg($"[DONUS] {instance.Config.ResolvedInstanceId}: oyuncu klonda '{pointName}' noktasina yerlestiriliyor.");
+                return true;
+            }
+            MelonLogger.Warning($"[DONUS] {instance.Config.ResolvedInstanceId}: klonda '{pointName}' bulunamadi.");
+            return false;
+        }
+
+        // The game spawns the player itself late in the load, so the arrival is placed again once the screen opens,
+        // and once more if they still drop through the terrain.
+        internal static System.Collections.IEnumerator FinishPendingArrival()
+        {
+            if (string.IsNullOrEmpty(s_PendingArrivalInstance)) yield break;
+            s_ArrivalGraceUntil = Time.realtimeSinceStartup + 4f;   // covers the landing after the last placement
+            SeamlessInteriorInstance instance = null;
+            foreach (var inst in ActiveInteriors.Values)
+                if (inst != null && inst.Config.ResolvedInstanceId == s_PendingArrivalInstance) instance = inst;
+            if (instance == null || !TryTakePendingArrival(instance, out Vector3 arrival)) { s_PendingArrivalInstance = null; s_PendingArrivalPoint = null; yield break; }
+
+            for (int pass = 0; pass < 3; pass++)
+            {
+                if (instance.MasterInterior == null) yield break;
+                if (!instance.MasterInterior.activeSelf) instance.MasterInterior.SetActive(true);
+                Transform playerT = GameManager.GetPlayerTransform();
+                if (playerT == null) yield break;
+                if (pass == 0 || playerT.position.y < arrival.y - 2f || Vector3.Distance(playerT.position, arrival) > 40f)
+                {
+                    GameManager.GetPlayerManagerComponent().TeleportPlayer(EnsureAboveGround(arrival, instance), playerT.rotation);
+                    MarkPlayerInside(instance, "maden donusu");
+                    SyncExternalHiddenObjects();
+                    if (pass > 0) MelonLogger.Msg($"[DONUS] {instance.Config.ResolvedInstanceId}: oyuncu dusuyordu, tekrar yerlestirildi.");
+                }
+                yield return new WaitForSeconds(0.5f);
+            }
+        }
+
         // The building the player is in (its ResolvedInstanceId), or null while outside.
         public static string PlayerInteriorId
         {
