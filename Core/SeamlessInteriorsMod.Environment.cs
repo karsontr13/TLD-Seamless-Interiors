@@ -8,6 +8,23 @@ namespace SeamlessInteriors
 {
     public partial class SeamlessInteriorsMod
     {
+        // The game's layer for geometry the character controller collides with but nobody is
+        // meant to see. Resolved BY NAME rather than hardcoded to 26, so a layer reshuffle in a
+        // game update cannot silently start hiding something else; NameToLayer gives -1 if it
+        // ever disappears, which matches no object. See the collision-only pass in ApplyEnvironment.
+        // Unity's placeholder material, worn by a MeshRenderer that was never given one.
+        private const string UNAUTHORED_MATERIAL = "Default-Material";
+
+        private static int s_CollideOnlyLayer = -2;
+        private static int COLLIDE_ONLY_LAYER
+        {
+            get
+            {
+                if (s_CollideOnlyLayer == -2) s_CollideOnlyLayer = LayerMask.NameToLayer("CharacterControllerCollideOnly");
+                return s_CollideOnlyLayer;
+            }
+        }
+
         // When several instances share the same scene, it is loaded once and copied for
         // each instance from an untouched snapshot. Lives for the load only (DestroyPristineTemplates).
         private static Dictionary<string, GameObject> s_PristineTemplates = new Dictionary<string, GameObject>();
@@ -165,10 +182,13 @@ namespace SeamlessInteriors
             var s_InteriorSandbox = opSandbox.Result.Scene;
             var s_InteriorDLC = opDLC.Result.Scene;
 
-            if (IsDarkAtmosphereMode)
+            // The interior's baked probes, read before anything is moved (dark mode lights items with them).
+            try { CaptureInteriorProbes(baseName, s_InteriorMain); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[INTERIOR-PROBES] {baseName}: {ex.Message}"); }
+
+            // BOTH MODES merge the interior lightmaps into the outdoor array, keeping the outdoor
+            // ones intact; outdoor mode only stops the renderers using them, so F8 can switch live.
             {
-                // DARK MODE: merge the interior lightmaps into the outdoor lightmap array,
-                // preserving the interior's baked lighting without breaking the outdoor one.
                 var interiorLightmaps = UnityEngine.LightmapSettings.lightmaps;
 
                 if (cachedLightmaps != null && interiorLightmaps != null && interiorLightmaps.Length > cachedLightmaps.Length)
@@ -189,12 +209,6 @@ namespace SeamlessInteriors
                     // No new lightmaps: just restore the outdoor ones.
                     UnityEngine.LightmapSettings.lightmaps = cachedLightmaps;
                 }
-                UnityEngine.LightmapSettings.lightProbes = cachedLightProbes;
-            }
-            else
-            {
-                // OUTDOOR MODE: restore all outdoor lightmaps (the existing behaviour).
-                UnityEngine.LightmapSettings.lightmaps = cachedLightmaps;
                 UnityEngine.LightmapSettings.lightProbes = cachedLightProbes;
             }
 
@@ -221,13 +235,7 @@ namespace SeamlessInteriors
             // Nothing has touched the renderers yet, so this is the state the scene shipped.
             instance.SceneDisabledRenderers = CollectDisabledRenderers(instance.MasterInterior);
 
-            // --- FIX 2: RESTORE THE OUTDOOR LIGHTMAPS AFTER THE INTERIOR IS LOADED ---
-            if (!IsDarkAtmosphereMode)
-            {
-                UnityEngine.LightmapSettings.lightmaps = cachedLightmaps;
-                UnityEngine.LightmapSettings.lightProbes = cachedLightProbes;
-            }
-            // In dark mode the merged lightmaps are already set - do not touch them.
+            // The merged lightmaps are already set in both modes - do not touch them.
             // ------------------------------------------------------------------------------------
 
             // Pin the active scene back to the outdoor one.
@@ -303,6 +311,15 @@ namespace SeamlessInteriors
 
             if (instance.MasterInterior == null) return;
 
+            // A PARKED ROOM HAS NOTHING TO HIDE. This list exists because a co-located interior
+            // shares its space with the outdoors: rocks, trees and props near the building end up
+            // inside the room. A parked room stands ParkOffset up in open air, and the only
+            // renderers that can ever be found there are this mod's own portal objects, which is
+            // the bug of 2026-09-18 (see IsOwnPortalObject). So the scan, a pass over every active
+            // renderer in the scene, is skipped, and the list stays empty. Park every building and
+            // this whole system has no work left; that is a conversation for the author.
+            if (instance.Config != null && instance.Config.IsParked) return;
+
             // World AABB grown by 1.2x to allow for rotation (same as the old behaviour).
             Bounds preFilter;
             bool hasPreFilter = TryGetWorldFilterBounds(instance, out preFilter, 1.2f);
@@ -367,6 +384,32 @@ namespace SeamlessInteriors
             }
         }
 
+        // THE MOD'S OWN PORTAL OBJECTS ARE NOT OUTDOOR SCENERY.
+        //
+        // This list is for outside-world objects poking into a room: whatever has a renderer
+        // inside the interior's space and belongs to no clone. A window-portal quad is a root
+        // object with a renderer standing in a window opening, which is exactly that description,
+        // so whenever this scan ran while the quads existed they were listed and then switched off
+        // for as long as the room was active. That is a load with the player already inside.
+        //
+        // Found 2026-09-18 after an hour of looking in the wrong place. The windows showed the raw
+        // world from the parked height; all eight quads read activeSelf=False with their cameras,
+        // targets and materials healthy. A Harmony prefix on GameObject.SetActive, installed from
+        // the console and filtered on the quad's name, named the caller on its first hit:
+        // Run -> InitializeVisibilityAndWatchdog -> ApplyInitialSyncState ->
+        // SyncExternalHiddenObjects. An earlier search of this mod for who deactivates root
+        // objects had come up empty because it looked for the text "SetActive(false)", and that
+        // function passes a variable. Search for the call, not for one spelling of it.
+        //
+        // Every object this mod creates for the portals is named with one of these two prefixes.
+        internal static bool IsOwnPortalObject(GameObject go)
+        {
+            if (go == null) return false;
+            string name = go.name;
+            return name.StartsWith("SI_", System.StringComparison.Ordinal)
+                || name.StartsWith("SeamlessInteriors_", System.StringComparison.Ordinal);
+        }
+
         // Is the renderer part of a placeable whose origin stands inside this building? Cached per placeable.
         private static bool IsPlaceableInsideBuilding(SeamlessInteriorInstance instance, Transform t, Dictionary<int, bool> cache)
         {
@@ -418,6 +461,7 @@ namespace SeamlessInteriors
         private static void AddHidden(SeamlessInteriorInstance instance, HashSet<int> seen, GameObject go)
         {
             if (go == null) return;
+            if (IsOwnPortalObject(go)) return;
 
             // Never a placeable's own object: switching it off marks it Inactive in the save for good.
             if (go.GetComponent<Il2CppTLD.Placement.Placeable>() != null) return;
@@ -509,7 +553,7 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[DARK-LIGHT] '{container.name}' bosaltildi (silinmedi) — InteriorLightingManager referansi korundu.");
         }
 
-        private static bool EnableLightingManagerHierarchy(Behaviour manager, Transform masterRoot)
+        private static bool EnableLightingManagerHierarchy(Behaviour manager, Transform masterRoot, SeamlessInteriorInstance record = null)
         {
             if (manager == null || masterRoot == null) return false;
 
@@ -521,6 +565,7 @@ namespace SeamlessInteriors
                 if (!t.gameObject.activeSelf)
                 {
                     t.gameObject.SetActive(true);
+                    record?.DarkActivatedObjects.Add(t.gameObject);
                     changed = true;
                 }
                 t = t.parent;
@@ -529,6 +574,7 @@ namespace SeamlessInteriors
             if (!manager.enabled)
             {
                 manager.enabled = true;
+                record?.DarkEnabledManagers.Add(manager);
                 changed = true;
             }
 
@@ -544,8 +590,8 @@ namespace SeamlessInteriors
 
             foreach (var m in instance.MasterInterior.GetComponentsInChildren<InteriorLightingManager>(true))
             {
-                if (m == null) continue;
-                if (EnableLightingManagerHierarchy(m, masterRoot))
+                if (m == null || IsLegacyLightingManager(m)) continue;
+                if (EnableLightingManagerHierarchy(m, masterRoot, instance))
                 {
                     activated++;
                     if (s_DebugBounds)
@@ -557,7 +603,7 @@ namespace SeamlessInteriors
             foreach (var m in instance.MasterInterior.GetComponentsInChildren<DarkLightingManager>(true))
             {
                 if (m == null) continue;
-                if (EnableLightingManagerHierarchy(m, masterRoot))
+                if (EnableLightingManagerHierarchy(m, masterRoot, instance))
                 {
                     activated++;
                     if (s_DebugBounds)
@@ -576,9 +622,40 @@ namespace SeamlessInteriors
             BindLightingManagersToOwnAmbient(instance);
         }
 
+        // A legacy InteriorLightingManager sharing its object with a DarkLightingManager stays off
+        // in vanilla; switched on it wrote ambient x3 and switched the fill lights off.
+        private static bool IsLegacyLightingManager(InteriorLightingManager m)
+        {
+            return m.GetComponent<DarkLightingManager>() != null;
+        }
+
+        // DarkLightingManager records light positions at Start, before the clone was moved;
+        // its distance fade would cull every light against the interior scene's coordinates.
+        private static void RefreshDarkLightPositions(SeamlessInteriorInstance instance)
+        {
+            foreach (var m in instance.MasterInterior.GetComponentsInChildren<DarkLightingManager>(true))
+            {
+                if (m == null || !m.m_UseDistanceFade) continue;
+                foreach (var list in new[] { m.m_ConstantLightList, m.m_ColouredLightList, m.m_NightLightList, m.m_NonTodLightList })
+                {
+                    if (list == null) continue;
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var ld = list[i];
+                        if (ld == null || ld.m_Light == null) continue;
+                        ld.m_Position = ld.m_Light.transform.position;
+                        list[i] = ld;
+                    }
+                }
+            }
+        }
+
         public static bool BindLightingManagersToOwnAmbient(SeamlessInteriorInstance instance)
         {
             if (instance == null || instance.MasterInterior == null) return false;
+
+            try { RefreshDarkLightPositions(instance); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[LIGHT-BIND] {instance.Config.ResolvedInstanceId}: {ex.Message}"); }
 
             Transform masterT = instance.MasterInterior.transform;
 
@@ -601,12 +678,12 @@ namespace SeamlessInteriors
 
             foreach (var m in instance.MasterInterior.GetComponentsInChildren<InteriorLightingManager>(true))
             {
-                if (m == null) continue;
+                if (m == null || IsLegacyLightingManager(m)) continue;
                 managers++;
 
                 // PrepareMasterInterior never runs again for persisted clones, so the
                 // manager being enabled is guaranteed here.
-                if (darkMode && EnableLightingManagerHierarchy(m, masterT)) reactivated++;
+                if (darkMode && EnableLightingManagerHierarchy(m, masterT, instance)) reactivated++;
                 if (m.isActiveAndEnabled) running++;
 
                 TodAmbientLight cur = m.m_AmbientLight;
@@ -624,7 +701,7 @@ namespace SeamlessInteriors
                 if (m == null) continue;
                 managers++;
 
-                if (darkMode && EnableLightingManagerHierarchy(m, masterT)) reactivated++;
+                if (darkMode && EnableLightingManagerHierarchy(m, masterT, instance)) reactivated++;
                 if (m.isActiveAndEnabled) running++;
 
                 TodAmbientLight cur = m.m_AmbientLight;
@@ -690,19 +767,19 @@ namespace SeamlessInteriors
                 // Light shafts: no need to list them in a config, they are removed mod-wide.
                 if (s_LightShaftObjects.Contains(tName))
                 {
-                    if (darkMode)
-                    {
-                        // NO Destroy in dark mode. These objects may sit in
-                        // InteriorLightingManager's m_LightShaftParent /
-                        // m_LightShaftGimbleList references; destroying them triggers the
-                        // same NullReference chain that stops the interior lighting.
-                        // SetActive(false) looks the same and keeps the reference intact.
-                        t.gameObject.SetActive(false);
-                    }
-                    else
-                    {
-                        UnityEngine.Object.Destroy(t.gameObject);
-                    }
+                    // NEVER Destroy, in either mode. These objects are held by
+                    // LightShaftGimble.m_LightShaftRenderer (an array of Renderer) and by
+                    // InteriorLightingManager's m_LightShaftParent / m_LightShaftGimbleList.
+                    // Destroying them leaves the gimble on the parent calling
+                    // SetPropertyBlock on a destroyed Renderer from Update, once per frame
+                    // per gimble, for the lifetime of the scene. SetActive(false) looks the
+                    // same and keeps every reference intact.
+                    //
+                    // Dark mode already did this. Outdoor lighting, the DEFAULT mode, still
+                    // destroyed them: measured on TLD 2.55 at 161,774 NullReferenceExceptions
+                    // and a 40 MB Player.log within a few minutes of play, 8 per frame while
+                    // stood in one building, every one with a full stack trace.
+                    t.gameObject.SetActive(false);
                     continue;
                 }
 
@@ -711,13 +788,18 @@ namespace SeamlessInteriors
                 // matched "OBJ_TrailerWindow_Prefab" (the parent) and closed the parent.
                 bool shouldDestroy = destroySet.Contains(tName);
 
-                // Never destroy the protected objects in dark mode.
-                if (shouldDestroy && darkMode && darkModeProtectedFromDestroy.Contains(tName))
-                    shouldDestroy = false;
+                // The dark-mode lighting objects are kept in BOTH modes and switched by
+                // ApplyLightingMode, so F8 can change mode live.
+                if ((shouldDestroy || disableSet.Contains(tName)) && darkModeProtectedFromDestroy.Contains(tName))
+                {
+                    instance.DarkOnlyObjects.Add(t.gameObject);
+                    instance.DarkOnlyWasActive.Add(t.gameObject.activeSelf);
+                    continue;
+                }
 
-                // Dark mode: light containers such as WindowLight / WindowLightGroup are NOT
-                // destroyed, only emptied. See StripLightContainer for why.
-                if (shouldDestroy && darkMode && s_DarkModeLightContainers.Contains(tName))
+                // Light containers such as WindowLight / WindowLightGroup are emptied, never
+                // destroyed, in either mode. See StripLightContainer for why.
+                if (shouldDestroy && s_DarkModeLightContainers.Contains(tName))
                 {
                     StripLightContainer(t.gameObject);
                     shouldDestroy = false;
@@ -747,47 +829,15 @@ namespace SeamlessInteriors
 
             // --- SHADER AND REFLECTION FIXES ---
 
-            if (!darkMode)
+            // Reflection probes are kept in both modes, scoped so they cannot reach the outside;
+            // ApplyLightingMode switches them on only in dark mode. LightProbeGroups stay too.
+            foreach (var probe in instance.MasterInterior.GetComponentsInChildren<ReflectionProbe>(true))
             {
-                // Outdoor mode: remove the ReflectionProbes and LightProbeGroups that came
-                // from the interior. In dark mode they are kept (needed for the interior
-                // atmosphere).
-
-                // 1. Reflection probes.
-                var reflectionProbes = instance.MasterInterior.GetComponentsInChildren<ReflectionProbe>(true);
-                foreach (var probe in reflectionProbes)
-                {
-                    if (probe != null)
-                    {
-                        UnityEngine.Object.Destroy(probe.gameObject);
-                    }
-                }
-
-                // 2. Light probes.
-                var lightProbes = instance.MasterInterior.GetComponentsInChildren<LightProbeGroup>(true);
-                foreach (var lp in lightProbes)
-                {
-                    if (lp != null)
-                    {
-                        UnityEngine.Object.Destroy(lp.gameObject);
-                    }
-                }
-            }
-            else
-            {
-                // Dark mode: KEEP the ReflectionProbes but limit their scope, so they do not
-                // affect the outside world: switch to box projection and drop the importance.
-                var reflectionProbes = instance.MasterInterior.GetComponentsInChildren<ReflectionProbe>(true);
-                foreach (var probe in reflectionProbes)
-                {
-                    if (probe == null) continue;
-                    probe.mode = UnityEngine.Rendering.ReflectionProbeMode.Custom;
-                    probe.boxProjection = true;
-                    // Lower importance so it does not compete with the outdoor probes.
-                    probe.importance = 0;
-                }
-
-                // LightProbeGroups are KEPT - they give the interior objects the right colour.
+                if (probe == null) continue;
+                probe.mode = UnityEngine.Rendering.ReflectionProbeMode.Custom;
+                probe.boxProjection = true;
+                probe.importance = 0;
+                instance.DarkOnlyProbes.Add(probe);
             }
 
             // --- CLEAN UP LIGHT BLEEDING ---
@@ -804,22 +854,13 @@ namespace SeamlessInteriors
                     continue;
                 }
 
-                if (!darkMode)
+                // 2. Big point lights spill through the walls: off in outdoor mode, capped at
+                // 25 m in dark mode (ApplyLightingMode).
+                if (l.type == LightType.Point && l.range > 15f)
                 {
-                    // Outdoor mode: remove the huge point lights that spill through the walls.
-                    if (l.type == LightType.Point && l.range > 15f)
-                    {
-                        UnityEngine.Object.Destroy(l.gameObject);
-                    }
-                }
-                else
-                {
-                    // Dark mode: KEEP the big point lights (interior atmosphere), but cap
-                    // their range so they do not spill outside.
-                    if (l.type == LightType.Point && l.range > 25f)
-                    {
-                        l.range = 25f;
-                    }
+                    if (l.range > 25f) l.range = 25f;
+                    instance.BigPointLights.Add(l);
+                    instance.BigPointLightWasEnabled.Add(l.enabled);
                 }
             }
             // ---------------------------------------------------
@@ -831,24 +872,56 @@ namespace SeamlessInteriors
             foreach (var listener in instance.MasterInterior.GetComponentsInChildren<AudioListener>(true))
                 if (listener != null) UnityEngine.Object.Destroy(listener);
 
-            // --- STATIC BATCHING FIX ---
+            // --- STATIC BATCHING FIX, AND THE COLLISION-ONLY GEOMETRY ---
             // The clone is moved after loading, and static renderers cannot move.
+            //
+            // HIDE THE COLLISION HELPERS THAT HAVE NO MATERIAL. An interior scene's own camera
+            // never draws them, so nobody ever had to switch their renderers off; a parked room is
+            // in the OUTDOOR scene, whose camera does draw them, and they appear as flat white
+            // shapes over the real geometry.
+            //
+            // Measured 2026-09-22 in the Airfield hangar, owner: "The steps have a white inclined
+            // plane over top of the steps mesh." THE LAYER IS NOT THE SIGNATURE: six objects named
+            // "STAIR COLLIDER" were on CharacterControllerCollideOnly, but hiding those left the
+            // white plane exactly where it was, because the one he could see was called "Collider"
+            // and sat on layer 8, Ground. Eight of those plus a "Col_tail" were the visible ones.
+            //
+            // What all fifteen share is Unity's Default-Material, the placeholder a MeshRenderer
+            // gets when no material was ever assigned. A shipped art asset never wears it, so it
+            // is a safe signature and a meaningful one: it means nobody intended this to be seen.
+            // The collision-only layer is kept as a second test because it is equally safe by
+            // definition. Owner, after both were hidden live: "Stairs look good now".
+            int collideOnlyHidden = 0;
             foreach (var r in instance.MasterInterior.GetComponentsInChildren<MeshRenderer>(true))
             {
-                if (r != null && r.gameObject.isStatic)
+                if (r == null) continue;
+
+                if (r.gameObject.isStatic)
                 {
                     r.gameObject.isStatic = false;
                 }
+
+                if (!r.enabled) continue;
+
+                var mat = r.sharedMaterial;
+                bool unauthored = mat == null || mat.name.StartsWith(UNAUTHORED_MATERIAL);
+                if (unauthored || r.gameObject.layer == COLLIDE_ONLY_LAYER)
+                {
+                    r.enabled = false;
+                    collideOnlyHidden++;
+                }
+            }
+            if (collideOnlyHidden > 0)
+            {
+                MelonLogger.Msg($"[CLONE-HIDE] {instance.Config.ResolvedInstanceId}: gorunmesi amaclanmayan {collideOnlyHidden} carpisma yardimcisinin gorunumu kapatildi (ic mekan sahnesinin kamerasi da onlari cizmez).",
+                                $"[CLONE-HIDE] {instance.Config.ResolvedInstanceId}: {collideOnlyHidden} collision helpers that were never meant to be seen were hidden, which is what an interior scene's own camera does with them.");
             }
             // ---------------------------------
 
             // Enable the interior lighting managers that arrive disabled in dark mode.
             // Must run AFTER the Destroy/Disable steps: otherwise the loop above could
             // close the object we just enabled.
-            if (darkMode)
-            {
-                ActivateDarkModeLightingManagers(instance);
-            }
+            ApplyLightingMode(instance, darkMode);
         }
 
         // Places the clone exactly on top of its exterior shell (position, rotation, scale).
@@ -900,6 +973,11 @@ namespace SeamlessInteriors
                 if (s_DebugBounds) MelonLogger.Msg($"[DEBUG-SHELL] {instance.Config.InteriorSceneBaseName} ExteriorShell bulundu. Target: {targetPos}");
             }
 
+            // Parked buildings stand away from their shell rather than on it. Applied last
+            // so everything above (shell lookup, YOffset, ForceExactPosition) is unchanged,
+            // and so a zero offset reproduces the original placement exactly.
+            targetPos += instance.Config.ParkOffset;
+
             instance.MasterInterior.transform.position = targetPos;
 
             if (instance.ExteriorShell != null && !instance.Config.ForceExactPosition)
@@ -911,7 +989,21 @@ namespace SeamlessInteriors
                 instance.MasterInterior.transform.rotation = Quaternion.Euler(instance.Config.RotationOffset);
             }
 
-            instance.MasterInterior.transform.localScale = instance.Config.ScaleAdjustment;
+            // A PARKED ROOM LOADS AT ITS OWN SIZE. The author's ScaleAdjustment stretches six rooms to
+            // fill their buildings (Grey Mother's house and the farmhouse 1.15 across and deep, the
+            // Camp Office 1.05 x 0.98 x 1.05, the hangar, the gas station, the farmhouse basement),
+            // because their room stands INSIDE the building. A parked room has no building round it
+            // to fill, and the stretch shows: owner, 2026-09-20, in Grey Mother's house, "the
+            // proportions of this are stretched ... All of the interior prefabs should load in with
+            // original dimensions", "that scale adjustment should be one for every building." The
+            // config's numbers are left as the author wrote them and still apply to a room that is
+            // not parked. Everything the mod saves about a room is in the room's own coordinates, so
+            // a save made with the stretch loads onto the same spots without it; the hand-typed
+            // entry points were tuned WITH it and are carried by ParkedInteriorPoint.
+            instance.MasterInterior.transform.localScale = instance.Config.IsParked ? Vector3.one : instance.Config.ScaleAdjustment;
+
+            // Last, because it reads the room's windows where the lines above have just put them.
+            TurnParkedRoomToShell(instance);
         }
 
         // Builds an invisible wall around the interior: keeps the player from walking out
@@ -994,27 +1086,60 @@ namespace SeamlessInteriors
         {
             if (instance.MasterInterior == null) return;
 
-            // In dark mode the baked lightmaps are KEPT - they are the foundation of the
-            // interior atmosphere.
-            if (IsDarkAtmosphereMode) return;
+            // Every lightmapped renderer is recorded with both looks: baked (dark mode) and
+            // stripped (outdoor mode, lit by the outside world). ApplyLightmapMode picks one.
+            // Recorded once per clone: a second pass would find the stripped state and lose the baked one.
+            if (instance.LightmappedRenderers.Count > 0) { ApplyLightmapMode(instance, IsDarkAtmosphereMode); return; }
 
             Renderer[] allRenderersAfter = InteriorScan.Renderers(instance.MasterInterior);
             foreach (var r in allRenderersAfter)
             {
                 if (r == null) continue;
+                int index = r.lightmapIndex;
+                if (index < 0 || index >= 65534) continue;
 
-                r.lightmapIndex = -1;
                 Material[] mats = r.sharedMaterials;
-                bool changed = false;
+                Material[] stripped = new Material[mats.Length];
+                bool swap = false;
                 for (int i = 0; i < mats.Length; i++)
                 {
+                    stripped[i] = mats[i];
                     if (mats[i] != null && mats[i].IsKeywordEnabled("LIGHTMAP_ON"))
                     {
-                        mats[i] = GetLightmapStrippedMaterial(mats[i]);
-                        changed = true;
+                        stripped[i] = GetLightmapStrippedMaterial(mats[i]);
+                        swap = true;
                     }
                 }
-                if (changed) r.sharedMaterials = mats;
+
+                instance.LightmappedRenderers.Add(new LightmappedRenderer
+                {
+                    Renderer = r, Index = index, Baked = mats, Stripped = swap ? stripped : null
+                });
+            }
+
+            ApplyLightmapMode(instance, IsDarkAtmosphereMode);
+        }
+
+        internal static void ApplyLightmapMode(SeamlessInteriorInstance instance, bool dark)
+        {
+            foreach (var lr in instance.LightmappedRenderers)
+            {
+                Renderer r = lr.Renderer;
+                if (r == null) continue;
+                r.lightmapIndex = dark ? lr.Index : -1;
+                if (lr.Stripped == null) continue;
+
+                // Slot by slot, and only where our own material still sits: window/frost code may
+                // have put its own material on a slot since, and that one is left alone.
+                Material[] cur = r.sharedMaterials;
+                Material[] from = dark ? lr.Stripped : lr.Baked;
+                Material[] to = dark ? lr.Baked : lr.Stripped;
+                bool changed = false;
+                for (int i = 0; i < cur.Length && i < from.Length; i++)
+                {
+                    if (cur[i] == from[i] && from[i] != to[i]) { cur[i] = to[i]; changed = true; }
+                }
+                if (changed) r.sharedMaterials = cur;
             }
         }
 
@@ -1342,6 +1467,118 @@ namespace SeamlessInteriors
                 if (!merged[i]) result.Add(bounds[i]);
             }
             return result;
+        }
+
+        // No single interior mesh piece is legitimately bigger than this. A renderer that
+        // is - a skybox proxy, a backdrop, a stray effect - would swallow the whole answer.
+        private const float PREFAB_BOUNDS_OUTLIER_SIZE = 40f;
+
+        // The clone's own bounding box in its local space: literally the dimensions of the
+        // prefab we brought into the world, for callers that need the real extent rather
+        // than a room-shaped approximation of it.
+        //
+        // WHY THIS EXISTS SEPARATELY FROM ComputeInteriorSubBounds: that function is built
+        // to hug an L-shaped or multi-part floor plan, and it pays for that with three
+        // filters that can each throw away real extent - a +/-30m clamp on the renderer's
+        // local centre, a "fewer than 3 renderers" rectangle drop, and a "thinner than 1m"
+        // rectangle drop. The long end of a big building decomposes into exactly the thin,
+        // sparse rectangles those last two discard, so the combined bounds come back short.
+        // That is tolerable for a floor-plan approximation and not tolerable for a weather
+        // kill volume, which has to cover the whole building or snow falls through the part
+        // it missed. Sub-bounds keeps its behaviour; this is a second, blunter measurement.
+        //
+        // MESHES, NOT RENDERER BOUNDS: Renderer.bounds on an INACTIVE object reports a box
+        // at the world origin, and clones spend most of their life inactive - reading them
+        // in that state is what once inflated a probe box to a kilometre. Taking the mesh's
+        // own local bounds through the renderer's transform gives the same answer and does
+        // not care whether anything is currently active.
+        public static bool TryComputePrefabLocalBounds(GameObject root, out Bounds localBounds,
+                                                       out int meshesUsed, out int meshesSkipped)
+        {
+            localBounds = default;
+            meshesUsed = 0;
+            meshesSkipped = 0;
+            if (root == null) return false;
+
+            Transform rootT = root.transform;
+            Matrix4x4 worldToLocal = rootT.worldToLocalMatrix;
+
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+
+            var filters = root.GetComponentsInChildren<MeshFilter>(true);
+            foreach (var mf in filters)
+            {
+                if (mf == null) continue;
+
+                // Shadow-only duplicates of real geometry; they add nothing and some are
+                // deliberately oversized.
+                if (mf.gameObject.name.Contains("Shadow_Caster")) { meshesSkipped++; continue; }
+
+                var mesh = mf.sharedMesh;
+                if (mesh == null) { meshesSkipped++; continue; }
+
+                Bounds mb = mesh.bounds;
+                Matrix4x4 localToWorld = mf.transform.localToWorldMatrix;
+
+                Vector3 c = mb.center;
+                Vector3 e = mb.extents;
+
+                // All eight corners, because the piece can sit at any rotation relative to
+                // the clone root. World first, so the outlier test below can be made against
+                // the piece's true axis-aligned world size.
+                Vector3 wMin = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+                Vector3 wMax = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+
+                for (int k = 0; k < 8; k++)
+                {
+                    Vector3 corner = c + new Vector3(
+                        ((k & 1) == 0) ? e.x : -e.x,
+                        ((k & 2) == 0) ? e.y : -e.y,
+                        ((k & 4) == 0) ? e.z : -e.z);
+
+                    Vector3 world = localToWorld.MultiplyPoint3x4(corner);
+                    wMin = Vector3.Min(wMin, world);
+                    wMax = Vector3.Max(wMax, world);
+                }
+
+                // Reject the outlier on its real world size, with scale and rotation already
+                // applied - a small mesh scaled up is caught, and a long one rotated so its
+                // length is spread across all three axes cannot slip under the threshold.
+                Vector3 worldSize = wMax - wMin;
+                if (worldSize.x > PREFAB_BOUNDS_OUTLIER_SIZE ||
+                    worldSize.y > PREFAB_BOUNDS_OUTLIER_SIZE ||
+                    worldSize.z > PREFAB_BOUNDS_OUTLIER_SIZE)
+                {
+                    meshesSkipped++;
+                    continue;
+                }
+
+                // Accumulate from the MESH corners, not from the world AABB just built: that
+                // AABB is already a loose envelope around a rotated piece, and enveloping it
+                // a second time in the root's space would lose more on every rotated child.
+                // It exists only to make the outlier test above exact. Recomputing the eight
+                // corners is cheaper than the scratch array that would avoid it.
+                for (int k = 0; k < 8; k++)
+                {
+                    Vector3 corner = c + new Vector3(
+                        ((k & 1) == 0) ? e.x : -e.x,
+                        ((k & 2) == 0) ? e.y : -e.y,
+                        ((k & 4) == 0) ? e.z : -e.z);
+
+                    Vector3 local = worldToLocal.MultiplyPoint3x4(localToWorld.MultiplyPoint3x4(corner));
+                    min = Vector3.Min(min, local);
+                    max = Vector3.Max(max, local);
+                }
+
+                meshesUsed++;
+            }
+
+            if (meshesUsed == 0) return false;
+
+            localBounds = new Bounds();
+            localBounds.SetMinMax(min, max);
+            return true;
         }
 
         // The old ComputeLocalInteriorBounds, kept for compatibility.

@@ -264,14 +264,14 @@ namespace SeamlessInteriors
             if (instance.MasterInterior == null) return;
 
             string path = GetInteractiveStateSavePath(instance);
-            if (path == null || !File.Exists(path))
+            if (path == null || !SaveFiles.Exists(path))
             {
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[STATE-LOAD] {instance.Config.ResolvedInstanceId} durum dosyasi yok, atlaniyor.");
                 return;
             }
 
-            var keyToData = ParseStateFile(File.ReadAllText(path));
+            var keyToData = ParseStateFile(SaveFiles.Read(path));
             if (keyToData.Count == 0)
             {
                 if (s_DebugBounds)

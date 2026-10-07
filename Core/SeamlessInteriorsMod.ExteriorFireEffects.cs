@@ -205,8 +205,11 @@ namespace SeamlessInteriors
                     new WindowSpot(-4.339f, 2.63f, 8.471f, -1f, 0f, 0.7f, 1.62f),
                     new WindowSpot(-8.897f, 6.812f, -0.729f, -1f, 0f, 0.7f, 1.62f),
                     new WindowSpot(-8.889f, 2.649f, -0.733f, -1f, 0f, 0.7f, 1.62f),
-                    new WindowSpot(-9.82f, 2.63f, -3.165f, -1f, 0f, 0.54f, 1.62f),
-                    new WindowSpot(-9.811f, 2.63f, -5.385f, -1f, 0f, 0.54f, 1.62f),
+                    // The bay's two slanted side panes. The table had them facing the wall's way
+                    // (-1, 0) and 0.54 m wide, which is a 0.70 m pane seen at 39 degrees; read from
+                    // the glass itself on 2026-09-19, centers unchanged. See ShellWindows.cs.
+                    new WindowSpot(-9.82f, 2.63f, -3.165f, -0.774f, 0.634f, 0.7f, 1.62f),
+                    new WindowSpot(-9.811f, 2.63f, -5.385f, -0.776f, -0.63f, 0.7f, 1.62f),
                     new WindowSpot(-10.196f, 2.635f, -4.263f, -1f, 0f, 0.7f, 1.62f),
                     new WindowSpot(-5.357f, 6.793f, -7.167f, 0f, -1f, 0.7f, 1.62f),
                     new WindowSpot(-4.369f, 6.793f, -7.167f, 0f, -1f, 0.7f, 1.62f),
@@ -248,6 +251,7 @@ namespace SeamlessInteriors
                     new WindowSpot(3.407f, 7.552f, 5.147f, 0f, 1f, 0.75f, 1.43f),
                 }
             },
+
         };
 
         // Called from OnUpdate every frame.

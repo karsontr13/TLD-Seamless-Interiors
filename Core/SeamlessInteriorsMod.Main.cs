@@ -88,11 +88,25 @@ namespace SeamlessInteriors
         private static MelonPreferences_Entry<bool> s_PrefEnableWindowGroundGlow;
         private static MelonPreferences_Entry<float> s_PrefWindowGroundGlowStrength;
 
+        // Outdoor weather audio while the player stands in a parked room. A vanilla
+        // loading-screen interior is a separate scene, so the outdoor wind loop simply does
+        // not exist in it. A parked room is in the outdoor scene, so the loop keeps playing
+        // and only the global occlusion filter stands between it and the player - which is
+        // not enough in a blizzard. See StopOutdoorWindWhileInside in Audio.cs.
+        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] SilenceOutdoorWindIndoors
+        private static MelonPreferences_Entry<bool> s_PrefSilenceOutdoorWindIndoors;
+
+        private static MelonPreferences_Entry<bool> s_PrefEnableWindowPortals;
+        private static MelonPreferences_Entry<int> s_PrefWindowPortalLimit;
+        private static MelonPreferences_Entry<float> s_PrefWindowPortalResolutionScale;
+        private static MelonPreferences_Entry<bool> s_PrefClearWindowPanes;
+
         public static bool IsChimneySmokeEnabled => s_PrefEnableChimneySmoke?.Value ?? true;
         public static bool IsWindowGlowEnabled => s_PrefEnableWindowGlow?.Value ?? true;
         public static bool IsWindowGlowFlickerEnabled => s_PrefWindowGlowFlicker?.Value ?? true;
         public static float WindowGlowStrength => s_PrefWindowGlowStrength?.Value ?? 1f;
         public static bool IsWindowGroundGlowEnabled => s_PrefEnableWindowGroundGlow?.Value ?? true;
+        public static bool IsOutdoorWindSilencedIndoors => s_PrefSilenceOutdoorWindIndoors?.Value ?? false;
         public static float WindowGroundGlowStrength => s_PrefWindowGroundGlowStrength?.Value ?? 1f;
 
         // VERBOSE LOGGING.
@@ -192,6 +206,13 @@ namespace SeamlessInteriors
                 "Switches off scene furniture the pre-mod save records as removed, so a stripped interior is imported stripped. Turn off if furniture that should be there is coming in dark."
             );
 
+            s_PrefSilenceOutdoorWindIndoors = s_PrefCategory.CreateEntry<bool>(
+                "SilenceOutdoorWindIndoors",
+                false,
+                "Silence Outdoor Wind Indoors",
+                "Stops the outdoor wind loop while you are inside, the way the game's own loading-screen interiors do, leaving the room's own sounds. Turn off to keep hearing the weather through the walls."
+            );
+
             s_PrefEnableChimneySmoke = s_PrefCategory.CreateEntry<bool>(
                 "EnableChimneySmoke",
                 true,
@@ -234,6 +255,128 @@ namespace SeamlessInteriors
                 "Brightness multiplier for the light the windows throw onto the ground."
             );
 
+            s_PrefEnableWindowPortals = s_PrefCategory.CreateEntry<bool>(
+                "EnableWindowPortals",
+                true,
+                "See Through Windows",
+                "Windows show the real view from where the building stands, instead of a painted backdrop. Costs one extra render of the world for each window you can actually see at that moment."
+            );
+
+            // NEW KEY on purpose, replacing "MaxWindowPortals". That entry's 4 was never a cost
+            // budget: under the original shared-atlas design the value WAS the atlas grid, via
+            // tilesPerSide = CeilToInt(Sqrt(value)), so 4 meant a 2x2 atlas and raising it split
+            // one texture into more, smaller tiles and made every window blurrier. The atlas was
+            // replaced by per-slot targets sized to each window's on-screen footprint, which
+            // deleted that justification entirely - cost now scales with the windows actually
+            // visible, and five simultaneous portals measure about 4 MB of target - but the 4 was
+            // carried across unexamined. It is far too low: the Camp Office alone has 8 windows
+            // and routinely has 5 visible, so one was always denied and fell back to the painted
+            // plate, visibly popping as the player turned.
+            //
+            // Renaming rather than raising the default is the whole point. MelonPreferences only
+            // applies a default when the key is ABSENT, so every existing preferences file would
+            // have kept its 4 and nobody would have seen the fix. This is the same mistake that
+            // WindowPortalTileSize made below; a setting whose meaning or scale changes needs a
+            // new name, not a new default.
+            s_PrefWindowPortalLimit = s_PrefCategory.CreateEntry<int>(
+                "WindowPortalLimit",
+                10,     // 8 until 2026-09-19: the Pleasant Valley farmhouse shows more than 8 at once. An existing file keeps its own number.
+                "Windows Drawn At Once",
+                "Upper limit on how many windows may show the real view in the same frame. Only the windows you can actually see are ever drawn, so this is a safety cap rather than a cost you pay. Lower it to reclaim frame rate in a building with many windows."
+            );
+
+            // On by default: the wall cameras replace the per-window cameras in parked rooms (owner,
+            // 2026-09-23). Off brings the per-window cameras back at once, for the frame-time
+            // comparison; see WallCameras.cs.
+            s_PrefWindowWallCameras = s_PrefCategory.CreateEntry<bool>(
+                "WindowWallCameras",
+                true,
+                "One Camera Per Wall",
+                "In buildings whose room is kept away from its shell, draw all the windows on one wall with one camera instead of one camera per window. Off uses one camera per window."
+            );
+
+            // The same for the views INTO a room from outside (owner, 2026-09-26); see
+            // OutsideInWallCameras.cs. Off brings the per-pane cameras back at once.
+            s_PrefOutsideInWallCameras = s_PrefCategory.CreateEntry<bool>(
+                "OutsideInWallCameras",
+                true,
+                "One Camera Per Wall From Outside",
+                "Looking into a building from outside, draw all the windows on one wall with one camera instead of one camera per window, so more of them show the room at once. Off uses one camera per window."
+            );
+
+            // NEW KEY on purpose. This replaced a "WindowPortalTileSize" pixel count, and raising
+            // that entry's default would have changed nothing for anyone who had already run the
+            // mod: MelonPreferences only applies a default when the key is absent, so every
+            // existing preferences file kept the old value. A setting whose meaning or scale
+            // changes needs a new name, not a new default.
+            s_PrefWindowPortalResolutionScale = s_PrefCategory.CreateEntry<float>(
+                "WindowPortalResolutionScale",
+                1f,
+                "Window View Sharpness",
+                "Resolution of the view through a window, as a fraction of the game's own. 1 matches the screen exactly, so a window looks as sharp as standing in the doorway next to it. Lower it to reclaim frame rate."
+            );
+
+            // FROSTED BY DEFAULT, under a NEW key. "ClearWindowPanes" defaulted to true, which was a
+            // working convenience while the portal rendering behind the glass was being fixed, not
+            // a decision about how the mod should look (owner, 2026-09-18). MelonPreferences applies
+            // a default only where the key is absent, so every file that ever ran the old build
+            // holds "ClearWindowPanes = true" and would have kept it for ever. The old key is simply
+            // no longer read. A window is clear once something has cleaned it, and that is recorded
+            // per window per save (see WindowFrostState.cs), not here.
+            s_PrefClearWindowPanes = s_PrefCategory.CreateEntry<bool>(
+                "WindowsStartCleaned",
+                false,
+                "Windows Start Cleaned",
+                "Off, the default: windows are frosted over and carry a snow drift, as in the base game, until they are cleaned. On: every window nobody has touched starts clean, from both sides."
+            );
+
+            // ─── Window tuning. These started life as live dials and are kept as preferences so the
+            // values chosen by eye are not lost at exit. New keys, so no existing file holds a stale
+            // value for any of them (MelonPreferences applies a default only when the key is absent).
+            //
+            // THE DEFAULTS ARE THE OWNER'S OWN SETTINGS, read out of the running game on 2026-09-18
+            // at the Camp Office once the interior's snow slab was reliably hidden from the view in:
+            // set back 0, drift offset -6.25 cm, overlap 0, frost 50% outside and 100% inside,
+            // room visible within 50 m. The defaults were changed in place rather than under new
+            // keys because these keys have never shipped, so the only file holding them is the
+            // owner's, which already holds these values. After a release that stops being true.
+            //
+            // FOUR OF THEM ENDED AT ZERO AND ARE NO LONGER PREFERENCES (owner, 2026-09-18): the window set
+            // back, the drift's overlap into the frame, and two view dials that lived for a day. The
+            // keys WindowRecess, WindowDriftOverlap, WindowViewOffsetUp and WindowViewStartDepth may
+            // linger in the owner's file, where nothing reads them.
+            //
+            // THE DRIFT OFFSET AND THE SASH BAR. Windows 1 to 7 have a horizontal sash bar standing
+            // 3.2 cm proud of the glass, inside a frame standing 4.0 cm proud. At -6.25 the drift's
+            // face is about 2.9 cm proud, behind the bar, so the wood shows, and that is the owner's
+            // choice ("it looks okay"). A -4.75 that was briefly made the default the same day was an
+            // accident: the dial had been moved while the drifts were hidden by cleaned windows, so
+            // nobody was looking at what it did. The frame face at 4.0 cm is the hard limit.
+            s_PrefOutsideInFrostedPane = s_PrefCategory.CreateEntry<bool>(
+                "WindowFrostOutside", true, "Painted Frost Outside",
+                "Draw the game's painted window frost over the view into the room.");
+            s_PrefOutsideInFrostStrength = s_PrefCategory.CreateEntry<float>(
+                "WindowFrostStrengthOutside", 0.5f, "Frost Strength Outside",
+                "0 to 1. The frost texture is heavy on its own, so about half reads right from outside.");
+            // NEW KEY on purpose, for the reason given above: raised from 50 to 100 m (owner, 2026-09-26,
+            // at the hangar, where the views switched off while he could still see into it), and an
+            // existing file would have kept 50 under the old name "WindowInteriorRange".
+            s_PrefOutsideInPortalRange = s_PrefCategory.CreateEntry<float>(
+                "WindowInteriorRangeMeters", 100f, "Interior Visible Through Windows Within",
+                "From outside, how near a building must be, in meters, before its windows show the real room. Past this, and 5 m more once showing, a window keeps its shape, frost and drift and shows dark glass.");
+            SeamlessInteriorsLog.s_PrefLogLanguage = s_PrefCategory.CreateEntry<string>(
+                "LogLanguage", "auto", "Log Language",
+                "The language of this mod's lines in the MelonLoader log: auto, tr or en. auto is Turkish on a computer set to Turkish and English everywhere else.");
+            s_PrefOutsideInMaxHeldRooms = s_PrefCategory.CreateEntry<int>(
+                "WindowInteriorRoomsHeld", 3, "Rooms Kept Ready For Windows",
+                "From outside, how many nearby buildings keep their rooms switched on at once so their windows can show them, 1 to 6. Buildings standing close together stop trading places as you walk between them. Lower it on a slow machine; 1 is one building at a time.");
+            s_PrefInsideOutFrostStrength = s_PrefCategory.CreateEntry<float>(
+                "WindowFrostStrengthInside", 1f, "Frost Strength Inside",
+                "0 to 1. Looking out at a bright snowfield, the same frost needs full strength to read.");
+            s_PrefInsideOutShowSnowSlab = s_PrefCategory.CreateEntry<bool>(
+                "WindowSnowDrift", true, "Snow Drift In Window Frames",
+                "Show the drift of snow sitting in a frosted window's frame, from both sides.");
+
             s_PrefVerboseLogging = s_PrefCategory.CreateEntry<bool>(
                 "VerboseLogging",
                 false,
@@ -241,6 +384,13 @@ namespace SeamlessInteriors
                 "Writes a log line per object during save/load. Costs noticeable frame time on maps with many interiors - turn on only for troubleshooting (F7 toggles it in-game)."
             );
             s_DebugBounds = s_PrefVerboseLogging.Value;
+
+            s_PrefShowSnowKillers = s_PrefCategory.CreateEntry<bool>(
+                "ShowSnowKillers",
+                false,
+                "Show Snow Killers",
+                "Developer display: draws every snow killer the game holds in the region as a see-through box, live: green in force, yellow listed but off, red held out by the mod. Off for play."
+            );
 
             s_PrefFastInteriorToggle = s_PrefCategory.CreateEntry<bool>(
                 "FastInteriorToggle",
@@ -269,6 +419,8 @@ namespace SeamlessInteriors
             // never appear in the file at all.
             MelonPreferences.Save();
 
+            MelonLogger.Msg($"[SETTINGS] Log dili: {(SeamlessInteriorsLog.English ? "English" : "Turkce")} (LogLanguage tercihi: auto, tr, en). Ceviri tablosu: {SeamlessInteriorsLog.RuleCount} kural.",
+                            $"[SETTINGS] Log language: {(SeamlessInteriorsLog.English ? "English" : "Turkish")} (preference LogLanguage: auto, tr, en). Translation table: {SeamlessInteriorsLog.RuleCount} rules.");
             MelonLogger.Msg($"[SETTINGS] Interior Lighting Mode: {(IsDarkAtmosphereMode ? "Dark Atmosphere" : "Outdoor Lighting")}");
             MelonLogger.Msg($"[SETTINGS] Initial Loot Roll: {(IsInitialLootRollEnabled ? "ON" : "OFF")}");
             MelonLogger.Msg($"[SETTINGS] Gear Save Filter: {(IsGearSaveFilterEnabled ? "ON" : "OFF")}");
@@ -281,6 +433,7 @@ namespace SeamlessInteriors
             MelonLogger.Msg($"[SETTINGS] Window Glow: {(IsWindowGlowEnabled ? "ON" : "OFF")} " +
                             $"(flicker {(IsWindowGlowFlickerEnabled ? "ON" : "OFF")}, strength {WindowGlowStrength:F2}) (Shift+F9 onizleme)");
             MelonLogger.Msg($"[SETTINGS] Window Ground Glow: {(IsWindowGroundGlowEnabled ? "ON" : "OFF")} (strength {WindowGroundGlowStrength:F2})");
+            MelonLogger.Msg($"[SETTINGS] Silence Outdoor Wind Indoors: {(IsOutdoorWindSilencedIndoors ? "ON" : "OFF")}");
             MelonLogger.Msg($"[SETTINGS] Verbose Logging: {(s_DebugBounds ? "ON" : "OFF")} (F7)");
             MelonLogger.Msg($"[SETTINGS] Fast Door Transitions: {(IsFastInteriorToggleEnabled ? "ON" : "OFF")}");
             MelonLogger.Msg($"[SETTINGS] Performance Report: {(PerfProbe.On ? "ON" : "OFF")} (Shift+F6)");
@@ -340,6 +493,10 @@ namespace SeamlessInteriors
 
             PerfProbe.End(PerfProbe.Section.FrameTicks, perf);
 
+            // Every built clone follows the lighting mode the moment it changes (F8 or settings).
+            TickLightingModeSwitch();
+            TickInteriorProbes();
+
             // ─── F8: SWITCH INTERIOR LIGHTING MODE ───
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F8))
             {
@@ -348,7 +505,7 @@ namespace SeamlessInteriors
                 MelonPreferences.Save();
 
                 string modeName = newMode == 1 ? "Dark Atmosphere" : "Outdoor Lighting";
-                s_LightingModeMessage = $"Interior Lighting: {modeName}\n(Effective after next scene load)";
+                s_LightingModeMessage = $"Interior Lighting: {modeName}";
                 s_LightingModeMessageTimer = 4f;
 
                 MelonLogger.Msg($"[SETTINGS] Interior Lighting Mode changed to: {modeName}");
@@ -529,6 +686,32 @@ namespace SeamlessInteriors
             TickPlayerInsideCloneFlagGuard();
             PerfProbe.End(PerfProbe.Section.FlagGuard, perf);
 
+            // Tell the game the player is in an indoor space, which nothing else does: the
+            // clone's IndoorSpaceTrigger never fires OnTriggerEnter because the player is
+            // teleported in. Runs AFTER the guard above so a flag the guard just cleared
+            // releases the registration on the same tick rather than the next one.
+            // (see SeamlessInteriorsMod.IndoorState.cs)
+            TickIndoorSpaceRegistration();
+
+            // In a parked room the player still has the OUTDOOR body, 100 cm wide with a 45 degree
+            // slope limit, in a room the game built for its indoor one, 60 cm and 60 degrees. Give
+            // it the indoor body while the flag says inside, and hand the outdoor one back. After
+            // the guard for the same reason as the registration above.
+            // (see SeamlessInteriorsMod.ParkedRoomBody.cs)
+            TickParkedRoomBody();
+
+            // Inside a PARKED clone the game still culls its instanced trees and rocks for the
+            // player's camera, which is ParkOffset away from the eye the window portals render
+            // from. Give that cull a stand-in eye on the ground. Runs after the guard for the
+            // same reason as the registration above: a flag the guard just cleared must release
+            // the stand-in on this tick, because left in force outside it is underground.
+            // (see SeamlessInteriorsMod.ParkedCullEye.cs)
+            TickParkedCullEye();
+
+            // The room's own fog pass goes off with the stand-in eye and comes back with it.
+            // (see SeamlessInteriorsMod.ParkedWeather.cs)
+            TickParkedRoomFog(ParkedCullEyeInForce ? GameManager.GetMainCamera() : null);
+
             // Keep each building's terrain hole in sync with whether the player is inside it.
             perf = PerfProbe.Begin();
             foreach (var instance in ActiveInteriors.Values)
@@ -558,6 +741,67 @@ namespace SeamlessInteriors
         {
             long perf = PerfProbe.Begin();
             ClonedInteriorLightingGuard.EnforceOwnerAmbient();
+
+            // In a parked room the game's snow is born at the ground, below the room.
+            // (see SeamlessInteriorsMod.ParkedWeather.cs)
+            TickParkedSnowEmitters();
+
+            // In a parked room the game's snow planes are off; they stood in the room.
+            // (see SeamlessInteriorsMod.ParkedWeather.cs)
+            TickParkedSnowPlanes();
+
+            // Developer display of the game's snow killers, off unless ShowSnowKillers is set.
+            // (see SeamlessInteriorsMod.KillerDisplay.cs)
+            TickSnowKillerDisplay();
+
+            // The window views' targets kept after a visit are released after two minutes away.
+            // (see SeamlessInteriorsMod.WindowPortals.cs)
+            TickKeptWindowTargets();
+
+            // Draw the real outside view into the interior's windows.
+            //
+            // HERE, not in OnUpdate, and this is load-bearing. The portal cameras are rendered by
+            // hand, and a hand-driven render that happens too early in the frame draws a stale
+            // world: TLD settles its terrain-object and vegetation activation late, so an early
+            // render produced a view with the lake and the mountains but no trees and no rock
+            // outcrops. OnLateUpdate is after that settles and still before rendering.
+            // (see SeamlessInteriorsMod.WindowPortals.cs)
+            // INSIDE-OUT PORTALS ARE RETIRED (owner's decision, 2026-09-15). Windows showing the
+            // real outside view from inside the building depended on a parked interior, and the
+            // parking went with them: on the ground the interior is co-located with its shell and
+            // physically larger than it, so the portal camera stands inside the very geometry it
+            // is trying to see past and draws the cabin's own walls. The renderer, its reasoning
+            // and its measurements are preserved on branch feature-window-portals.
+            //
+            // What replaced it looks the other way through the same opening.
+            //
+            // TEST RUN 2026-09-18: inside-out is switched back on beside it, to test whether the
+            // trees that dropped out of its view were removed by the game's own instanced renderer
+            // (RenderObjectInstance), which culls every tree and rock for FPSCamera alone. The
+            // retirement above stands until that is measured. The two never run together: each
+            // keys on s_IsPlayerInsideClone and tears itself down on the other's side of the door.
+            //
+            // ORDER IS LOAD-BEARING, AND IT DEPENDS ON WHICH SIDE OF THE DOOR THE PLAYER IS ON. Each
+            // system tears itself down when the player is on the other side, and the one being LEFT
+            // has to finish tearing down before the one being ENTERED sets up, because each borrows
+            // state from the clone that the other reads:
+            //
+            //   stepping IN,  outside-in must first give back the clone's layers, colliders and the
+            //                 main camera's mask, or inside-out sets up against a relayered clone.
+            //   stepping OUT, inside-out must first give the glass its own material back, or
+            //                 outside-in, which finds the interior's windows BY that material, finds
+            //                 none. Measured 2026-09-18: 8 shell apertures, 0 paired, no portals, and
+            //                 the shell's windows went back to opaque for the rest of the visit.
+            if (s_IsPlayerInsideClone)
+            {
+                TickOutsideInPortals();
+                TickWindowPortals();
+            }
+            else
+            {
+                TickWindowPortals();
+                TickOutsideInPortals();
+            }
             PerfProbe.End(PerfProbe.Section.LateUpdate, perf);
         }
 
@@ -637,6 +881,27 @@ namespace SeamlessInteriors
         {
             s_LastPortalUseTime = Time.time;
             s_LoadStateAuthorityActive = false;
+
+            // MAKE THE CLONE SOLID AGAIN BEFORE THE TRANSITION MEASURES IT.
+            //
+            // Reported 2026-09-15: "entering the cabin the player is NOT on the floor, it's up in
+            // the air." Every door transition computes its landing spot through SnapToGround, which
+            // raycasts down about 3 m for the nearest solid surface - and while the player is
+            // outside, the outside-in portal system deliberately holds all 427 of the clone's
+            // colliders disabled so nobody can walk on an interior floor from the yard. The floor
+            // the snap is looking for is therefore switched off at the moment it looks, so the
+            // snap either finds the terrain below the building or nothing at all and returns the
+            // raw position unchanged. The floors are correctly ALIGNED; the query was asking a
+            // building that was not there.
+            //
+            // Teardown restores that collision, but it runs from OnLateUpdate, which is after the
+            // transition has already teleported the player. This is the transition's own starting
+            // gun, and it fires before all four SnapToGround call sites, so it is the one place
+            // that covers entry, exit and both sub-interior links at once.
+            //
+            // Safe to over-call: if no transition actually follows, the per-frame sweep in
+            // ReassertOutsideInHold disables the colliders again on the very next frame.
+            RestoreOutsideInCollisionNow();
         }
 
         private static bool IsLoadStateAuthoritative()
@@ -652,7 +917,27 @@ namespace SeamlessInteriors
             return HasSavedPlayerInsideState();
         }
 
+        // THE DOOR IS THE TOGGLE; POSITION IS THE BACKSTOP (owner, 2026-09-18: "We should primarily
+        // be using the door entry as the toggle. The inside-the-building check should be extra,
+        // not the primary."). At a load there is no door, and the author's stand-in for it is the
+        // saved record, so that answers first, exactly as before. Position only overrides it in
+        // the one direction it has been caught wrong: the record says "outside" while the player
+        // is standing in a parked room. That is said out loud, because it means something upstream
+        // of here is broken and this is only catching it.
         public static bool ResolvePlayerInside(SeamlessInteriorInstance instance, Vector3 pos)
+        {
+            bool recorded = ResolvePlayerInsideAsRecorded(instance, pos);
+            if (recorded) return true;
+
+            if (instance != null && instance.IsPositionInParkedRoom(pos, 0f))
+            {
+                MelonLogger.Warning($"[LOAD-STATE] {instance.Config.ResolvedInstanceId}: kayit 'disarida' diyor ama oyuncu park edilmis odanin icinde duruyor - konuma uyuluyor.");
+                return true;
+            }
+            return false;
+        }
+
+        private static bool ResolvePlayerInsideAsRecorded(SeamlessInteriorInstance instance, Vector3 pos)
         {
             bool geometric = instance.IsPositionInside(pos);
 
@@ -738,6 +1023,10 @@ namespace SeamlessInteriors
 
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
+            // A new scene is up, so whatever was being torn down is gone. See
+            // SuspendParkedCullEyeForSceneExit.
+            ResumeParkedCullEye();
+
             // No save is loaded at the main menu, so anything the mod remembers ABOUT a
             // save has to be dropped here. The game hands the slot name of a deleted save
             // straight to the next new game, and a memo keyed on that name would answer
@@ -746,6 +1035,10 @@ namespace SeamlessInteriors
                 && sceneName.StartsWith("MainMenu", System.StringComparison.Ordinal))
             {
                 ForgetSaveIdentity("ana menuye donuldu");
+
+                // Which windows are frosted is remembered per building, not per save, so it goes
+                // the same way. Every route to a different save passes through here.
+                ForgetAllWindowStates();
 
                 // The main menu is also where saves get deleted, and where a save deleted
                 // in an earlier session (or with the mod uninstalled) first becomes visible
@@ -854,6 +1147,11 @@ namespace SeamlessInteriors
                 ClearSavedPlayerInsideState();
                 savedInsideId = "";
             }
+
+            // The save file outranks the record: a save that put the player in a parked room
+            // means "inside that building", whatever the record says (see SaveData.cs).
+            if (isSupportedExteriorScene && !looksLikeNewGame)
+                savedInsideId = RepairInsideRecordFromSavePosition(sceneName, savedInsideId);
 
             // Inside the post-load window the saved state outranks the geometric test.
             // (Stops the interior from starting visible when the player saved outside,
@@ -1203,6 +1501,8 @@ namespace SeamlessInteriors
                     instance.SpawnedPlaceableGuids.Clear();
                     instance.LegacyRemovedGuids.Clear();
                     instance.SpawnedShouldBeActive.Clear();
+                    instance.ClearOrphans();
+                    instance.ClearLightingModeParts();
                     instance.LegacyImport = LegacyImportState.Unknown;
                     instance.LegacySource = LegacySourceKind.None;
                     instance.LegacySourceId = null;
@@ -1244,6 +1544,23 @@ namespace SeamlessInteriors
 
                 yield return null;
                 elapsed += 0.5f;
+            }
+
+            // A parked clone is not where the game has just put the player. The save holds
+            // the world position they had INSIDE it, so between the restore and the clone
+            // being rebuilt there they are standing in empty space with nothing under them.
+            // Hold them at the shell, which is real ground, until the early activation in
+            // Run moves them inside. Inert for an unparked building.
+            if (playerSavedInside && instance.Config.IsParked)
+            {
+                var playerManager = GameManager.GetPlayerManagerComponent();
+                Transform playerT = GameManager.GetPlayerTransform();
+
+                if (playerManager != null && playerT != null)
+                {
+                    playerManager.TeleportPlayer(instance.Config.FallbackPosition, playerT.rotation);
+                    MelonLogger.Msg($"[PARK] {instance.Config.ResolvedInstanceId}: player held at the shell until the parked clone is built.");
+                }
             }
 
             MelonCoroutines.Start(Run(instance, playerSavedInside));
@@ -1507,10 +1824,24 @@ namespace SeamlessInteriors
                         if (s_DebugBounds)
                             MelonLogger.Msg($"[EARLY-ACTIVATE] Kaydedilmis local pozisyon kullanildi: local={savedLocalPos.Value} -> world={safePos}");
                     }
+                    // PRIORITY 1b: no record of where in the room, but the save's own position stands
+                    // in this parked room (see RepairInsideRecordFromSavePosition). Parking is
+                    // deterministic, so that spot is where the player was. Asked of the real box
+                    // now that the shell is bound; the early test had only the config to go on.
+                    else if (s_SavePositionInParkedRoom.HasValue && s_SavePositionInParkedRoomId == instanceId
+                             && instance.IsPositionInParkedRoom(s_SavePositionInParkedRoom.Value, 0f))
+                    {
+                        safePos = EnsureAboveGround(s_SavePositionInParkedRoom.Value, instance);
+                        var pmSaved = GameManager.GetPlayerManagerComponent();
+                        if (pmSaved != null) safeRot = pmSaved.m_SaveGameRotation;
+
+                        MelonLogger.Msg($"[EARLY-ACTIVATE] {instanceId}: oyuncu kayit dosyasinin konumuna geri kondu (X {safePos.x:F1}, Z {safePos.z:F1}).",
+                                        $"[EARLY-ACTIVATE] {instanceId}: player put back at the save file's own position in the room (X {safePos.x:F1}, Z {safePos.z:F1}).");
+                    }
                     // PRIORITY 2: the EntrySpawnPosition fallback
                     else if (instance.Config.EntrySpawnPosition != Vector3.zero)
                     {
-                        safePos = EnsureAboveGround(instance.Config.EntrySpawnPosition, instance);
+                        safePos = EnsureAboveGround(ParkedInteriorPoint(instance, instance.Config.EntrySpawnPosition), instance);
                     }
                     // PRIORITY 3: lift the current position onto the floor
                     else

@@ -95,6 +95,90 @@ namespace SeamlessInteriors
             return UnityEngine.PlayerPrefs.GetString(insideKey, "");
         }
 
+        // ─── THE SAVE FILE OUTRANKS THE RECORD ───
+        //
+        // The record above is a second copy of something the save file already says, kept in
+        // PlayerPrefs under the save's NAME. The two can come apart: a save file put back from a
+        // backup, a save carried to another computer, a slot name reused. When they did, the load
+        // believed the record, built no room, and the player fell 40 m from where the save had
+        // put them (owner, 2026-09-18, a restored save made in Camp Trailer E).
+        //
+        // For a PARKED building the file settles it alone (owner: "if the player is 40 meters
+        // above, it's pretty obvious where they're supposed to be"). The position the save
+        // carried is still in PlayerManager.m_SaveGamePosition when the region loads, and a spot
+        // ParkOffset over a building is nowhere a player can walk to. Measured in LakeRegion the
+        // same night: the highest ground within 12 m of any of the 15 buildings is 4.6 m over
+        // its shell. THAT MEASUREMENT IS OWED FOR EVERY OTHER REGION before it is trusted there.
+        //
+        // This runs before the shell is bound, so it asks the building's config, not its meshes.
+        // Run asks IsPositionInParkedRoom again, with the real box, before it moves the player.
+        //
+        // When the record disagrees it is REPAIRED here, so everything that reads it afterwards
+        // (the priority load, the wind, the weather) sees a normal save made indoors. The local
+        // position kept with the old record describes some other spot and is dropped; Run puts
+        // the player back at the save's own position instead.
+        private const float SAVE_OVER_BUILDING_SIDE = 12f;
+        private const float SAVE_OVER_BUILDING_BELOW = 5f;
+        private const float SAVE_OVER_BUILDING_ABOVE = 12f;
+        private static Vector3? s_SavePositionInParkedRoom;
+        private static string s_SavePositionInParkedRoomId;
+
+        private static string RepairInsideRecordFromSavePosition(string sceneName, string savedInsideId)
+        {
+            s_SavePositionInParkedRoom = null;
+            s_SavePositionInParkedRoomId = null;
+
+            try
+            {
+                string saveName = SaveGameSystem.m_CurrentSaveName;
+                var playerManager = GameManager.GetPlayerManagerComponent();
+                if (string.IsNullOrEmpty(saveName) || playerManager == null) return savedInsideId;
+
+                Vector3 savePos = playerManager.m_SaveGamePosition;
+                if (savePos.sqrMagnitude < 1f) return savedInsideId;
+
+                InteriorConfig best = null;
+                float bestSide = float.MaxValue;
+                foreach (var config in SupportedInteriors)
+                {
+                    if (config.ExteriorSceneName != sceneName || !config.IsParked) continue;
+
+                    Vector3 parked = config.FallbackPosition + config.ParkOffset;
+                    float up = savePos.y - parked.y;
+                    if (up < -SAVE_OVER_BUILDING_BELOW || up > SAVE_OVER_BUILDING_ABOVE) continue;
+
+                    float side = new Vector2(savePos.x - parked.x, savePos.z - parked.z).magnitude;
+                    if (side > SAVE_OVER_BUILDING_SIDE || side >= bestSide) continue;
+
+                    best = config;
+                    bestSide = side;
+                }
+
+                if (best == null) return savedInsideId;
+
+                string id = best.ResolvedInstanceId;
+                s_SavePositionInParkedRoom = savePos;
+                s_SavePositionInParkedRoomId = id;
+                if (savedInsideId == id) return savedInsideId;
+
+                UnityEngine.PlayerPrefs.SetString(PLAYER_INSIDE_KEY_PREFIX + saveName, id);
+                UnityEngine.PlayerPrefs.DeleteKey(PLAYER_LOCALPOS_KEY_PREFIX + saveName);
+                UnityEngine.PlayerPrefs.DeleteKey(PLAYER_LOCALROT_KEY_PREFIX + saveName);
+                UnityEngine.PlayerPrefs.Save();
+
+                string was = string.IsNullOrEmpty(savedInsideId) ? "-" : savedInsideId;
+                MelonLogger.Warning($"[KAYIT-KONUM] '{saveName}': kayit dosyasi oyuncuyu {id} binasinin park edilmis odasina koyuyor (X {savePos.x:F1}, Z {savePos.z:F1}, binanin {savePos.y - best.FallbackPosition.y:F1} m ustu) ama modun kaydi '{was}' diyordu. Dosya gecerli: kayit duzeltildi.",
+                                    $"[SAVE-POSITION] '{saveName}': the save file puts the player in {id}'s parked room (X {savePos.x:F1}, Z {savePos.z:F1}, {savePos.y - best.FallbackPosition.y:F1} m over the building) but the mod's own record said '{(was == "-" ? "outside" : was)}'. The file wins: record repaired, the room will be built first and the player put back where the save had them.");
+                return id;
+            }
+            catch (System.Exception e)
+            {
+                MelonLogger.Warning($"[KAYIT-KONUM] Kayit konumu kontrol edilemedi: {e.Message}",
+                                    $"[SAVE-POSITION] The save's position could not be checked: {e.Message}");
+                return savedInsideId;
+            }
+        }
+
         public static bool HasSavedPlayerInsideState()
         {
             string saveName = SaveGameSystem.m_CurrentSaveName;
@@ -159,6 +243,19 @@ namespace SeamlessInteriors
             return Path.Combine(ModPaths.DataDir(), saveName + "_" + instance.Config.ResolvedInstanceId + suffix);
         }
 
+        // A save file that could not be read is copied aside before the next save replaces it.
+        private static void KeepUnreadableFile(string path)
+        {
+            try
+            {
+                string copy = path + ".okunamadi_" + System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string src = File.Exists(SaveFiles.PendingPath(path)) ? SaveFiles.PendingPath(path) : path;
+                File.Copy(src, copy, true);
+                MelonLogger.Warning($"[SAVE-GUARD] Okunamayan dosya saklandi: {copy}");
+            }
+            catch (System.Exception ex) { MelonLogger.Warning($"[SAVE-GUARD] Yedeklenemedi: {ex.Message}"); }
+        }
+
         // Each building's data now lives in its own file, named after its instance id.
         private static string GetPlaceableSavePath(SeamlessInteriorInstance instance)
         {
@@ -180,6 +277,7 @@ namespace SeamlessInteriors
         {
             if (instance.MasterInterior == null || !instance.RunCompleted) return;
             if (!CanPersistContent(instance)) return;
+            if (instance.PlaceableSaveBlocked) return;
 
             string path = GetPlaceableSavePath(instance);
             if (path == null) return;
@@ -189,12 +287,14 @@ namespace SeamlessInteriors
             var placeablesInInterior = InteriorScan.Placeables(instance.MasterInterior);
             var entries = new List<string>();
             var savedGuids = new HashSet<string>();
+            var bestByGuid = BestPlaceablePerGuid(placeablesInInterior);
 
             // Positions are stored relative to the clone, so they survive the clone being
             // rebuilt somewhere else.
             foreach (var p in placeablesInInterior)
             {
                 if (p == null || string.IsNullOrEmpty(p.m_Guid)) continue;
+                if (bestByGuid[p.m_Guid] != p) continue;
 
                 Vector3 relPos = interiorT.InverseTransformPoint(p.transform.position);
                 Quaternion relRot = Quaternion.Inverse(interiorT.rotation) * p.transform.rotation;
@@ -364,11 +464,14 @@ namespace SeamlessInteriors
             // full of stacked duplicates. Name plus position is what a duplicate actually
             // shares, so that is what is compared.
             var seen = new HashSet<string>();
+            var all = InteriorScan.Placeables(instance.MasterInterior);
+            var bestByGuid = BestPlaceablePerGuid(all);
 
-            foreach (var p in InteriorScan.Placeables(instance.MasterInterior))
+            foreach (var p in all)
             {
                 if (p == null || p.gameObject == null) continue;
                 if (string.IsNullOrEmpty(p.m_Guid)) continue;
+                if (bestByGuid[p.m_Guid] != p) continue;
                 if (!IsSpawnedPlaceable(instance, p)) continue;
                 if (IsPlayerOrInventory(p.transform)) continue;
 
@@ -389,7 +492,9 @@ namespace SeamlessInteriors
                     string serialized = Il2Cpp.Utils.SerializeObject(data);
                     if (string.IsNullOrEmpty(serialized)) continue;
 
-                    entries.Add($"{{\"g\":\"{EscapeJson(p.m_Guid)}\",\"d\":\"{EscapeJson(serialized)}\"}}");
+                    // Curing box / framed photo contents travel with the record.
+                    string extra = SerializeDecorationState(p.gameObject);
+                    entries.Add($"{{\"g\":\"{EscapeJson(p.m_Guid)}\",\"d\":\"{EscapeJson(serialized)}\"{extra}}}");
                 }
                 catch (System.Exception ex)
                 {
@@ -398,10 +503,34 @@ namespace SeamlessInteriors
                 }
             }
 
+            entries.AddRange(instance.OrphanSpawnEntries);
             JsonWriteCache.Write(path, "[\n" + string.Join(",\n", entries) + "\n]");
 
             if (s_DebugBounds)
                 MelonLogger.Msg($"[SPAWN-PLACEABLE-SAVE] {instance.Config.ResolvedInstanceId}: {entries.Count} yerlestirilmis obje kaydedildi.");
+        }
+
+        // A template decoration taken out and put back elsewhere exists twice with one guid: the
+        // switched-off template copy and the placed one. Only one may be saved, the one standing.
+        private static Dictionary<string, Il2CppTLD.Placement.Placeable> BestPlaceablePerGuid(
+            IEnumerable<Il2CppTLD.Placement.Placeable> placeables)
+        {
+            var best = new Dictionary<string, Il2CppTLD.Placement.Placeable>();
+            foreach (var p in placeables)
+            {
+                if (p == null || p.gameObject == null || string.IsNullOrEmpty(p.m_Guid)) continue;
+                Il2CppTLD.Placement.Placeable cur;
+                if (!best.TryGetValue(p.m_Guid, out cur) || PlaceableRank(p) > PlaceableRank(cur)) best[p.m_Guid] = p;
+            }
+            return best;
+        }
+
+        private static int PlaceableRank(Il2CppTLD.Placement.Placeable p)
+        {
+            int r = 0;
+            if (p.gameObject.activeSelf) r += 2;
+            if (p.gameObject.name.IndexOf(SpawnedNameSuffix(), System.StringComparison.Ordinal) >= 0) r += 1;
+            return r;
         }
 
         // Re-creates the player-placed furniture. Idempotent: FindOrCreateAndDeserialize
@@ -412,10 +541,10 @@ namespace SeamlessInteriors
             if (instance == null || instance.MasterInterior == null) return 0;
 
             string path = GetSpawnedPlaceableSavePath(instance);
-            if (path == null || !File.Exists(path)) return 0;
+            if (path == null || !SaveFiles.Exists(path)) return 0;
 
             string json;
-            try { json = File.ReadAllText(path); }
+            try { json = SaveFiles.Read(path); }
             catch { return 0; }
 
             var elements = SplitJsonArray(json);
@@ -430,6 +559,7 @@ namespace SeamlessInteriors
             // object many times over. Applying every copy would re-create the pile, so
             // duplicates are dropped on the way in as well.
             var seenGuids = new HashSet<string>();
+            instance.OrphanSpawnEntries.Clear();
 
             foreach (var element in elements)
             {
@@ -474,8 +604,18 @@ namespace SeamlessInteriors
                 if (serialized.IndexOf("\"m_ActiveSelf\":true", System.StringComparison.Ordinal) >= 0)
                     instance.SpawnedShouldBeActive.Add(guid);
 
-                if (ApplySpawnedPlaceable(interiorT, guid, serialized)) applied++;
-                else failedNames.Add(ExtractSpawnedPlaceableName(serialized) ?? guid);
+                var created = ApplySpawnedPlaceable(interiorT, guid, serialized, out bool onPlayer);
+                if (created != null)
+                {
+                    applied++;
+                    RestoreDecorationState(created, element);
+                }
+                else
+                {
+                    failedNames.Add(ExtractSpawnedPlaceableName(serialized) ?? guid);
+                    // Not re-created this time: the record stays in the file for the next load.
+                    if (!onPlayer) instance.OrphanSpawnEntries.Add(element.Trim());
+                }
             }
 
             if (applied > 0) SceneScan.InvalidateVolatile();
@@ -601,12 +741,13 @@ namespace SeamlessInteriors
         // Shared by the normal restore and the pre-mod import: takes a PlaceableSaveData
         // whose position is in CLONE-LOCAL space, moves it into the clone's world space
         // and hands it to the game.
-        private static bool ApplySpawnedPlaceable(Transform interiorT, string guid, string serializedLocal)
+        private static GameObject ApplySpawnedPlaceable(Transform interiorT, string guid, string serializedLocal, out bool onPlayer)
         {
+            onPlayer = false;
             try
             {
                 var data = Il2Cpp.Utils.DeserializeObject<Il2CppTLD.Placement.PlaceableSaveData>(serializedLocal);
-                if (data == null) return false;
+                if (data == null) return null;
 
                 data.m_Position = interiorT.TransformPoint(data.m_Position);
                 data.m_Rotation = interiorT.rotation * data.m_Rotation;
@@ -616,7 +757,7 @@ namespace SeamlessInteriors
                 try { p = Il2CppTLD.Placement.Placeable.FindOrCreateAndDeserialize(guid, data); }
                 finally { IsCreatingClonePlaceable = false; }
 
-                if (p == null || p.gameObject == null) return false;
+                if (p == null || p.gameObject == null) return null;
 
                 // Was this object out in the world a moment ago? Then the mod has just
                 // taken something that belonged to the region, and that is worth saying
@@ -635,7 +776,7 @@ namespace SeamlessInteriors
                 // created starts life exactly there, under the placement category root.
                 // Using that test here refused to adopt the very objects this function
                 // had just restored.
-                if (PlayerRefs.IsPlayerRoot(p.transform.root)) return false;
+                if (PlayerRefs.IsPlayerRoot(p.transform.root)) { onPlayer = true; return null; }
 
                 // Under the clone, so it hides and shows with the building.
                 if (!p.transform.IsChildOf(interiorT))
@@ -659,13 +800,13 @@ namespace SeamlessInteriors
                 p.m_Invalidated = true;
                 try { Il2CppTLD.Placement.PlaceableManager.Remove(p); } catch { }
 
-                return true;
+                return p.gameObject;
             }
             catch (System.Exception ex)
             {
                 if (s_DebugBounds)
                     MelonLogger.Warning($"[SPAWN-PLACEABLE] '{guid}' uygulanamadi: {ex.Message}");
-                return false;
+                return null;
             }
         }
 
@@ -693,14 +834,14 @@ namespace SeamlessInteriors
             if (instance.MasterInterior == null) return;
 
             string path = GetPlaceableSavePath(instance);
-            if (path == null || !File.Exists(path))
+            if (path == null || !SaveFiles.Exists(path))
             {
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[PLACEABLE-LOAD] {instance.Config.InteriorSceneBaseName} Save dosyasi bulunamadi, atlaniyor.");
                 return;
             }
 
-            string json = File.ReadAllText(path);
+            string json = SaveFiles.Read(path);
             var guidToPosRot = new Dictionary<string, PlaceableEntry>();
             int idx = 0;
             while (idx < json.Length)
@@ -1559,6 +1700,7 @@ namespace SeamlessInteriors
         {
             if (instance.MasterInterior == null || !instance.RunCompleted) return;
             if (!CanPersistContent(instance)) return;
+            if (instance.GearSaveBlocked) return;
 
             string path = GetInactiveSceneGearSavePath(instance);
             if (path == null) return;
@@ -1653,6 +1795,7 @@ namespace SeamlessInteriors
                 if (!wasGearActive) instance.MasterInterior.SetActive(false);
             }
 
+            entries.AddRange(instance.OrphanGearEntries);
             string json = "[\n" + string.Join(",\n", entries) + "\n]";
             JsonWriteCache.Write(path, json);
 
@@ -1900,14 +2043,14 @@ namespace SeamlessInteriors
             if (instance.MasterInterior == null) yield break;
 
             string path = GetInactiveSceneGearSavePath(instance);
-            if (path == null || !File.Exists(path))
+            if (path == null || !SaveFiles.Exists(path))
             {
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[GEAR-RESTORE] {instance.Config.InteriorSceneBaseName} gear save dosyasi bulunamadi, atlaniyor.");
                 yield break;
             }
 
-            string fileText = File.ReadAllText(path);
+            string fileText = SaveFiles.Read(path);
             var savedEntries = ParseGearFile(fileText);
 
             if (savedEntries.Count == 0)
@@ -1929,6 +2072,8 @@ namespace SeamlessInteriors
                 {
                     MelonLogger.Warning($"[GEAR-RESTORE] {instance.Config.InteriorSceneBaseName}: gear dosyasi okunamadi " +
                                         $"(kayit var gibi ama cozulemedi), esyalara dokunulmuyor.");
+                    KeepUnreadableFile(path);
+                    instance.GearSaveBlocked = true;
                     yield break;
                 }
 
@@ -1937,6 +2082,11 @@ namespace SeamlessInteriors
             }
 
             Transform interiorT = instance.MasterInterior.transform;
+
+            // Every record starts as an orphan; it is taken off the list once it stands in the clone.
+            instance.OrphanGearEntries.Clear();
+            foreach (var e in savedEntries)
+                if (e != null && (e.active || !IsGearSaveFilterEnabled)) instance.OrphanGearEntries.Add(GearRecordJson(e));
 
             // BACKWARDS COMPATIBILITY / CLEANUP: old save files also hold container
             // contents, items the player took and eliminated loot candidates, as "disabled"
@@ -2032,6 +2182,7 @@ namespace SeamlessInteriors
             int restoredCount = 0;
             int failedCount = 0;
             int statefulCount = 0;
+            var unspawned = new List<string>();
 
             foreach (var entry in savedEntries)
             {
@@ -2050,118 +2201,151 @@ namespace SeamlessInteriors
                     if (instance.MasterInterior == null) yield break;
                 }
 
-                // Strip "(Clone)" and the trailing numbers from the name to get the
-                // Addressables key. Shared with the warm-up above so both ask for
-                // exactly the same key - a mismatch there would warm the wrong asset and
-                // leave every spawn cold.
-                string cleanName = CleanGearPrefabName(entry.name);
-
-                GameObject spawned = null;
-
-                // 1) PREFERRED: the game's own "spawn + deserialize" path.
-                //    It also restores the item's internal state (condition, decay,
-                //    liquid/food state and the CookingPotItem data). A plain Instantiate
-                //    resets the item to its prefab defaults and, for instance, the water
-                //    boiling in the pot on the stove disappears.
-                if (!string.IsNullOrEmpty(entry.serialized))
+                GameObject spawnedObj = null;
+                bool stateful = false;
+                try { spawnedObj = SpawnGearRecord(instance, entry, interiorT, ref stateful); }
+                catch (System.Exception ex)
                 {
-                    try
-                    {
-                        var gi = Il2Cpp.GearItem.InstantiateAndDeserializeGearItem(
-                            cleanName,
-                            entry.serialized,
-                            instance.MasterInterior.transform,
-                            false,   // applyPositioningFix: the position is set by us below
-                            false);  // instantiatedInContainer: not inside a container
-
-                        if (gi != null) spawned = gi.gameObject;
-                    }
-                    catch (System.Exception ex)
-                    {
-                        MelonLogger.Warning($"[GEAR-RESTORE] Durumlu spawn basarisiz ({cleanName}): {ex.Message} — duz spawn'a dusuluyor.");
-                        spawned = null;
-                    }
-
-                    if (spawned != null) statefulCount++;
+                    MelonLogger.Warning($"[GEAR-RESTORE] '{entry.name}' olusturulamadi: {ex.Message}");
                 }
 
-                // 2) FALLBACK: the old path - prefab + transform only.
-                //    Used when the record has no "s" field (an old file) or the
-                //    deserializing spawn failed.
-                if (spawned == null)
+                if (spawnedObj == null)
                 {
-                    GameObject prefab = null;
-
-                    // A name Addressables has already failed on is not retried. Each miss
-                    // costs a full synchronous WaitForCompletion, and the same handful of
-                    // dead prefab names recurs in every building and on every load.
-                    if (!s_MissingGearPrefabs.Contains(cleanName))
-                    {
-                        try
-                        {
-                            var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>(cleanName);
-                            handle.WaitForCompletion();
-                            if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && handle.Result != null)
-                                prefab = handle.Result;
-                        }
-                        catch { }
-
-                        if (prefab == null) s_MissingGearPrefabs.Add(cleanName);
-                    }
-
-                    if (prefab == null)
-                    {
-                        failedCount++;
-                        if (s_DebugBounds)
-                            MelonLogger.Msg($"[GEAR-RESTORE] PREFAB BULUNAMADI: {cleanName} (orijinal: {entry.name})");
-                        continue;
-                    }
-
-                    spawned = UnityEngine.Object.Instantiate(prefab);
-
-                    // The record says this item is standing here, so the prefab's spawn
-                    // chance must not get a say once the building opens (see
-                    // PreRollGearSpawnChance). The stateful path above carries the flag in
-                    // its serialized data.
-                    var spawnedGear = spawned.GetComponent<Il2Cpp.GearItem>();
-                    if (spawnedGear != null) spawnedGear.m_RolledSpawnChance = true;
-                }
-
-                // The stored position is clone-local, so convert it to world space.
-                Vector3 worldPos = interiorT.TransformPoint(entry.position);
-                Quaternion worldRot = interiorT.rotation * entry.rotation;
-
-                if (spawned.transform.parent != instance.MasterInterior.transform)
-                    spawned.transform.SetParent(instance.MasterInterior.transform, true);
-
-                spawned.transform.position = worldPos;
-                spawned.transform.rotation = worldRot;
-
-                // A zero scale means the record has none - leave what the game's own
-                // deserialize produced. Items attached to a place point on a shelf or a
-                // workbench inherit that anchor's scale, and overwriting it with 1 makes
-                // them balloon. (Records the mod writes itself always carry a real scale.)
-                if (entry.scale.sqrMagnitude > 1e-8f)
-                    spawned.transform.localScale = entry.scale;
-
-                spawned.SetActive(entry.active);
-
-                // The GUID has to be restored too, otherwise the item is seen as a new
-                // object on the next save.
-                if (!string.IsNullOrEmpty(entry.guid))
-                {
-                    var guidComp = spawned.GetComponent<Il2Cpp.ObjectGuid>();
-                    if (guidComp == null) guidComp = spawned.AddComponent<Il2Cpp.ObjectGuid>();
-                    guidComp.m_Guid = entry.guid;
+                    // Kept in the save as-is; the next load tries again.
+                    failedCount++;
+                    unspawned.Add(GearRecordJson(entry));
+                    continue;
                 }
 
                 restoredCount++;
-
-                if (s_DebugBounds)
-                    MelonLogger.Msg($"[GEAR-RESTORE] SPAWNED: {entry.name} worldPos={worldPos} durumlu={(!string.IsNullOrEmpty(entry.serialized))}");
+                if (stateful) statefulCount++;
             }
 
-            MelonLogger.Msg($"[GEAR-RESTORE] {instance.Config.InteriorSceneBaseName}: {restoredCount} gear geri yuklendi ({statefulCount} durum verisiyle), {failedCount} prefab bulunamadi (toplam kayit: {savedEntries.Count})");
+            instance.OrphanGearEntries.Clear();
+            instance.OrphanGearEntries.AddRange(unspawned);
+
+            MelonLogger.Msg($"[GEAR-RESTORE] {instance.Config.InteriorSceneBaseName}: {restoredCount} gear geri yuklendi ({statefulCount} durum verisiyle), {failedCount} olusturulamadi ve kayitta korundu (toplam kayit: {savedEntries.Count})");
+        }
+
+        // One saved loose item back into the clone; null when it could not be created.
+        private static GameObject SpawnGearRecord(SeamlessInteriorInstance instance, GearSaveEntry entry, Transform interiorT, ref bool stateful)
+        {
+            // Strip "(Clone)" and the trailing numbers from the name to get the
+            // Addressables key. Shared with the warm-up above so both ask for
+            // exactly the same key - a mismatch there would warm the wrong asset and
+            // leave every spawn cold.
+            string cleanName = CleanGearPrefabName(entry.name);
+
+            GameObject spawned = null;
+
+            // 1) PREFERRED: the game's own "spawn + deserialize" path.
+            //    It also restores the item's internal state (condition, decay,
+            //    liquid/food state and the CookingPotItem data). A plain Instantiate
+            //    resets the item to its prefab defaults and, for instance, the water
+            //    boiling in the pot on the stove disappears.
+            if (!string.IsNullOrEmpty(entry.serialized))
+            {
+                try
+                {
+                    var gi = Il2Cpp.GearItem.InstantiateAndDeserializeGearItem(
+                        cleanName,
+                        entry.serialized,
+                        instance.MasterInterior.transform,
+                        false,   // applyPositioningFix: the position is set by us below
+                        false);  // instantiatedInContainer: not inside a container
+
+                    if (gi != null) spawned = gi.gameObject;
+                }
+                catch (System.Exception ex)
+                {
+                    MelonLogger.Warning($"[GEAR-RESTORE] Durumlu spawn basarisiz ({cleanName}): {ex.Message} — duz spawn'a dusuluyor.");
+                    spawned = null;
+                }
+
+                if (spawned != null) stateful = true;
+            }
+
+            // 2) FALLBACK: the old path - prefab + transform only.
+            //    Used when the record has no "s" field (an old file) or the
+            //    deserializing spawn failed.
+            if (spawned == null)
+            {
+                GameObject prefab = null;
+
+                // A name Addressables has already failed on is not retried. Each miss
+                // costs a full synchronous WaitForCompletion, and the same handful of
+                // dead prefab names recurs in every building and on every load.
+                if (!s_MissingGearPrefabs.Contains(cleanName))
+                {
+                    try
+                    {
+                        var handle = UnityEngine.AddressableAssets.Addressables.LoadAssetAsync<GameObject>(cleanName);
+                        handle.WaitForCompletion();
+                        if (handle.Status == UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationStatus.Succeeded && handle.Result != null)
+                            prefab = handle.Result;
+                    }
+                    catch { }
+
+                    if (prefab == null) s_MissingGearPrefabs.Add(cleanName);
+                }
+
+                if (prefab == null)
+                {
+                    if (s_DebugBounds)
+                        MelonLogger.Msg($"[GEAR-RESTORE] PREFAB BULUNAMADI: {cleanName} (orijinal: {entry.name})");
+                    return null;
+                }
+
+                spawned = UnityEngine.Object.Instantiate(prefab);
+
+                // The record says this item is standing here, so the prefab's spawn
+                // chance must not get a say once the building opens (see
+                // PreRollGearSpawnChance). The stateful path above carries the flag in
+                // its serialized data.
+                var spawnedGear = spawned.GetComponent<Il2Cpp.GearItem>();
+                if (spawnedGear != null) spawnedGear.m_RolledSpawnChance = true;
+            }
+
+            // The stored position is clone-local, so convert it to world space.
+            Vector3 worldPos = interiorT.TransformPoint(entry.position);
+            Quaternion worldRot = interiorT.rotation * entry.rotation;
+
+            if (spawned.transform.parent != instance.MasterInterior.transform)
+                spawned.transform.SetParent(instance.MasterInterior.transform, true);
+
+            spawned.transform.position = worldPos;
+            spawned.transform.rotation = worldRot;
+
+            // A zero scale means the record has none - leave what the game's own
+            // deserialize produced. Items attached to a place point on a shelf or a
+            // workbench inherit that anchor's scale, and overwriting it with 1 makes
+            // them balloon. (Records the mod writes itself always carry a real scale.)
+            if (entry.scale.sqrMagnitude > 1e-8f)
+                spawned.transform.localScale = entry.scale;
+
+            spawned.SetActive(entry.active);
+
+            // The GUID has to be restored too, otherwise the item is seen as a new
+            // object on the next save.
+            if (!string.IsNullOrEmpty(entry.guid))
+            {
+                var guidComp = spawned.GetComponent<Il2Cpp.ObjectGuid>();
+                if (guidComp == null) guidComp = spawned.AddComponent<Il2Cpp.ObjectGuid>();
+                guidComp.m_Guid = entry.guid;
+            }
+
+            if (s_DebugBounds)
+                MelonLogger.Msg($"[GEAR-RESTORE] SPAWNED: {entry.name} worldPos={worldPos} durumlu={(!string.IsNullOrEmpty(entry.serialized))}");
+            return spawned;
+        }
+
+        // A parsed record back in the file's own format (same fields as BuildGearEntryJson).
+        private static string GearRecordJson(GearSaveEntry e)
+        {
+            string entry = $"{{\"name\":\"{e.name}\",\"guid\":\"{e.guid}\",\"px\":{e.position.x:R},\"py\":{e.position.y:R},\"pz\":{e.position.z:R},\"rx\":{e.rotation.x:R},\"ry\":{e.rotation.y:R},\"rz\":{e.rotation.z:R},\"rw\":{e.rotation.w:R},\"sx\":{e.scale.x:R},\"sy\":{e.scale.y:R},\"sz\":{e.scale.z:R},\"a\":{(e.active ? "true" : "false")}";
+            if (!string.IsNullOrEmpty(e.serialized))
+                entry += $",\"s\":\"{EscapeJson(e.serialized)}\"";
+            return entry + "}";
         }
 
         // ─── Saving/loading the container data of a clone scene ───
@@ -2181,6 +2365,7 @@ namespace SeamlessInteriors
         public static void SaveContainerData(SeamlessInteriorInstance instance)
         {
             if (instance.MasterInterior == null || !instance.RunCompleted) return;
+            if (instance.ContainerSaveBlocked) return;
             if (!CanPersistContent(instance)) return;
 
             string path = GetContainerSavePath(instance);
@@ -2236,6 +2421,7 @@ namespace SeamlessInteriors
                     MelonLogger.Msg($"[CONTAINER-SAVE] Kaydedildi: {matchKey} dataLen={serialized.Length}");
             }
 
+            entries.AddRange(instance.OrphanContainerEntries);
             string json = "[\n" + string.Join(",\n", entries) + "\n]";
             JsonWriteCache.Write(path, json);
 
@@ -2278,6 +2464,7 @@ namespace SeamlessInteriors
             public Vector3 position;
             public bool hasPosition;
             public string data;
+            public string raw;   // the record as written, for carrying it forward unmatched
         }
 
         // Tolerance for calling two container positions the same object. The clone is an
@@ -2299,6 +2486,7 @@ namespace SeamlessInteriors
 
                 var rec = new ContainerRecord();
                 rec.data = data;
+                rec.raw = element.Trim();
                 rec.key = ExtractEscapedField(element, "key");
                 rec.name = ExtractEscapedField(element, "n");
 
@@ -2337,14 +2525,24 @@ namespace SeamlessInteriors
             if (instance.MasterInterior == null) yield break;
 
             string path = GetContainerSavePath(instance);
-            if (path == null || !File.Exists(path))
+            if (path == null || !SaveFiles.Exists(path))
             {
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[CONTAINER-LOAD] {instance.Config.InteriorSceneBaseName} konteyner save dosyasi bulunamadi, atlaniyor.");
                 yield break;
             }
 
-            var records = ParseContainerFile(File.ReadAllText(path));
+            string containerText = SaveFiles.Read(path);
+            var records = ParseContainerFile(containerText);
+            instance.OrphanContainerEntries.Clear();
+            if (records.Count == 0 && containerText.IndexOf("\"data\":\"", System.StringComparison.Ordinal) >= 0)
+            {
+                // Records are there but none parsed: keep the file instead of overwriting it.
+                MelonLogger.Warning($"[CONTAINER-LOAD] {instance.Config.InteriorSceneBaseName}: konteyner dosyasi okunamadi, korunuyor.");
+                KeepUnreadableFile(path);
+                instance.ContainerSaveBlocked = true;
+                yield break;
+            }
             if (records.Count == 0)
             {
                 if (s_DebugBounds)
@@ -2444,6 +2642,7 @@ namespace SeamlessInteriors
                 if (i < 0)
                 {
                     missed++;
+                    instance.OrphanContainerEntries.Add(records[r].raw);
                     if (s_DebugBounds)
                         MelonLogger.Msg($"[CONTAINER-LOAD] ESLESME YOK: key='{records[r].key}' isim='{records[r].name}' pos={records[r].position}");
                     continue;
@@ -2460,8 +2659,8 @@ namespace SeamlessInteriors
                 }
                 catch (System.Exception ex)
                 {
-                    if (s_DebugBounds)
                         MelonLogger.Warning($"[CONTAINER-LOAD] Deserialize hatasi: {keys[i]} - {ex.Message}");
+                    instance.OrphanContainerEntries.Add(records[r].raw);
                 }
 
                 // Frame spreading (lazy hydration path only).
@@ -2499,6 +2698,9 @@ namespace SeamlessInteriors
         public static bool IsPositionInsideFull(SeamlessInteriorInstance instance, Vector3 pos)
         {
             if (instance == null || instance.MasterInterior == null) return false;
+
+            // Nothing but the room is anywhere near a parked room's box. See IsPositionInParkedRoom.
+            if (instance.Config != null && instance.Config.IsParked) return instance.IsPositionInParkedRoom(pos, 0f);
 
             bool wasActive = instance.MasterInterior.activeSelf;
             if (!wasActive) instance.MasterInterior.SetActive(true);

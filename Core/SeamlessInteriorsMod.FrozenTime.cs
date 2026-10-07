@@ -266,7 +266,11 @@ namespace SeamlessInteriors
                 Il2Cpp.Fire fire = fires[i];
                 if (fire == null) { fires.RemoveAt(i); continue; }
 
-                if (!IsFireStillAlive(fire)) continue;
+                if (!IsFireStillAlive(fire))
+                {
+                    AdvanceClosedEmbers(fire, todSeconds);
+                    continue;
+                }
 
                 // Mirrors what Fire.Update accumulates. The weather adjustment
                 // (Fire.GetWeatherAdjustedElapsedDuration) is deliberately skipped: it
@@ -402,6 +406,22 @@ namespace SeamlessInteriors
             if (fire == null) return false;
             if (!fire.IsBurning()) return false;
             return fire.GetRemainingLifeTimeSeconds() > 0f;
+        }
+
+        // Fuel gone: the game goes Off once m_EmberTimer reaches the ember duration, while the elapsed
+        // clock runs on (measured). Both are counted here, so a fire left for days is out on return.
+        private static void AdvanceClosedEmbers(Il2Cpp.Fire fire, float todSeconds)
+        {
+            if (fire == null || !fire.IsBurning() || !fire.m_UseEmbers) return;
+
+            float duration = fire.m_EmberDurationSecondsTOD;
+            float timer = fire.m_EmberTimer;
+            if (timer >= duration) return;
+
+            float step = Mathf.Min(todSeconds, duration - timer);
+            fire.m_EmberTimer = timer + step;
+            fire.m_ElapsedOnTODSeconds += step;
+            fire.m_ElapsedOnTODSecondsUnmodified += step;
         }
 
         private static bool IsPotFireStillAlive(Il2Cpp.CookingPotItem pot)

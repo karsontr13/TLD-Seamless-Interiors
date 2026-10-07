@@ -127,7 +127,7 @@ namespace SeamlessInteriors
             //    playthrough's worth of interior history. See ShouldHonourMarker.
             string markerPath = GetLegacyMarkerPath(instance);
             if (markerPath == null) return;
-            if (File.Exists(markerPath))
+            if (SaveFiles.Exists(markerPath))
             {
                 if (ShouldHonourMarker(instance, markerPath)) return;
                 TryDelete(markerPath);
@@ -136,7 +136,7 @@ namespace SeamlessInteriors
             // 2) The mod already owns this save's data for this building - it has been
             //    played with the mod at least once, so there is nothing legacy about it.
             string gearPath = GetInactiveSceneGearSavePath(instance);
-            if (gearPath != null && File.Exists(gearPath))
+            if (gearPath != null && SaveFiles.Exists(gearPath))
             {
                 WriteLegacyMarker(instance, "mod-data-exists", null, 0, 0, 0, 0);
                 return;
@@ -267,7 +267,7 @@ namespace SeamlessInteriors
         // rather than deserialized - a malformed file must not throw inside Run().
         private static string ReadLegacyMarkerResult(string markerPath)
         {
-            try { return ExtractString(File.ReadAllText(markerPath), "\"result\":\"", "\""); }
+            try { return ExtractString(SaveFiles.Read(markerPath), "\"result\":\"", "\""); }
             catch { return null; }
         }
 
@@ -281,7 +281,7 @@ namespace SeamlessInteriors
 
             try
             {
-                if (!File.Exists(path)) return "(yok)";
+                if (!SaveFiles.Exists(path)) return "(yok)";
                 return $"'{ReadLegacyMarkerResult(path) ?? "?"}' " +
                        $"({File.GetLastWriteTime(path):yyyy-MM-dd HH:mm:ss})";
             }
@@ -677,6 +677,10 @@ namespace SeamlessInteriors
             // container has to EXIST before the container pass can find it.
             try { RestoreSpawnedPlaceables(instance); }
             catch (System.Exception ex) { MelonLogger.Warning($"[LEGACY] {id}: yerlestirilmis obje olusturma hatasi - {ex.Message}"); }
+
+            // Curing box contents and framed photos sit in their own lists of the old save.
+            try { TranscodeDecorationStates(instance, fmt); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[LEGACY] {id}: kur kutusu/fotograf aktarimi hatasi - {ex.Message}"); }
             yield return null;
 
             // ─── 2. Container contents ───
@@ -1442,7 +1446,7 @@ namespace SeamlessInteriors
                 $"{{\"v\":1,\"result\":\"{EscapeJson(result)}\",\"source\":\"{EscapeJson(sourceId ?? "")}\"," +
                 $"\"gear\":{gear},\"containers\":{containers},\"states\":{states},\"placeables\":{placeables}}}";
 
-            try { File.WriteAllText(path, json); }
+            try { JsonWriteCache.Write(path, json); }
             catch (System.Exception ex) { MelonLogger.Warning($"[LEGACY] Marker yazilamadi: {ex.Message}"); }
 
             JsonWriteCache.Forget(path);
@@ -1465,7 +1469,7 @@ namespace SeamlessInteriors
             if (string.IsNullOrEmpty(path)) return;
             try
             {
-                if (File.Exists(path)) File.Delete(path);
+                SaveFiles.Delete(path);
                 JsonWriteCache.Forget(path);
             }
             catch { }

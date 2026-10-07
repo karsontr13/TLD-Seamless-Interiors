@@ -69,6 +69,8 @@ namespace SeamlessInteriors
 
             InteriorLightingManager manager = instance.MasterInterior.GetComponentInChildren<InteriorLightingManager>(true);
             if (manager != null && manager.isActiveAndEnabled) return set;
+            DarkLightingManager dark = instance.MasterInterior.GetComponentInChildren<DarkLightingManager>(true);
+            if (dark != null && dark.isActiveAndEnabled && dark.m_HasLightShafts) return set;
 
             foreach (LightShaftGimble gimble in instance.MasterInterior.GetComponentsInChildren<LightShaftGimble>(true))
                 if (gimble != null) set.Gimbles.Add(gimble);

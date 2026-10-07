@@ -14,6 +14,27 @@
     <Deterministic>true</Deterministic>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
+  <!-- ─── WHERE IS THE GAME? ───
+       An explicit -p:TheLongDarkPath=... or an environment variable of the same name
+       wins over everything here. Otherwise the usual Steam locations are probed, so a
+       fresh clone builds with no configuration on a normal install.
+
+       Each candidate is tested for Assembly-CSharp.dll rather than for the folder,
+       because a Steam library can hold a TheLongDark folder that has no MelonLoader in
+       it (a moved or partly uninstalled copy), and picking that one produces 28
+       confusing "reference not found" errors instead of one clear message. -->
+  <PropertyGroup Condition="'$(TheLongDarkPath)' == ''">
+    <_TldProbe>MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll</_TldProbe>
+    <_SteamFromRegistry>$(registry:HKEY_CURRENT_USER\Software\Valve\Steam@SteamPath)</_SteamFromRegistry>
+    <TheLongDarkPath Condition="'$(TheLongDarkPath)' == '' And Exists('D:\SteamLibrary\steamapps\common\TheLongDark\$(_TldProbe)')">D:\SteamLibrary\steamapps\common\TheLongDark</TheLongDarkPath>
+    <TheLongDarkPath Condition="'$(TheLongDarkPath)' == '' And Exists('$(MSBuildProgramFiles32)\Steam\steamapps\common\TheLongDark\$(_TldProbe)')">$(MSBuildProgramFiles32)\Steam\steamapps\common\TheLongDark</TheLongDarkPath>
+    <TheLongDarkPath Condition="'$(TheLongDarkPath)' == '' And Exists('C:\SteamLibrary\steamapps\common\TheLongDark\$(_TldProbe)')">C:\SteamLibrary\steamapps\common\TheLongDark</TheLongDarkPath>
+    <TheLongDarkPath Condition="'$(TheLongDarkPath)' == '' And Exists('E:\SteamLibrary\steamapps\common\TheLongDark\$(_TldProbe)')">E:\SteamLibrary\steamapps\common\TheLongDark</TheLongDarkPath>
+    <TheLongDarkPath Condition="'$(TheLongDarkPath)' == '' And '$(_SteamFromRegistry)' != '' And Exists('$(_SteamFromRegistry)\steamapps\common\TheLongDark\$(_TldProbe)')">$(_SteamFromRegistry)\steamapps\common\TheLongDark</TheLongDarkPath>
+  </PropertyGroup>
+  <Target Name="ReportMissingGamePath" BeforeTargets="ResolveAssemblyReferences" Condition="'$(TheLongDarkPath)' == ''">
+    <Error Text="Could not find a The Long Dark install with MelonLoader in it. Pass the location explicitly, for example: dotnet build -p:TheLongDarkPath=&quot;C:\Program Files (x86)\Steam\steamapps\common\TheLongDark&quot;" />
+  </Target>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
@@ -51,44 +72,48 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="0Harmony">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\net6\0Harmony.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\net6\0Harmony.dll</HintPath>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll</HintPath>
     </Reference>
     <Reference Include="Il2CppAK.Wwise.Unity.API, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppAK.Wwise.Unity.API.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Il2CppAK.Wwise.Unity.API.dll</HintPath>
     </Reference>
     <Reference Include="Il2CppAK.Wwise.Unity.API.WwiseTypes, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppAK.Wwise.Unity.API.WwiseTypes.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Il2CppAK.Wwise.Unity.API.WwiseTypes.dll</HintPath>
+    </Reference>
+    <Reference Include="Il2CppAK.Wwise.Unity.MonoBehaviour, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Il2CppAK.Wwise.Unity.MonoBehaviour.dll</HintPath>
     </Reference>
     <Reference Include="Il2CppInterop.Common">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\net6\Il2CppInterop.Common.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\net6\Il2CppInterop.Common.dll</HintPath>
     </Reference>
     <Reference Include="Il2CppInterop.Runtime">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\net6\Il2CppInterop.Runtime.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\net6\Il2CppInterop.Runtime.dll</HintPath>
     </Reference>
     <Reference Include="Il2Cppmscorlib">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll</HintPath>
     </Reference>
     <Reference Include="Il2CppSystem.Core">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppSystem.Core.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Il2CppSystem.Core.dll</HintPath>
     </Reference>
     <Reference Include="Il2CppTLD.IntBackedUnit, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppTLD.IntBackedUnit.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Il2CppTLD.IntBackedUnit.dll</HintPath>
     </Reference>
     <Reference Include="Il2CppTLD.SaveState, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppTLD.SaveState.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Il2CppTLD.SaveState.dll</HintPath>
     </Reference>    <Reference Include="Il2CppTLD.PDID, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Il2CppTLD.PDID.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Il2CppTLD.PDID.dll</HintPath>
     </Reference>
     <Reference Include="MelonLoader">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\net6\MelonLoader.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\net6\MelonLoader.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -99,63 +124,68 @@
     <Reference Include="System.Xml" />
     <Reference Include="Unity.Addressables, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Unity.Addressables.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Unity.Addressables.dll</HintPath>
     </Reference>
     <Reference Include="Unity.ResourceManager, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\Unity.ResourceManager.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Unity.ResourceManager.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.AIModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.AIModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.AIModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.AssetBundleModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.AssetBundleModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.AssetBundleModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.AudioModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.AudioModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.AudioModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.InputLegacyModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.InputLegacyModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.InputLegacyModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.JSONSerializeModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.JSONSerializeModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.JSONSerializeModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.ParticleSystemModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.ParticleSystemModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.ParticleSystemModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.PhysicsModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.PhysicsModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.PhysicsModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.IMGUIModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.IMGUIModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.IMGUIModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.TerrainModule">
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.TerrainModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.TerrainModule.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>D:\SteamLibrary\steamapps\common\TheLongDark\MelonLoader\Il2CppAssemblies\UnityEngine.TextRenderingModule.dll</HintPath>
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.TextRenderingModule.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Core\SeamlessInteriorsLog.cs" />
+    <EmbeddedResource Include="Core\LogTranslations.tsv" />
     <Compile Include="Compat\ModExceptions.cs" />
     <Compile Include="Compat\SeamlessInteriorsApi.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Audio.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.CarriedDecorations.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.DecorationState.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.LightingModeSwitch.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.InteriorProbes.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Configs.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Environment.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.ExteriorFireEffects.cs" />
@@ -164,6 +194,31 @@
     <Compile Include="Core\SeamlessInteriorsMod.GearLeak.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Hydration.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.IndoorMovement.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.IndoorState.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.MeshReadback.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ParkedCullEye.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ParkedWeather.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.KillerDisplay.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ParkedRoomBody.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ParkedRoomDoorLighting.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ParkedRoomFadeIn.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ParkedRoomYaw.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WallCameras.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.OutsideInWallCameras.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ViewFade.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WindowOpenings.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WindowPairing.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WindowFrostState.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WindowSnow.RoomToBuilding.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ParkedRoomShadow.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WindowFit.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.BuildingWindowOverrides.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WindowPortals.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WindowViewFog.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WindowSnow.BuildingToRoom.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.OutsideInBuildings.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.OutsideInPortals.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ShellWindows.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InsideFlag.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.LegacyImport.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InteractiveState.cs" />
@@ -193,16 +248,20 @@
     <Compile Include="Patches\FirePatches.cs" />
     <Compile Include="Patches\InteractionDiagPatches.cs" />
     <Compile Include="Patches\LightingPatches.cs" />
+    <Compile Include="Patches\PortalFrustumPatch.cs" />
     <Compile Include="Patches\PortalPatches.cs" />
     <Compile Include="Patches\SafehouseFixes.cs" />
     <Compile Include="Patches\SaveDeletionPatches.cs" />
+    <Compile Include="Patches\SaveCommitPatches.cs" />
     <Compile Include="Patches\SpawningPatches.cs" />
     <Compile Include="Patches\SystemPatches.cs" />
+    <Compile Include="Patches\ParkedCullEyePatches.cs" />
+    <Compile Include="Patches\ParkedSnowBoxPatches.cs" />
     <Compile Include="Patches\WindInstanceFix.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>copy /Y "$(TargetPath)" "D:\SteamLibrary\steamapps\common\TheLongDark\Mods\"</PostBuildEvent>
+    <PostBuildEvent>copy /Y "$(TargetPath)" "$(TheLongDarkPath)\Mods\"</PostBuildEvent>
   </PropertyGroup>
 </Project>

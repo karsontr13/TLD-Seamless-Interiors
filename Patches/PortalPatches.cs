@@ -69,6 +69,9 @@ namespace SeamlessInteriors
             // Back into a cloned building from a scene SI does not clone: load its region instead.
             if (TryRedirectIntoClone(__instance)) return true;
 
+            // The lighting in force now is the side being left; see ParkedRoomDoorLighting.cs.
+            SeamlessInteriorsMod.RememberLightingBeforeDoor();
+
             // ─── SUB-INTERIOR LINK CHECK ───
             // Transition from inside one interior scene into another
             // (e.g. the basement door inside FarmHouse, the doors inside Carter Dam).
@@ -162,7 +165,10 @@ namespace SeamlessInteriors
                 float bestDist = float.MaxValue;
                 foreach (var instance in SeamlessInteriorsMod.ActiveInteriors.Values)
                 {
-                    float distToFallback = Vector3.Distance(__instance.transform.position, instance.Config.FallbackPosition);
+                    // Measured to the nearer half: the exit doors of a parked clone are
+                    // nowhere near FallbackPosition, and matching them on that alone let
+                    // them fall through to a vanilla scene transition.
+                    float distToFallback = instance.DistanceFrom(__instance.transform.position);
                     if (distToFallback < 30f && distToFallback < bestDist)
                     {
                         bool canEnter = __instance.m_SceneToLoad == instance.Config.InteriorSceneBaseName;
@@ -326,6 +332,26 @@ namespace SeamlessInteriors
                 GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
                 SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalMarkInside, perf);
 
+                // AFTER the teleport, so the player is already in the building. The
+                // watchdog would otherwise do this, but NotifyPortalUsed above has just
+                // told it to stand back, so the blizzard kept falling indoors until the
+                // suppression expired.
+                SeamlessInteriorsMod.ApplyParticleKillers(matchedInstance, true);
+
+                // A PARKED ROOM IS SWITCHED OVER IN THIS FRAME, NOT THE NEXT. The stand-in eye, and the
+                // fog, snow and snow planes that key on it, are otherwise set by the next OnUpdate, and
+                // this door runs after this frame's. Measured 2026-09-22 with a per-frame probe: the
+                // first frame in the room was drawn with the fog pass on and the eye off, then the next
+                // frame took about 400 ms, so that one wrong frame stayed on screen - the owner's "fog
+                // for a split second". Applied here in the console, the first frame had the eye on and
+                // the fog off, and the owner: "fog flash is gone".
+                SeamlessInteriorsMod.TickParkedCullEye();
+                SeamlessInteriorsMod.TickParkedRoomFog(GameManager.GetMainCamera());
+
+                // Its small objects were culled from 80 m away; they appear now, not faded in.
+                SeamlessInteriorsMod.ArriveWithoutCrossFade(matchedInstance);
+                SeamlessInteriorsMod.LightDoorFrameForArrival(matchedInstance, true);
+
                 return false;
             }
 
@@ -370,6 +396,20 @@ namespace SeamlessInteriors
                 spawnPos = SnapToGround(spawnPos);
                 GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
 
+                SeamlessInteriorsMod.ApplyParticleKillers(matchedInstance, false);
+
+                // AND SWITCHED BACK IN THIS FRAME ON THE WAY OUT. The entry above got this on
+                // 2026-09-22; the exit did not, so the first frames outside kept the room's state,
+                // the fog pass off most visibly (owner, 2026-09-28: "going out it was most noticeably
+                // the fog being absent"). Tried in the console as a postfix doing exactly this, then
+                // judged "better". The body and near clip still follow in the next OnUpdate; he: those
+                // can be late, only what is seen matters.
+                SeamlessInteriorsMod.TickParkedCullEye();
+                SeamlessInteriorsMod.TickParkedRoomFog(GameManager.GetMainCamera());
+                SeamlessInteriorsMod.TickParkedSnowEmitters();
+                SeamlessInteriorsMod.TickParkedSnowPlanes();
+                SeamlessInteriorsMod.LightDoorFrameForArrival(matchedInstance, false);
+
                 return false;
             }
 
@@ -406,12 +446,17 @@ namespace SeamlessInteriors
                     if (SeamlessInteriorsMod.s_DebugBounds)
                         MelonLogger.Msg($"[DEBUG-DOOR] GIRIS BASARILI - Tiklanan Obj: {door.gameObject.name}, Eslesen Kapi: {closestDoor.DoorName}, Mesafe: {minDistance}");
 
-                    return closestDoor.EntryPosition;
+                    // The CONFIG coordinates only are carried to the parked room. They were
+                    // authored against a clone standing on its shell, so a parked clone has
+                    // moved, and perhaps turned, out from under them. Positions read from
+                    // objects in the clone (below) have already moved with it and must not be
+                    // carried a second time.
+                    return SeamlessInteriorsMod.ParkedInteriorPoint(instance, closestDoor.EntryPosition);
                 }
             }
 
             // Fallback
-            if (instance.Config.EntrySpawnPosition != Vector3.zero) return instance.Config.EntrySpawnPosition;
+            if (instance.Config.EntrySpawnPosition != Vector3.zero) return SeamlessInteriorsMod.ParkedInteriorPoint(instance, instance.Config.EntrySpawnPosition);
 
             // No hand-measured point (generated configs): the clone's copy of the vanilla
             // spawn point this door names, e.g. "CoastalHouseAEnterPoint".
@@ -442,7 +487,10 @@ namespace SeamlessInteriors
                     // NOTE: when exiting, the player is INSIDE. So the clicked door is
                     // compared against the interior 'EntryPosition', not the outdoor
                     // 'DoorTransformPosition'.
-                    float dist = Vector2.Distance(new Vector2(clickedDoorPos.x, clickedDoorPos.z), new Vector2(dsp.EntryPosition.x, dsp.EntryPosition.z));
+                    // The clicked door is inside the clone, so the interior coordinate it is
+                    // compared against has to be moved with it.
+                    Vector3 entryPos = SeamlessInteriorsMod.ParkedInteriorPoint(instance, dsp.EntryPosition);
+                    float dist = Vector2.Distance(new Vector2(clickedDoorPos.x, clickedDoorPos.z), new Vector2(entryPos.x, entryPos.z));
 
                     if (dist < minDistance)
                     {
@@ -509,6 +557,9 @@ namespace SeamlessInteriors
             // On the way out the door lives in the clone scene, so it is raised on Y.
             // Subtract YOffset to spawn at the outside world's door level.
             fallbackPos.y -= instance.Config.YOffset;
+            // Same reason, for a clone that is parked away from its shell: this position
+            // came off an object inside it, and the target is outdoors.
+            fallbackPos -= instance.Config.ParkOffset;
             return fallbackPos;
         }
 
@@ -614,6 +665,8 @@ namespace SeamlessInteriors
             return best;
         }
 
+        private const float SNAP_LIFT = 0f;
+
         private static Vector3 SnapToGround(Vector3 pos)
         {
             Vector3 rayOrigin = pos + Vector3.up * 0.5f;
@@ -638,8 +691,22 @@ namespace SeamlessInteriors
                 }
             }
 
+            // ONE CENTIMETER ABOVE THE SURFACE, NOT FIVE. It was 5 cm, and the owner could see it:
+            // "When exiting, the player visibly jumps downwards." Measured 2026-09-18 with a
+            // frame-by-frame probe across two exits from the Camp Office: the teleport lands on the
+            // right surface (the shell's own porch), grounded from the first frame, camera a constant
+            // 1.750 m above the feet, so no fall and no landing dip; and the feet arrive exactly
+            // 0.050 m above the porch and drop it within 91 ms, touching 3 m/s downward for a frame.
+            // That drop was the whole of the "jump". The same 5 cm showed on the way in.
+            //
+            // ZERO, AND THE VALUE WAS FOUND IN THE RUNNING GAME, NOT GUESSED. A first fix guessed 1 cm
+            // "so the controller never starts inside the floor" and was staged untested. A console
+            // trial then teleported the player onto the floor under them at 5, 1 and 0 cm and
+            // watched 75 frames each: 5 cm dropped 5.0, 1 cm dropped 1.0 at 0.6 m/s, 0 cm dropped
+            // 0.0, never read below the surface and never left the ground. The margin guards
+            // against nothing, so there is none.
             if (bestHit.HasValue)
-                return new Vector3(pos.x, bestHit.Value.point.y + 0.05f, pos.z);
+                return new Vector3(pos.x, bestHit.Value.point.y + SNAP_LIFT, pos.z);
 
             return pos;
         }
@@ -720,8 +787,11 @@ namespace SeamlessInteriors
                     SeamlessInteriorsMod.SetInteriorItemsVisible(targetInstance, true);
 
                     // Teleport the player to the child spawn point.
-                    Vector3 spawnPos = SnapToGround(link.ChildSpawnPosition);
+                    Vector3 spawnPos = SnapToGround(SeamlessInteriorsMod.ParkedInteriorPoint(targetInstance, link.ChildSpawnPosition));
                     GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
+
+                    SeamlessInteriorsMod.ApplyParticleKillers(instance, false);
+                    SeamlessInteriorsMod.ApplyParticleKillers(targetInstance, true);
 
                     SeamlessInteriorsMod.SetAudioOcclusion(true);
                     SeamlessInteriorsMod.MarkPlayerInside(targetInstance, "alt-mekan gecisi");
@@ -791,8 +861,11 @@ namespace SeamlessInteriors
                     SeamlessInteriorsMod.SetInteriorItemsVisible(parentInstance, true);
 
                     // Teleport the player to the parent spawn point.
-                    Vector3 spawnPos = SnapToGround(link.ParentSpawnPosition);
+                    Vector3 spawnPos = SnapToGround(SeamlessInteriorsMod.ParkedInteriorPoint(parentInstance, link.ParentSpawnPosition));
                     GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
+
+                    SeamlessInteriorsMod.ApplyParticleKillers(childInstance, false);
+                    SeamlessInteriorsMod.ApplyParticleKillers(parentInstance, true);
 
                     SeamlessInteriorsMod.SetAudioOcclusion(true);
                     SeamlessInteriorsMod.MarkPlayerInside(parentInstance, "alt-mekandan geri donus");

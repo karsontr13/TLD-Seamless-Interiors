@@ -199,7 +199,7 @@ namespace SeamlessInteriors
             // sibling has been through Run(), so asking again can resolve it.
             HydrateStep(instance, "0/7 eski kayit yoklamasi");
             if (instance.LegacyImport == LegacyImportState.Unknown)
-                ProbeLegacySave(instance, true);
+                GuardedCall(() => ProbeLegacySave(instance, true), id, "yoklama");
 
             // ─── 1. One-time import of the player's pre-mod history ───
             //
@@ -210,7 +210,7 @@ namespace SeamlessInteriors
             HydrateStep(instance, "1/7 mod oncesi kayit aktarimi");
             if (IsLegacyImportPending(instance))
             {
-                IEnumerator legacy = TranscodeLegacySaveRoutine(instance);
+                IEnumerator legacy = Guarded(TranscodeLegacySaveRoutine(instance), id, "aktarim");
                 while (legacy.MoveNext())
                 {
                     if (spread) yield return legacy.Current;
@@ -237,13 +237,13 @@ namespace SeamlessInteriors
             // furniture before it could match up the containers built into it. Repeating
             // it would re-process several hundred objects for nothing.
             HydrateStep(instance, "2/7 oyuncunun yerlestirdigi mobilya");
-            if (!importedNow) RestoreSpawnedPlaceables(instance);
+            if (!importedNow) GuardedCall(() => RestoreSpawnedPlaceables(instance), id, "mobilya", () => instance.PlaceableSaveBlocked = true);
             if (spread) yield return null;
             if (instance.MasterInterior == null) { instance.HydrationInProgress = false; instance.HydrationRoutine = null; yield break; }
 
             // ─── 3. Scene furniture the player moved ───
             HydrateStep(instance, "3/7 tasinmis sahne mobilyasi");
-            RestorePlaceablePositions(instance);
+            GuardedCall(() => RestorePlaceablePositions(instance), id, "tasinmis mobilya", () => instance.PlaceableSaveBlocked = true);
             if (spread) yield return null;
             tPlace = Time.realtimeSinceStartup - stepStart; stepStart = Time.realtimeSinceStartup;
             offAfterPlace = CountInactivePlaceables(instance);
@@ -251,7 +251,7 @@ namespace SeamlessInteriors
 
             // ─── 4. Loose items (the expensive one) ───
             HydrateStep(instance, "4/7 yerdeki esyalar");
-            IEnumerator gear = RestoreInactiveSceneGearItemsRoutine(instance, spread);
+            IEnumerator gear = Guarded(RestoreInactiveSceneGearItemsRoutine(instance, spread), id, "esya", () => instance.GearSaveBlocked = true);
             while (gear.MoveNext())
             {
                 if (spread) yield return gear.Current;
@@ -262,7 +262,7 @@ namespace SeamlessInteriors
 
             // ─── 5. Container contents ───
             HydrateStep(instance, "5/7 konteyner icerikleri");
-            IEnumerator containers = RestoreContainerDataRoutine(instance, spread);
+            IEnumerator containers = Guarded(RestoreContainerDataRoutine(instance, spread), id, "konteyner", () => instance.ContainerSaveBlocked = true);
             while (containers.MoveNext())
             {
                 if (spread) yield return containers.Current;
@@ -273,8 +273,8 @@ namespace SeamlessInteriors
 
             // ─── 6. Broken / harvested / opened objects, and cleared junk ───
             HydrateStep(instance, "6/7 kirik/hasat edilmis objeler ve cop durumu");
-            RestoreInteractiveState(instance);
-            RestoreJunkState(instance);
+            GuardedCall(() => RestoreInteractiveState(instance), id, "durum");
+            GuardedCall(() => RestoreJunkState(instance), id, "cop");
             tState = Time.realtimeSinceStartup - stepStart; stepStart = Time.realtimeSinceStartup;
             offAfterState = CountInactivePlaceables(instance);
 
@@ -303,8 +303,8 @@ namespace SeamlessInteriors
             if (instance.MasterInterior.activeSelf)
             {
                 HydrateStep(instance, "7/7 gorunurluk ve colliderlar");
-                SetInteriorItemsVisible(instance, true);
-                RestoreInteriorItemColliders(instance);
+                GuardedCall(() => SetInteriorItemsVisible(instance, true), id, "gorunurluk");
+                GuardedCall(() => RestoreInteriorItemColliders(instance), id, "collider");
             }
             tVisual = Time.realtimeSinceStartup - stepStart;
 
@@ -335,6 +335,38 @@ namespace SeamlessInteriors
         {
             if (!s_DebugBounds) return;
             MelonLogger.Msg($"[HYDRATE-ADIM] {instance.Config.ResolvedInstanceId}: {step}");
+        }
+
+        // A step that throws used to leave the building stuck "hydrating" and never saved again.
+        // Now the step is logged and skipped; onError blocks that step's save file.
+        private static IEnumerator Guarded(IEnumerator inner, string id, string step, System.Action onError = null)
+        {
+            while (true)
+            {
+                object current;
+                try
+                {
+                    if (!inner.MoveNext()) yield break;
+                    current = inner.Current;
+                }
+                catch (System.Exception ex)
+                {
+                    MelonLogger.Error($"[HYDRATE] {id}: '{step}' adimi hata verdi, dosyasi korunuyor: {ex}");
+                    onError?.Invoke();
+                    yield break;
+                }
+                yield return current;
+            }
+        }
+
+        private static void GuardedCall(System.Action action, string id, string step, System.Action onError = null)
+        {
+            try { action(); }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"[HYDRATE] {id}: '{step}' adimi hata verdi: {ex}");
+                onError?.Invoke();
+            }
         }
 
         private static int CountInactivePlaceables(SeamlessInteriorInstance instance)

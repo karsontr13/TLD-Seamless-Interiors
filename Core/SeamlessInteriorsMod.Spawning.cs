@@ -27,41 +27,41 @@ namespace SeamlessInteriors
                 UnityEngine.PlayerPrefs.Save();
 
                 string jsonPath = GetPlaceableSavePath(instance);
-                if (jsonPath != null && File.Exists(jsonPath))
+                if (jsonPath != null && SaveFiles.Exists(jsonPath))
                 {
-                    File.Delete(jsonPath);
+                    SaveFiles.Delete(jsonPath);
                     if (s_DebugBounds)
                         MelonLogger.Msg($"[NEW GAME] Eski Placeable JSON silindi: {jsonPath}");
                 }
 
                 string gearJsonPath = GetInactiveSceneGearSavePath(instance);
-                if (gearJsonPath != null && File.Exists(gearJsonPath))
+                if (gearJsonPath != null && SaveFiles.Exists(gearJsonPath))
                 {
-                    File.Delete(gearJsonPath);
+                    SaveFiles.Delete(gearJsonPath);
                     if (s_DebugBounds)
                         MelonLogger.Msg($"[NEW GAME] Eski Gear JSON silindi: {gearJsonPath}");
                 }
 
                 string containerJsonPath = GetContainerSavePath(instance);
-                if (containerJsonPath != null && File.Exists(containerJsonPath))
+                if (containerJsonPath != null && SaveFiles.Exists(containerJsonPath))
                 {
-                    File.Delete(containerJsonPath);
+                    SaveFiles.Delete(containerJsonPath);
                     if (s_DebugBounds)
                         MelonLogger.Msg($"[NEW GAME] Eski Container JSON silindi: {containerJsonPath}");
                 }
 
                 string statePath = GetInteractiveStateSavePath(instance);
-                if (statePath != null && File.Exists(statePath))
+                if (statePath != null && SaveFiles.Exists(statePath))
                 {
-                    File.Delete(statePath);
+                    SaveFiles.Delete(statePath);
                     if (s_DebugBounds)
                         MelonLogger.Msg($"[NEW GAME] Eski Etkilesim Durumu JSON silindi: {statePath}");
                 }
 
                 string junkPath = GetJunkStateSavePath(instance);
-                if (junkPath != null && File.Exists(junkPath))
+                if (junkPath != null && SaveFiles.Exists(junkPath))
                 {
-                    File.Delete(junkPath);
+                    SaveFiles.Delete(junkPath);
                     if (s_DebugBounds)
                         MelonLogger.Msg($"[NEW GAME] Eski Cop (junk) durumu JSON silindi: {junkPath}");
                 }
@@ -97,7 +97,7 @@ namespace SeamlessInteriors
             if (instance == null) return false;
 
             string gearJsonPath = GetInactiveSceneGearSavePath(instance);
-            if (gearJsonPath != null && File.Exists(gearJsonPath)) return true;
+            if (gearJsonPath != null && SaveFiles.Exists(gearJsonPath)) return true;
 
             return IsLegacyImportPending(instance);
         }
@@ -893,7 +893,13 @@ namespace SeamlessInteriors
                 foreach (var t in candidates)
                 {
                     if (t == null || t.gameObject == null) continue;
-                    if (!instance.IsPositionInsideRaycastOnly(t.position, SeamlessInteriorInstance.ITEM_RAY_ORIGIN_LIFT)) continue;
+
+                    // An object left where a parked room used to stand is judged, and then placed,
+                    // where the room is now. See TryCarryStrayToParkedRoom.
+                    Vector3 at = t.position;
+                    bool carried = hasFilter && !filter.Contains(at) && TryCarryStrayToParkedRoom(instance, filter, ref at);
+                    if (!instance.IsPositionInsideRaycastOnly(at, SeamlessInteriorInstance.ITEM_RAY_ORIGIN_LIFT)) continue;
+                    if (carried && !CarryStrayIntoParkedRoom(instance, t, at)) continue;   // a leaked copy: the purge's
 
                     // Named at normal level for the first few. Adoption is what physically
                     // moves an object out of the world and into the building, so when
@@ -904,6 +910,10 @@ namespace SeamlessInteriors
 
                     t.SetParent(interiorT, true);
                     adopted++;
+
+                    // A placeable from outside the template is the player's own: save it in full.
+                    // Otherwise only its position was kept and the clone prune erased it from the game's save too.
+                    MarkAdoptedPlaceableAsSpawned(instance, t);
                 }
             }
             finally
@@ -912,6 +922,15 @@ namespace SeamlessInteriors
             }
 
             return adopted;
+        }
+
+        private static void MarkAdoptedPlaceableAsSpawned(SeamlessInteriorInstance instance, Transform t)
+        {
+            var p = t.GetComponent<Il2CppTLD.Placement.Placeable>();
+            if (p == null || string.IsNullOrEmpty(p.m_Guid)) return;
+            if (!instance.SpawnedPlaceableGuids.Add(p.m_Guid)) return;
+            if (p.gameObject.activeSelf) instance.SpawnedShouldBeActive.Add(p.m_Guid);
+            MelonLogger.Msg($"[ADOPT] {instance.Config.ResolvedInstanceId}: '{p.gameObject.name}' oyuncunun objesi olarak kaydedilecek.");
         }
 
         private static bool BelongsToAnotherInstance(SeamlessInteriorInstance instance, Transform t)
@@ -941,7 +960,9 @@ namespace SeamlessInteriors
             Vector3 pos = t.position;
 
             // 1) Coarse AABB - a single float comparison.
-            if (hasFilter && !filter.Contains(pos)) return false;
+            //    ...and for a parked room, the same comparison where the room USED to stand. See
+            //    TryCarryStrayToParkedRoom: the rest of the tests then judge the carried position.
+            if (hasFilter && !filter.Contains(pos) && !TryCarryStrayToParkedRoom(instance, filter, ref pos)) return false;
 
             // 2) Geometric volume test - does not rely on raycasts, so items on tables and
             //    shelves or near the ceiling are caught too. The volume is shrunk slightly

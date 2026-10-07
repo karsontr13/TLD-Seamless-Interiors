@@ -86,9 +86,11 @@ namespace SeamlessInteriors
                 {
                     GameObject obj = list[i];
                     if (obj == null) { list.RemoveAt(i); continue; }
-                    if (IsUnderAnyMasterInterior(obj.transform)) list.RemoveAt(i);
+                    if (IsUnderAnyMasterInterior(obj.transform)) { list.RemoveAt(i); continue; }
+                    // Nor anything of the mod's own. See IsOwnPortalObject.
+                    if (IsOwnPortalObject(obj)) { list.RemoveAt(i); continue; }
                     // Picked up since: it belongs to the backpack now and must stay off.
-                    else if (PlayerRefs.IsPlayerRoot(obj.transform.root)) list.RemoveAt(i);
+                    if (PlayerRefs.IsPlayerRoot(obj.transform.root)) list.RemoveAt(i);
                 }
             }
 
@@ -239,26 +241,37 @@ namespace SeamlessInteriors
             if (instance.MasterInterior == null) return;
             // ExteriorShell may be null (sub-interiors).
 
-            bool isInside = instance.IsPositionInside(pos);
+            ApplyParticleKillers(instance, instance.IsPositionInside(pos));
+        }
+
+        // Adds or removes this building's kill zones from the weather manager.
+        //
+        // Split out of ApplyVisibilityState so a door transition can apply them on the
+        // spot. The watchdog is the only thing that used to register them, and it stands
+        // back for PORTAL_SUPPRESS_WINDOW right after a door is used, so walking inside
+        // left the blizzard falling in the room until that suppression expired: the whole
+        // two second window plus up to one more watchdog interval.
+        public static void ApplyParticleKillers(SeamlessInteriorInstance instance, bool isInside)
+        {
+            if (instance == null || instance.CustomKillers == null || instance.CustomKillers.Count == 0) return;
+
             var uniStorm = GetCachedUniStorm();
+            if (uniStorm == null || uniStorm.m_WeatherParticleManager == null) return;
 
-            if (uniStorm != null && uniStorm.m_WeatherParticleManager != null && instance.CustomKillers != null && instance.CustomKillers.Count > 0)
+            // Only touch the manager's list when the state actually changed.
+            // The first killer stands in for the whole set - they are always
+            // added and removed together.
+            bool isCurrentlyApplied = uniStorm.m_WeatherParticleManager.m_AllParticleKillers.Contains(instance.CustomKillers[0]);
+
+            if (isInside && !isCurrentlyApplied)
             {
-                // Only touch the manager's list when the state actually changed.
-                // The first killer stands in for the whole set - they are always
-                // added and removed together.
-                bool isCurrentlyApplied = uniStorm.m_WeatherParticleManager.m_AllParticleKillers.Contains(instance.CustomKillers[0]);
-
-                if (isInside && !isCurrentlyApplied)
-                {
-                    foreach (var pk in instance.CustomKillers)
-                        uniStorm.m_WeatherParticleManager.m_AllParticleKillers.Add(pk);
-                }
-                else if (!isInside && isCurrentlyApplied)
-                {
-                    foreach (var pk in instance.CustomKillers)
-                        uniStorm.m_WeatherParticleManager.m_AllParticleKillers.Remove(pk);
-                }
+                foreach (var pk in instance.CustomKillers)
+                    uniStorm.m_WeatherParticleManager.m_AllParticleKillers.Add(pk);
+            }
+            else if (!isInside && isCurrentlyApplied)
+            {
+                foreach (var pk in instance.CustomKillers)
+                    uniStorm.m_WeatherParticleManager.m_AllParticleKillers.Remove(pk);
             }
         }
 
@@ -444,7 +457,7 @@ namespace SeamlessInteriors
 
                     if (playerT != null)
                     {
-                        float dist = Vector3.Distance(playerT.position, instance.Config.FallbackPosition);
+                        float dist = instance.DistanceFrom(playerT.position);
 
                         // CONTENT PREFETCH: this loop is the only place that already
                         // knows how far the player is from every building, so the lazy
@@ -458,7 +471,8 @@ namespace SeamlessInteriors
                         {
                             // Very far: do not even raycast, just make sure it is closed.
                             interval = WATCHDOG_SKIP_INTERVAL;
-                            if (instance.MasterInterior != null && instance.MasterInterior.activeSelf)
+                            if (instance.MasterInterior != null && instance.MasterInterior.activeSelf
+                                && !OutsideInHoldsCloneOpen(instance))
                             {
                                 // Takes the player's inside state along only when the player is
                                 // recorded in THIS building (see ExitInteriorState).
@@ -538,7 +552,8 @@ namespace SeamlessInteriors
 
                                     outsideConfirmations = looksOutside ? outsideConfirmations + 1 : 0;
 
-                                    if (outsideConfirmations >= FORCE_HIDE_CONFIRMATIONS)
+                                    if (outsideConfirmations >= FORCE_HIDE_CONFIRMATIONS
+                                        && !OutsideInHoldsCloneOpen(instance))
                                     {
                                         outsideConfirmations = 0;
                                         MelonLogger.Msg($"[WATCHDOG] {instance.Config.ResolvedInstanceId}: oyuncu disarida ama klon sahne acik kalmis, kapatiliyor.");
@@ -772,7 +787,12 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[SAVE-LOAD-FIX] {instance.Config.InteriorSceneBaseName} isInside={isInside} | pos={playerT.position}");
 
             // Shell and interior must be exact opposites of each other.
-            bool shellActiveWrong = instance.ExteriorShell != null && instance.ExteriorShell.activeSelf == isInside;
+            // ...unless the building is PARKED, where the shell stays on with the player inside so the
+            // porch can be seen from the windows. See KeepParkedShellOn in WindowPortals.cs.
+            bool parked = instance.Config != null && instance.Config.ParkOffset != Vector3.zero;
+            bool shellActiveWrong = instance.ExteriorShell != null
+                                 && instance.ExteriorShell.activeSelf == isInside
+                                 && !(parked && isInside);
             bool interiorActiveWrong = instance.MasterInterior != null && instance.MasterInterior.activeSelf != isInside;
 
             if (shellActiveWrong || interiorActiveWrong)

@@ -23,6 +23,54 @@ namespace SeamlessInteriors
                 FallbackPosition = new Vector3(1019.738f, 28.7883f, 440.6331f),
                 ForceExactPosition = false,
 
+                // EXPERIMENTAL, not for release: parks this one building away from its shell
+                // so the behavior can be compared against every other building in the same
+                // save, which stays in place. Set back to Vector3.zero to restore it.
+                //
+                // UP, not down: the game refuses underground player positions and recovers
+                // the player to a fixed point on the surface, measured three times out of
+                // three. Nothing is in the way below - the space there is empty - so this is
+                // a rule about the player, not about geometry. Straight up also keeps every
+                // clone above its own shell, so parked buildings stay as far apart as their
+                // shells already are and no per-building site allocation is needed.
+                // HOW FAR UP: only just clear of the shell, NOT hundreds of metres.
+                //
+                // 600m was measured on 2026-09-14 to put the world into a culled state. With the
+                // player that far from the shell the game drops nearby scenery: of 181 renderers
+                // within 60m of the shell, 61 that are visible from outside are hidden while the
+                // player is inside, and another 32 are not in the scene at all. Zero go the other
+                // way. That is the game's own culling and streaming, not the mod's auto-hide,
+                // whose lists held 55 objects with none of them inactive.
+                //
+                // It is only visible once something looks out of the building. A window portal
+                // renders the world from the shell's frame, so it renders that culled world: an
+                // icicle survived while the rock it hangs on did not, leaving it floating.
+                //
+                // The interior is about 10.7m tall and the shell rather less, so 40m clears both
+                // with room to spare while keeping the player close enough that nothing culls.
+                // CONTROL RUN 2026-09-15: parked height set to ZERO, building on the ground.
+                //
+                // Isolates parking from the disappearing-trees bug. At 40m a live census measured
+                // 14,099 of 21,064 in-scene renderers inactive, so "close enough that nothing
+                // culls" above is not true as written. On the ground the portal delta collapses to
+                // the interior-versus-shell window offset alone and the player is where the world
+                // expects them, so if distant trees still drop out of a portal view here, parking
+                // is exonerated and the cause is in the portal render itself.
+                //
+                // That control ran, and what it showed was the portal drawing the cabin's own walls.
+                //
+                // TEST RUN 2026-09-18: parked 40m up again, to reproduce the disappearing trees and
+                // test the instanced-renderer explanation against them (see Main.cs OnLateUpdate).
+                // That run found the cause (the game culls trees, rocks and wildlife for FPSCamera
+                // alone; see ParkedCullEye.cs), so the census above was the game's culling answering
+                // to the wrong eye, not a reason against parking.
+                //
+                // 2026-09-18, LATER: PARKING IS NOW THE DEFAULT FOR EVERY BUILDING (owner: "I think we
+                // can set them all to 40 meters. We'll just have to go around and check each one."),
+                // so this building no longer sets it itself; see InteriorConfig.ParkOffset. Everything
+                // above was learned on the Camp Office and is why the default is what it is. A
+                // building that turns out not to tolerate parking sets ParkOffset = Vector3.zero here.
+
                 ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLight", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daytime" },
                 ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
                 EntrySpawnPosition = new Vector3(1018.993f, 29.1481f, 444.3246f),
@@ -80,7 +128,7 @@ namespace SeamlessInteriors
                  ForceExactPosition = true,
                  ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
                  ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow", "Obj_WindowCabinBBG" },
-                 EntrySpawnPosition = new Vector3(1478.075f, 21.0898f, -30.7528f),
+                 EntrySpawnPosition = new Vector3(1476.362f, 22.86f, -29.715f),
                  ExitSpawnPosition = new Vector3(1476.41f, 21.653f, -30.0735f),
                  RotationOffset = new Vector3(0f, 0f, 0f),
             },
@@ -260,7 +308,7 @@ namespace SeamlessInteriors
                  ForceExactPosition = true,
                  ObjectsToDestroy = new List<string> { "FX_LightShaft_B", "WindowLightGroup", "InteriorLightingManager_Prefab", "CONTAINER_InaccessibleGear", "Daylight" },
                  ObjectsToDisable = new List<string> { "OBJ_TrailerWindow" },
-                 EntrySpawnPosition = new Vector3(1632.244f, 38.18f, 1255.341f),
+                 EntrySpawnPosition = new Vector3(1633.610f, 38.18f, 1255.657f),
                  ExitSpawnPosition = new Vector3(1633.274f, 37.3489f, 1254.832f),
                  RotationOffset = new Vector3(0f, 75f, 0f),
             },
@@ -1515,7 +1563,11 @@ namespace SeamlessInteriors
                 ForceExactPosition = true,
 
                 ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear", "DLM_AFHangar_LGT_Prefab" },
-                ObjectsToDisable = new List<string> { "STR_AF_Hangar_Interior_Main_Windows_Glow_Prefab", "STR_AF_Hangar_Interior_Side_Window_Glow_Prefab" },
+                // The painted outside behind the END wall stays off: real views stand there (see
+                // s_BuildingWindowOverrides). The one behind the two leaning SIDE bands is left ON, as
+                // the game has it, because those bands get no view and without it they show open sky
+                // from where the room is parked (owner, 2026-09-20: "All the windows are 40m up").
+                ObjectsToDisable = new List<string> { "STR_AF_Hangar_Interior_Main_Windows_Glow_Prefab" },
                 EntrySpawnPosition = new Vector3(162.8583f, 162.56f, -618.6203f),
                 ExitSpawnPosition = new Vector3(163.1478f, 161.594f, -617.2457f),
                 RotationOffset = new Vector3(0f, 300f, 0f),

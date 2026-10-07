@@ -68,6 +68,21 @@ namespace SeamlessInteriors
             var ownedGuids = new HashSet<string>();
             var ownedCells = new Dictionary<long, List<DedupEntry>>();
 
+            // THE ROOM'S SWITCHED-OFF ITEMS, for copies left where a parked room used to stand.
+            // A room's loot roll switches some of its items off (Camp Trailer D on Pilgrim: 5 of 7),
+            // and the rule above rightly keeps switched-off items out of the match, because an
+            // item the player has picked up is switched off too and must never cost them the one
+            // they are carrying. But the game's save holds copies of those rolled-out items from
+            // before the room was parked, and puts them back at the building: seen 2026-09-18, a
+            // coffee tin and a plank lying at Camp Trailer D, each exactly (0.00 m, carried up)
+            // where the room keeps the same item switched off. Nothing claimed them: not a copy of
+            // a standing item, so not purged; twin in the room, so not adopted.
+            // The player cannot put anything at that spot. It is inside the shell's solid walls,
+            // 40 m under the room, and only an object judged AS IF LIFTED is matched against this
+            // set, by name and place, never by guid. Whether the twin is off because the roll
+            // removed it or because the player took it, the thing lying under the room is a ghost.
+            var ownedOffCells = new Dictionary<long, List<DedupEntry>>();
+
             foreach (var gear in owned)
             {
                 if (gear == null || gear.gameObject == null) continue;
@@ -83,8 +98,22 @@ namespace SeamlessInteriors
                 //
                 // The same reasoning as ShouldPersistGear, and for the same reason:
                 // only a loose item that is standing here can be a copy of one of ours.
-                if (!gear.gameObject.activeSelf) continue;
-                if (!IsHierarchyActiveUpTo(gear.transform, masterT)) continue;
+                if (!gear.gameObject.activeSelf || !IsHierarchyActiveUpTo(gear.transform, masterT))
+                {
+                    // Remembered apart, by name and place only, for ONE use below: a copy left
+                    // where a parked room used to stand. See ownedOffCells.
+                    if (instance.Config.IsParked && !IsInsideContainer(gear.transform, masterT))
+                    {
+                        DedupEntry off;
+                        off.name = CleanGearName(gear.gameObject.name);
+                        off.pos = gear.transform.position;
+                        long offCell = LeakCellKey(off.pos);
+                        List<DedupEntry> offBucket;
+                        if (!ownedOffCells.TryGetValue(offCell, out offBucket)) { offBucket = new List<DedupEntry>(2); ownedOffCells[offCell] = offBucket; }
+                        offBucket.Add(off);
+                    }
+                    continue;
+                }
                 if (IsInsideContainer(gear.transform, masterT)) continue;
 
                 var ownedGuid = gear.GetComponent<Il2Cpp.ObjectGuid>();
@@ -119,7 +148,27 @@ namespace SeamlessInteriors
                 if (gear == null || gear.gameObject == null) continue;
 
                 Vector3 pos = gear.transform.position;
-                if (hasFilter && !filter.Contains(pos)) continue;
+                bool judgedAsLifted = false;
+                if (hasFilter && !filter.Contains(pos))
+                {
+                    // LEFT BEHIND WHERE THE ROOM USED TO STAND. A building that was co-located when
+                    // the game last saved and is parked now has its leaked copies at the OLD spot,
+                    // ParkOffset below the room, where this purge never looks. Found 2026-09-18, the
+                    // hour every building was parked: a spray can and paper stacks hanging inside the
+                    // lake cabins' shells. Measured: lifted by ParkOffset each sat 0.00 m from the
+                    // room's own item of the same name, while a backer note lying near the same cabin
+                    // landed outside the room and matched nothing. So such an item is judged AS IF
+                    // lifted. It is still only deleted if it matches something the room owns, by id or
+                    // by name and place, so an item genuinely outdoors, on a porch say, is untouched.
+                    // Once purged the game stops saving it, so this does its work once per old save.
+                    if (!instance.Config.IsParked) continue;
+                    // Carried the way the room was: up, and turned if the room has since been
+                    // turned to its shell (ParkedInteriorPoint; with no turn it is pos + ParkOffset).
+                    Vector3 lifted = ParkedInteriorPoint(instance, pos);
+                    if (!filter.Contains(lifted)) continue;
+                    pos = lifted;
+                    judgedAsLifted = true;
+                }
 
                 // Already clone content: this is the copy we are keeping.
                 if (gear.transform.IsChildOf(masterT)) continue;
@@ -147,6 +196,10 @@ namespace SeamlessInteriors
                     isCopy = true;
                 }
                 else if (HasOwnedCopyNear(ownedCells, CleanGearName(gear.gameObject.name), pos, sqrRadius))
+                {
+                    isCopy = true;
+                }
+                else if (judgedAsLifted && HasOwnedCopyNear(ownedOffCells, CleanGearName(gear.gameObject.name), pos, sqrRadius))
                 {
                     isCopy = true;
                 }

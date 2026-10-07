@@ -561,7 +561,7 @@ namespace SeamlessInteriors
                           "\"hours\":" + hours.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) + "," +
                           "\"saved\":\"" + System.DateTime.Now.ToString("s") + "\"}";
 
-            try { File.WriteAllText(path, json); }
+            try { JsonWriteCache.WriteAtomic(path, json); }
             catch (System.Exception ex) { MelonLogger.Warning($"[KAYIT-KIMLIGI] Kimlik dosyasi yazilamadi: {ex.Message}"); }
 
             JsonWriteCache.Forget(path);

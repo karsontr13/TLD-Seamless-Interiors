@@ -459,6 +459,15 @@ namespace SeamlessInteriors
             //  be filled back in.)
             if (makeHole && !IsTerrainHoleWanted(instance)) return;
 
+            // A PARKED ROOM NEEDS NO HOLE IN THE GROUND. The hole lets a room that stands INSIDE its
+            // building dip below the terrain (the Airfield hangar is the one building configured for
+            // it). A parked room stands 40 m up; a hole dug under its empty shell would only be a pit
+            // outdoors, for wildlife and dropped items to fall into. It also cannot be dug there at
+            // all: TerrainData.GetHeights throws inside the interop in the Airfield, before the state
+            // below is recorded, so it was tried again every frame: 255 exceptions in the 4.4 seconds
+            // the owner first stood in the hangar, 2026-09-20. Filling stays allowed, as above.
+            if (makeHole && instance.Config.IsParked) return;
+
             Terrain terrain = Terrain.activeTerrain;
             if (terrain == null || terrain.terrainData == null) return;
             TerrainData td = terrain.terrainData;

@@ -363,6 +363,76 @@ namespace SeamlessInteriors
         }
     }
 
+    // The game saves region changes to memory and writes the disk only now and then (sleep, timer, quit).
+    // SI files follow it: written as "<file>.pending", made final when the game's disk save completes,
+    // thrown away when a save is loaded from disk. A crash can no longer leave SI ahead of the game save.
+    internal static class SaveFiles
+    {
+        private const string PENDING = ".pending";
+
+        public static string PendingPath(string path) { return path + PENDING; }
+
+        public static bool Exists(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return false;
+            return System.IO.File.Exists(path + PENDING) || System.IO.File.Exists(path);
+        }
+
+        public static string Read(string path)
+        {
+            string pending = path + PENDING;
+            return System.IO.File.Exists(pending) ? System.IO.File.ReadAllText(pending) : System.IO.File.ReadAllText(path);
+        }
+
+        public static void Delete(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            if (System.IO.File.Exists(path + PENDING)) System.IO.File.Delete(path + PENDING);
+            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+            JsonWriteCache.Forget(path);
+        }
+
+        // The game's save for saveName is on disk: the staged files become the real ones.
+        public static int Commit(string saveName)
+        {
+            int n = 0;
+            foreach (string pending in Staged(saveName))
+            {
+                try
+                {
+                    string final = pending.Substring(0, pending.Length - PENDING.Length);
+                    if (System.IO.File.Exists(final)) System.IO.File.Replace(pending, final, null);
+                    else System.IO.File.Move(pending, final);
+                    n++;
+                }
+                catch (System.Exception ex) { MelonLoader.MelonLogger.Warning($"[SAVE-COMMIT] {pending}: {ex.Message}"); }
+            }
+            if (n > 0) MelonLoader.MelonLogger.Msg($"[SAVE-COMMIT] {saveName}: {n} dosya oyunun disk kaydiyla birlikte kalici yapildi.");
+            return n;
+        }
+
+        // The save is being loaded from disk: changes it never saved are dropped with it.
+        public static int Discard(string saveName)
+        {
+            int n = 0;
+            foreach (string pending in Staged(saveName))
+            {
+                try { System.IO.File.Delete(pending); n++; }
+                catch (System.Exception ex) { MelonLoader.MelonLogger.Warning($"[SAVE-COMMIT] {pending}: {ex.Message}"); }
+            }
+            JsonWriteCache.Reset();
+            if (n > 0) MelonLoader.MelonLogger.Msg($"[SAVE-COMMIT] {saveName}: diske kaydedilmemis {n} dosya atildi (oyun da son disk kaydindan yukleniyor).");
+            return n;
+        }
+
+        private static string[] Staged(string saveName)
+        {
+            if (string.IsNullOrEmpty(saveName)) return new string[0];
+            try { return System.IO.Directory.GetFiles(ModPaths.DataDir(), saveName + "_*" + PENDING); }
+            catch { return new string[0]; }
+        }
+    }
+
     internal static class JsonWriteCache
     {
         private static readonly Dictionary<string, int> s_Hashes = new Dictionary<string, int>();
@@ -387,14 +457,24 @@ namespace SeamlessInteriors
             // File.Exists is also checked, so an externally deleted file is rewritten.
             int previous;
             if (s_Hashes.TryGetValue(path, out previous) && previous == hash
-                && System.IO.File.Exists(path))
+                && SaveFiles.Exists(path))
             {
                 return false;
             }
 
-            System.IO.File.WriteAllText(path, content);
+            // Staged until the game's own save reaches the disk (see SaveFiles).
+            WriteAtomic(SaveFiles.PendingPath(path), content);
             s_Hashes[path] = hash;
             return true;
+        }
+
+        // Temp file + rename: a crash mid-write leaves the old file whole, never half a file.
+        public static void WriteAtomic(string path, string content)
+        {
+            string tmp = path + ".tmp";
+            System.IO.File.WriteAllText(tmp, content);
+            if (System.IO.File.Exists(path)) System.IO.File.Replace(tmp, path, null);
+            else System.IO.File.Move(tmp, path);
         }
 
         // Length + FNV-1a. The collision chance is practically nil, and the file

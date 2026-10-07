@@ -72,6 +72,36 @@ namespace SeamlessInteriors
         // Rotation applied to the clone so it lines up with the exterior shell.
         public Vector3 RotationOffset;
 
+        // Moves the clone away from its shell instead of standing it on top of it.
+        // Zero keeps the author's original behavior: clone on the shell's footprint.
+        //
+        // The two halves never have to overlap, because the player is teleported between
+        // them and only ever stands in one of them. Separating them removes the whole class
+        // of problems caused by two buildings occupying one volume (z-fighting, poke-through,
+        // outdoor props inside the room, the terrain hole, the scale fudge factors).
+        //
+        // THE DEFAULT IS PARKED, STRAIGHT UP, since 2026-09-18, by the owner's decision. Why up is
+        // written out in the Camp Office's config, where it was learned. 40 m until 2026-09-28, then
+        // 80 m: at 40 m a tree top beside Lake Cabin A swayed in the wind into the parked room's
+        // corner (owner). Tree crowns have no collider, so no ray check sees this; 80 m clears any
+        // tree in the game. Checked by downward rays on a 1 m grid for all 15 Mystery Lake rooms:
+        // no terrain or rock inside any of them at 80 m. Other regions are unchecked at 80 m. By that
+        // day parking was carrying: the real view out of the windows and the cull eye that makes
+        // it correct, the porch seen from inside, an exact test for "is the player in this room",
+        // no outdoor-scenery scan, and it would have prevented both of that day's 40 m falls.
+        //
+        // IT HAS ONLY BEEN JUDGED ON THE CAMP OFFICE. Every other building is unchecked. Known
+        // things to look for when checking one: neighbors close enough that two parked rooms, each
+        // about 5% larger than its shell, overlap; terrain or cliffs standing 80 m above the
+        // building; sub-interiors (the farmhouse basement has no shell and a fixed position; the
+        // links between it and the farmhouse already add the target's offset). Vector3.zero on a
+        // config restores the author's original placement for that building.
+        //
+        // The author has not agreed to this. It is how this fork is tested, and the case for it.
+        public Vector3 ParkOffset = new Vector3(0f, 80f, 0f);
+
+        public bool IsParked => ParkOffset != Vector3.zero;
+
         // Pin the clone to FallbackPosition instead of the shell's own position.
         public bool ForceExactPosition;
 
@@ -166,6 +196,11 @@ namespace SeamlessInteriors
 
         public GameObject ExteriorShell = null;
         public GameObject MasterInterior = null;
+
+        // Degrees about the vertical that a parked room was turned, on top of the author's
+        // rotation, to face the way its shell does. Zero when it was not turned. See
+        // TurnParkedRoomToShell.
+        public float ParkedYawCorrection = 0f;
         public BoxCollider InteriorTrigger = null;
 
         // Renderers the interior scene ships switched off (AFHangar's stair collision ramps).
@@ -241,6 +276,55 @@ namespace SeamlessInteriors
         // switch their own decorations off, and that has to survive.
         public readonly System.Collections.Generic.HashSet<string> SpawnedShouldBeActive =
             new System.Collections.Generic.HashSet<string>();
+
+        // Saved records the restore could not apply (missing prefab, unmatched container, failed
+        // re-create). Written back verbatim on every save, so a failed load never erases them.
+        public readonly System.Collections.Generic.List<string> OrphanGearEntries = new System.Collections.Generic.List<string>();
+        public readonly System.Collections.Generic.List<string> OrphanContainerEntries = new System.Collections.Generic.List<string>();
+        public readonly System.Collections.Generic.List<string> OrphanSpawnEntries = new System.Collections.Generic.List<string>();
+
+        // Lighting parts each mode needs, kept in both so F8 can switch live (see LightingModeSwitch.cs).
+        public readonly System.Collections.Generic.List<UnityEngine.GameObject> DarkOnlyObjects = new System.Collections.Generic.List<UnityEngine.GameObject>();
+        public readonly System.Collections.Generic.List<UnityEngine.ReflectionProbe> DarkOnlyProbes = new System.Collections.Generic.List<UnityEngine.ReflectionProbe>();
+        public readonly System.Collections.Generic.List<UnityEngine.Light> BigPointLights = new System.Collections.Generic.List<UnityEngine.Light>();
+        public readonly System.Collections.Generic.List<UnityEngine.GameObject> DarkActivatedObjects = new System.Collections.Generic.List<UnityEngine.GameObject>();
+        public readonly System.Collections.Generic.List<UnityEngine.Behaviour> DarkEnabledManagers = new System.Collections.Generic.List<UnityEngine.Behaviour>();
+        public readonly System.Collections.Generic.List<bool> DarkOnlyWasActive = new System.Collections.Generic.List<bool>();
+        public readonly System.Collections.Generic.List<bool> BigPointLightWasEnabled = new System.Collections.Generic.List<bool>();
+        public bool? AppliedDarkMode = null;
+
+        // Renderers lit from the interior's own probes in dark mode (see InteriorProbes.cs), by instance id.
+        public readonly System.Collections.Generic.Dictionary<int, ProbedRenderer> ProbedRenderers =
+            new System.Collections.Generic.Dictionary<int, ProbedRenderer>();
+
+        // Lightmapped renderers with their baked and stripped looks (see StripBakedLightmaps).
+        public readonly System.Collections.Generic.List<LightmappedRenderer> LightmappedRenderers =
+            new System.Collections.Generic.List<LightmappedRenderer>();
+
+        public void ClearLightingModeParts()
+        {
+            ProbedRenderers.Clear();
+            LightmappedRenderers.Clear();
+            DarkOnlyObjects.Clear(); DarkOnlyWasActive.Clear(); DarkOnlyProbes.Clear();
+            BigPointLights.Clear(); BigPointLightWasEnabled.Clear();
+            DarkActivatedObjects.Clear(); DarkEnabledManagers.Clear();
+            AppliedDarkMode = null;
+        }
+
+        // The file existed but could not be read: never overwrite it from this clone.
+        public bool GearSaveBlocked = false;
+        public bool ContainerSaveBlocked = false;
+        public bool PlaceableSaveBlocked = false;
+
+        public void ClearOrphans()
+        {
+            OrphanGearEntries.Clear();
+            OrphanContainerEntries.Clear();
+            OrphanSpawnEntries.Clear();
+            GearSaveBlocked = false;
+            ContainerSaveBlocked = false;
+            PlaceableSaveBlocked = false;
+        }
 
         // The hydration coroutine while it is running, so a player who reaches the door
         // before the background restore finishes can take it over and drain it to
@@ -348,6 +432,23 @@ namespace SeamlessInteriors
             Config = config;
         }
 
+        // Distance from a world position to this building, measured to whichever of its
+        // two halves is nearer.
+        //
+        // With the clone standing on its shell both halves are the same place and this is
+        // simply the distance to the building. With Config.ParkOffset set they are not: a
+        // player INSIDE the clone is then arbitrarily far from FallbackPosition, and every
+        // proximity test that reads that number alone concludes they have left the area.
+        public float DistanceFrom(Vector3 worldPos)
+        {
+            float distance = Vector3.Distance(worldPos, Config.FallbackPosition);
+
+            if (MasterInterior != null)
+                distance = Mathf.Min(distance, Vector3.Distance(worldPos, MasterInterior.transform.position));
+
+            return distance;
+        }
+
         public bool IsPositionInVolume(Vector3 worldPos, float padding = 0f)
         {
             if (MasterInterior == null || InteriorTrigger == null) return false;
@@ -369,10 +470,107 @@ namespace SeamlessInteriors
 
         private const float RAY_EARLY_REJECT_PADDING = 12f;
 
+        // ─── THE ONE QUESTION, FOR A PARKED BUILDING: IS THIS POSITION IN THE ROOM? ───
+        //
+        // Owner, 2026-09-18, after two 40 m falls: "We need a function that determines if you're
+        // inside of the spawned interior prefab. Use that for everything."
+        //
+        // Until then "inside" was something that HAPPENED to the player: a door transition set a
+        // flag, a saved record re-armed it after a load, a guard cleared it when it went stale, and
+        // four different geometric tests answered for everything else, two of them by casting rays
+        // at colliders that another system switches off. Any path that skipped the event or undid
+        // it left the mod holding the wrong answer, and that day it did, twice.
+        //
+        // A PARKED room makes the question exact. Its box stands ParkOffset away from anything the
+        // player can reach outdoors and is entered only by teleport, so there is no doorway to
+        // flicker in and no wall for the box to reach past. It needs no colliders, no active clone
+        // and no memory. The three tests below and ResolvePlayerInside all defer to it for a parked
+        // building, so every existing caller asks the same question and gets the same answer.
+        //
+        // A co-located room cannot be settled this way: its axis-aligned box reaches out past the
+        // walls to where a player can stand. There the author's tests still answer. Park every
+        // building and this is the only test left.
+        //
+        // WHERE THE ROOM WILL BE IS KNOWN WITHOUT THE ROOM (owner, 2026-09-18: "the key is where
+        // will the prefab be spawned. We know it's going to be 40 meters above the exterior, and I
+        // think we have zero offset with the other two coords, so that should be deterministic").
+        // Measured the same day: the interior's origin 42.0 m above the shell's, 0.00 m to the
+        // side. So the first answer comes from the SHELL, which never moves and exists from the
+        // moment the region loads: its mesh bounds, carried up by ParkOffset, with room for the
+        // floor alignment and for an interior built 5% wider than its shell. The built room's own
+        // box is the second answer. Asking only the built room is what failed on the second fall:
+        // at that instant the clone had not yet been moved up to its parked place, so it said "no"
+        // about a player standing exactly where it was about to be.
+        private const float PARKED_ROOM_SIDE_ALLOWANCE = 1.5f;
+        private const float PARKED_ROOM_HEIGHT_ALLOWANCE = 3f;
+        private bool _shellBoundsCached;
+        private bool _shellBoundsValid;
+        private Bounds _shellBounds;
+
+        public bool IsPositionInParkedRoom(Vector3 pos, float padding = 1f)
+        {
+            if (Config == null || !Config.IsParked) return false;
+
+            Bounds shell;
+            if (TryGetShellMeshBounds(out shell))
+            {
+                var expected = new Bounds(shell.center + Config.ParkOffset, shell.size);
+                expected.Expand(new Vector3(2f * (PARKED_ROOM_SIDE_ALLOWANCE + padding),
+                                            2f * (PARKED_ROOM_HEIGHT_ALLOWANCE + padding),
+                                            2f * (PARKED_ROOM_SIDE_ALLOWANCE + padding)));
+                if (expected.Contains(pos)) return true;
+            }
+
+            return IsPositionInVolume(pos, padding);
+        }
+
+        // From the meshes through their transforms, not Renderer.bounds, which reports a box at the
+        // world origin for an inactive object, and the shell is inactive exactly when this matters.
+        // Cached: a shell does not move.
+        private bool TryGetShellMeshBounds(out Bounds bounds)
+        {
+            bounds = _shellBounds;
+            if (_shellBoundsCached) return _shellBoundsValid;
+            if (ExteriorShell == null) return false;     // not cached: the shell may not be bound yet
+
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+            Vector3 max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+            bool any = false;
+            var filters = ExteriorShell.GetComponentsInChildren<MeshFilter>(true);
+            for (int i = 0; i < filters.Length; i++)
+            {
+                var filter = filters[i];
+                if (filter == null || filter.sharedMesh == null) continue;
+                Bounds mesh = filter.sharedMesh.bounds;
+                Matrix4x4 toWorld = filter.transform.localToWorldMatrix;
+                for (int k = 0; k < 8; k++)
+                {
+                    Vector3 corner = mesh.center + new Vector3(
+                        ((k & 1) == 0) ? mesh.extents.x : -mesh.extents.x,
+                        ((k & 2) == 0) ? mesh.extents.y : -mesh.extents.y,
+                        ((k & 4) == 0) ? mesh.extents.z : -mesh.extents.z);
+                    Vector3 world = toWorld.MultiplyPoint3x4(corner);
+                    min = Vector3.Min(min, world);
+                    max = Vector3.Max(max, world);
+                }
+                any = true;
+            }
+
+            _shellBoundsCached = true;
+            _shellBoundsValid = any;
+            if (any) { _shellBounds = new Bounds(); _shellBounds.SetMinMax(min, max); }
+            bounds = _shellBounds;
+            return any;
+        }
+
         // Full inside test: ray based, with a bounds fallback for awkward geometry.
         public bool IsPositionInside(Vector3 pos)
         {
             if (MasterInterior == null) return false;
+
+            // For a parked room this GEOMETRIC question is answered by the box, active or not. That
+            // replaces the rays below, not the door transitions: those still set the inside flag.
+            if (Config != null && Config.IsParked) return IsPositionInParkedRoom(pos);
 
             // With MasterInterior inactive the colliders are gone and a raycast would
             // lie. An inactive MasterInterior means the player is outside.

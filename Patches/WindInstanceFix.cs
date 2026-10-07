@@ -75,17 +75,15 @@ namespace SeamlessInteriors
                 yield break;
             }
 
-            // Indoors: leave wind running, audio occlusion takes care of the volume.
-            wind.m_WindAudioForceStopped = false;
-
-            // Loop still not running (id 0) means it was cancelled: force a restart.
-            if (wind.m_WindLoopAudioInstance == 0)
-            {
-                SeamlessInteriorsMod.ForceRestartWindAudio(wind, "wind-start-postfix");
-            }
+            // Indoors: hand the loop to the indoor rule. With SilenceOutdoorWindIndoors on
+            // (the default) that stops it outright, the way a loading-screen interior does;
+            // with it off the old behaviour returns - the loop runs and the global occlusion
+            // filter is the only thing lowering it.
+            SeamlessInteriorsMod.ApplyOutdoorWindForInsideState(true, "wind-start-postfix");
 
             if (SeamlessInteriorsMod.s_DebugBounds)
-                MelonLogger.Msg($"[WIND-FIX] Oyuncu icerde, wind ForceStopped=false yapildi, id={wind.m_WindLoopAudioInstance}");
+                MelonLogger.Msg($"[WIND-FIX] Oyuncu icerde, dis ruzgar sesi ic mekan kuralina gore ayarlandi, id={wind.m_WindLoopAudioInstance}",
+                                $"[WIND-FIX] The player is inside; the outdoor wind loop was set by the indoor rule, id={wind.m_WindLoopAudioInstance}");
         }
     }
 }

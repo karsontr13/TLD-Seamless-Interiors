@@ -1,0 +1,555 @@
+ADOPT	^\[ADOPT\]\ (.*?):\ '(.*?)'\ klon\ sahneye\ baglandi\.$	[ADOPT] ${1}: '${2}' was attached to the clone scene.
+AGIRLIK-TESHIS	^\[AGIRLIK\-TESHIS\]\ Inventory\ bulunamadi\.$	[WEIGHT-DIAG] Inventory not found.
+AGIRLIK-TESHIS	^\[AGIRLIK\-TESHIS\]\ toplam=(.*?)kg\ dekorasyon=(.*?)kg\ ekstra=(.*?)kg\ \|\ zorlamaOverride=(.*?)\ overrideDegeri=(.*?)kg$	[WEIGHT-DIAG] total=${1}kg decoration=${2}kg extra=${3}kg | forceOverride=${4} overrideValue=${5}kg
+AGIRLIK-TESHIS	^\[AGIRLIK\-TESHIS\]\ Agirlik\ override'i\ ACIK\ \-\ HUD\ gercek\ yuku\ degil\ sabit\ bir\ degeri\ gosteriyor\.$	[WEIGHT-DIAG] The weight override is ON - the HUD is showing a fixed value, not the real load.
+AGIRLIK-TESHIS	^\[AGIRLIK\-TESHIS\]\ Oyuncunun\ uzerindeki\ kayitli\ yerlestirilebilir\ esya:\ (.*?)$	[WEIGHT-DIAG] Recorded placeable items carried by the player: ${1}
+AGIRLIK-TESHIS	^\[AGIRLIK\-TESHIS\]\ Okunamadi:\ (.*?)$	[WEIGHT-DIAG] Could not be read: ${1}
+API	^\[API\]\ (.*?)\ giris\ olayinin\ dinleyicisi\ hata\ verdi\ \((.*?)\):\ (.*?)$	[API] ${1}: a listener to the 'player entered the building' event threw an error (${2}): ${3}
+API	^\[API\]\ (.*?)\ cikis\ olayinin\ dinleyicisi\ hata\ verdi\ \((.*?)\):\ (.*?)$	[API] ${1}: a listener to the 'player left the building' event threw an error (${2}): ${3}
+API	^\[API\]\ (.*?)\ (.*?)\ olayinin\ dinleyicisi\ hata\ verdi\ \((.*?)\):\ (.*?)$	[API] ${1}: a listener to the '${2}' event threw an error (${3}): ${4}
+ARAZI-DELIGI	^\[ARAZI\-DELIGI\]\ (.*?):\ arazi\ yuksekligi\ okunamadi/yazilamadi\ \((.*?)\)\.\ Bu\ bina\ icin\ arazi\ deligi\ bu\ oturumda\ kapatildi\.$	[TERRAIN-HOLE] ${1}: the terrain height could not be read or written (${2}). The hole in the ground for this building is switched off for the rest of this session.
+AUDIO	^\[AUDIO\]\ Global\ Audio\ Occlusion\ ENABLED\ \(kapidan\ giris\)\.$	[AUDIO] Global Audio Occlusion ENABLED (entered through the door).
+AUDIO	^\[AUDIO\]\ Global\ Audio\ Occlusion\ DISABLED\ \(kapidan\ cikis\)\.$	[AUDIO] Global Audio Occlusion DISABLED (left through the door).
+AUDIO	^\[AUDIO\]\ GameAudioManager\ 10s\ sonra\ hala\ null,\ occlusion\ uygulanamadi\.$	[AUDIO] GameAudioManager still null after 10s, occlusion could not be applied.
+AUDIO	^\[AUDIO\]\ Kapi\ acilma\ sesi\ calindi,\ kapanma\ sesi\ gecikmeli\ calinacak\.$	[AUDIO] Door opening sound played, the closing sound will follow after a delay.
+AUDIO	^\[AUDIO\]\ Kapi\ kapanma\ sesi\ calindi\.$	[AUDIO] Door closing sound played.
+AUDIO-RESET	^\[AUDIO\-RESET:(.*?)\]\ GameAudioManager\ null,\ sayac\ sifirlanamadi\.$	[AUDIO-RESET:${1}] GameAudioManager is null, counters could not be reset.
+AUDIO-RESET	^\[AUDIO\-RESET:(.*?)\]\ Sayaclar\ zaten\ 0,\ level=(.*?)$	[AUDIO-RESET:${1}] Counters are already 0, level=${2}
+AUDIO-RESET	^\[AUDIO\-RESET:(.*?)\]\ Occlusion\ sayaclari\ sifirlandi\ \(heavy=(.*?),\ medium=(.*?),\ mild=(.*?)\)\ \->\ level=(.*?)$	[AUDIO-RESET:${1}] Occlusion counters reset (heavy=${2}, medium=${3}, mild=${4}) -> level=${5}
+AUTO-HIDE	^\[AUTO\-HIDE\]\ (.*?)\ için\ (.*?)\ adet\ obje\ gizlenecek\.$	[AUTO-HIDE] ${2} objects will be hidden for ${1}.
+BACA	^\[BACA\]\ (.*?):\ '(.*?)'\ bacasi\ bu\ binanin\ kabugunda\ yok,\ en\ yakin\ baca\ kullaniliyor\.$	[CHIMNEY] ${1}: chimney '${2}' is not on this building's shell, using the nearest chimney.
+BAGLAM	^\[BAGLAM\]\ (.*?)\ atlandi:\ (.*?)$	[PLACE-CONTEXT] ${1} was skipped: ${2}
+BAGLAM	^\[BAGLAM\]\ Nesnelere\ bilesen\ ekleyen\ mod\ yok;\ kurulmadi\.$	[PLACE-CONTEXT] No mod adds components to objects; not installed.
+BAGLAM	^\[BAGLAM\]\ Kuruldu:\ hicbiri\ oyuncunun\ olmadigi\ yerde\ o\ yerin\ baglamiyla\ calisiyor;\ (.*?)\ tur\ daha\ yalnizca\ nesnenin\ moda\ ait\ oldugunu\ isaretliyor\.$	[PLACE-CONTEXT] Installed: no component types run in places the player is not in; ${1} types only mark an object as belonging to a mod.
+BAGLAM	^\[BAGLAM\]\ Kuruldu:\ (.*?)\ oyuncunun\ olmadigi\ yerde\ o\ yerin\ baglamiyla\ calisiyor;\ (.*?)\ tur\ daha\ yalnizca\ nesnenin\ moda\ ait\ oldugunu\ isaretliyor\.$	[PLACE-CONTEXT] Installed: ${1} run in places the player is not in, with that place's own indoor state, scene and temperature; ${2} more types only mark an object as belonging to a mod.
+BAGLAM	^\[BAGLAM\]\ Kurulamadi:\ MonoMod\ bulunamadi\.$	[PLACE-CONTEXT] Could not be installed: MonoMod was not found.
+BAGLAM	^\[BAGLAM\]\ Kurulamadi:\ (.*?)$	[PLACE-CONTEXT] Could not be installed: ${1}
+BAGLAM	^\[BAGLAM\]\ Oyuncunun\ yeri:\ (.*?);\ (.*?)\ mod\ bileseni\ yeniden\ yerlestirildi\.$	[PLACE-CONTEXT] The player is now in ${1}; ${2} mod components were updated for the new place.
+BAGLAM	^\[BAGLAM\]\ (.*?)\ calistirilirken\ hata\ \(tur\ birakildi,\ oyun\ calistiracak\):\ (.*?)$	[PLACE-CONTEXT] Error while running ${1} (SI has stopped running this type; the game will run it itself): ${2}
+BAGLAM	^\[BAGLAM\]\ (.*?)\ calistirilirken\ hata:\ (.*?)$	[PLACE-CONTEXT] Error while running ${1}: ${2}
+BATCH-ENV	^\[BATCH\-ENV\]\ Tum\ instance'lar\ icin\ toplu\ ortam\ duzeltmesi\ tamamlandi\.$	[BATCH-ENV] Batch environment fix completed for all instances.
+BAYAT-KAYIT	^\[BAYAT\-KAYIT\]\ Kayitli\ 'oyuncu\ iceride'\ bilgisi\ \((.*?)\)\ bu\ bolgeye\ \((.*?)\)\ ait\ degil\ \-\ baska\ bir\ save'den\ kalmis,\ temizlendi\.$	[STALE-SAVE] The saved 'player inside' entry (${1}) does not belong to this region (${2}) - left over from another save, cleared.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ (.*?)\ bulunamadi;\ bu\ kanca\ modlara\ tekrarlanmayacak\.$	[BUILDING-LOAD] ${1} was not found; mods' patches on it will not be run when a building loads.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ Kuruldu:\ sahne\ yukleme\ kancalarina\ yama\ yapan\ baska\ mod\ yok\.$	[BUILDING-LOAD] Installed: no other mod patches the scene load hooks.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ Kuruldu:\ bina\ girisinde\ hicbiri;\ bina\ ilk\ kez\ kurulurken\ (.*?)\ calisacak\.$	[BUILDING-LOAD] Installed: nothing runs when a building is entered; ${1} will run when a building is set up for the first time.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ Kuruldu:\ bina\ girisinde\ (.*?);\ bina\ ilk\ kez\ kurulurken\ hicbiri\ calisacak\.$	[BUILDING-LOAD] Installed: ${1} will run when a building is entered; nothing runs when a building is set up for the first time.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ Kuruldu:\ bina\ girisinde\ (.*?);\ bina\ ilk\ kez\ kurulurken\ (.*?)\ calisacak\.$	[BUILDING-LOAD] Installed: ${1} will run when a building is entered; ${2} will run when a building is set up for the first time.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ (.*?):\ ic\ sahne\ modlar\ icin\ yuklendi\ \-\ (.*?)\ yama\ calisti,\ (.*?)\ nesne\ eklendi\ \((.*?)\ tanesi\ sahne\ koordinatinda\),\ (.*?)\ nesnenin\ gorunurlugu\ degisti\.$	[BUILDING-LOAD] ${1}: the interior scene was loaded for mods - ${2} patches ran, ${3} objects were added (${4} of them in scene coordinates), ${5} objects were shown or hidden.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ (.*?):\ ilk\ kurulumda\ modlar\ icin\ yuklendi\ \-\ (.*?)\ yama\ calisti,\ (.*?)\ nesne\ binaya\ eklendi\ \((.*?)\ tanesi\ sahne\ koordinatinda\)\.$	[BUILDING-LOAD] ${1}: loaded for mods on its first setup - ${2} patches ran, ${3} objects were added to the building (${4} of them in scene coordinates).
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ (.*?):\ ic\ sahne\ modlar\ icin\ kaldirildi\ \-\ (.*?)\ nesne\ silindi,\ (.*?)\ nesne\ eski\ haline\ dondu\.$	[BUILDING-LOAD] ${1}: the interior scene was unloaded for mods - ${2} objects were deleted, ${3} objects were put back as they were.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ (.*?)\ \((.*?)\)\ calisirken\ hata:\ (.*?);\ bu\ yama\ tekrarlarda\ atlanabilir\.$	[BUILDING-LOAD] ${1} (${2}) threw an error while running: ${3}; this patch may be skipped when a building loads.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ (.*?)\ \((.*?)\)\ __instance\ turu\ uymuyor;\ bu\ yama\ tekrarlarda\ atlanabilir\.$	[BUILDING-LOAD] ${1} (${2}) expects a different __instance type; this patch may be skipped when a building loads.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ (.*?)\ \((.*?)\)\ __result\ istiyor;\ bu\ yama\ tekrarlarda\ atlanabilir\.$	[BUILDING-LOAD] ${1} (${2}) asks for __result; this patch may be skipped when a building loads.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ (.*?)\ \((.*?)\)\ desteklenmeyen\ parametre\ '(.*?)';\ bu\ yama\ tekrarlarda\ atlanabilir\.$	[BUILDING-LOAD] ${1} (${2}) has an unsupported parameter '${3}'; this patch may be skipped when a building loads.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ (.*?)\ \((.*?)\)\ (.*?);\ bu\ yama\ tekrarlarda\ atlanabilir\.$	[BUILDING-LOAD] ${1} (${2}) ${3}; this patch may be skipped when a building loads.
+BINA-YUKLEME	^\[BINA\-YUKLEME\]\ Gorunurluk\ kaydi\ kurulamadi;\ modlarin\ kapattigi\ nesneler\ cikista\ geri\ acilmayacak:\ (.*?)$	[BUILDING-LOAD] The visibility recorder could not be installed; objects that mods switch off will not be switched back on when the player leaves: ${1}
+CLONE	^\[CLONE\]\ (.*?):\ Template\ '(.*?)'\ kopyalandı\ \(Instantiate\)\.$	[CLONE] ${1}: template '${2}' copied (Instantiate).
+CONTAINER-LOAD	^\[CONTAINER\-LOAD\]\ (.*?)\ konteyner\ save\ dosyasi\ bulunamadi,\ atlaniyor\.$	[CONTAINER-LOAD] ${1} container save file not found, skipping.
+CONTAINER-LOAD	^\[CONTAINER\-LOAD\]\ (.*?):\ dosyada\ konteyner\ verisi\ yok\.$	[CONTAINER-LOAD] ${1}: no container data in the file.
+CONTAINER-LOAD	^\[CONTAINER\-LOAD\]\ ESLESME\ YOK:\ key='(.*?)'\ isim='(.*?)'\ pos=(.*?)$	[CONTAINER-LOAD] NO MATCH: key='${1}' name='${2}' pos=${3}
+CONTAINER-LOAD	^\[CONTAINER\-LOAD\]\ Deserialize\ hatasi:\ (.*?)\ \-\ (.*?)$	[CONTAINER-LOAD] Deserialize error: ${1} - ${2}
+CONTAINER-LOAD	^\[CONTAINER\-LOAD\]\ (.*?):\ (.*?)/(.*?)\ konteyner\ geri\ yuklendi\ \(pozisyon=(.*?),\ eski\ anahtar=(.*?),\ isim=(.*?)\),\ (.*?)\ eslesmedi\.\ Klonda\ (.*?)\ konteyner\ var\.$	[CONTAINER-LOAD] ${1}: ${2}/${3} containers restored (position=${4}, old key=${5}, name=${6}), ${7} did not match. The clone has ${8} containers.
+CONTAINER-SAVE	^\[CONTAINER\-SAVE\]\ Serialize\ hatasi:\ (.*?)\ \-\ (.*?)$	[CONTAINER-SAVE] Serialize error: ${1} - ${2}
+CONTAINER-SAVE	^\[CONTAINER\-SAVE\]\ Kaydedildi:\ (.*?)\ dataLen=(.*?)$	[CONTAINER-SAVE] Saved: ${1} dataLen=${2}
+CONTAINER-SAVE	^\[CONTAINER\-SAVE\]\ (.*?):\ (.*?)\ konteyner\ kaydedildi:\ (.*?)$	[CONTAINER-SAVE] ${1}: ${2} containers saved: ${3}
+DARK-LIGHT	^\[DARK\-LIGHT\]\ '(.*?)'\ bosaltildi\ \(silinmedi\)\ —\ InteriorLightingManager\ referansi\ korundu\.$	[DARK-LIGHT] '${1}' emptied (not deleted) - the InteriorLightingManager reference was preserved.
+DARK-LIGHT	^\[DARK\-LIGHT\]\ (.*?):\ InteriorLightingManager\ '(.*?)'\ aktif\ edildi\.$	[DARK-LIGHT] ${1}: InteriorLightingManager '${2}' activated.
+DARK-LIGHT	^\[DARK\-LIGHT\]\ (.*?):\ DarkLightingManager\ '(.*?)'\ aktif\ edildi\.$	[DARK-LIGHT] ${1}: DarkLightingManager '${2}' activated.
+DARK-LIGHT	^\[DARK\-LIGHT\]\ (.*?):\ acilmasi\ gereken\ kapali\ isik\ yoneticisi\ bulunamadi\ \(hepsi\ zaten\ acikti\)\.$	[DARK-LIGHT] ${1}: no disabled lighting manager needed enabling (they were all on already).
+DEBUG-DOOR	^\[DEBUG\-DOOR\]\ GIRIS\ BASARILI\ \-\ Tiklanan\ Obj:\ (.*?),\ Eslesen\ Kapi:\ (.*?),\ Mesafe:\ (.*?)$	[DEBUG-DOOR] ENTRY OK - clicked object: ${1}, matched door: ${2}, distance: ${3}
+DEBUG-DOOR	^\[DEBUG\-DOOR\]\ CIKIS\ BASARILI\ \-\ Tiklanan\ Obj:\ (.*?),\ Eslesen\ Kapi:\ (.*?),\ Mesafe:\ (.*?)$	[DEBUG-DOOR] EXIT OK - clicked object: ${1}, matched door: ${2}, distance: ${3}
+DEBUG-SHELL	^\[DEBUG\-SHELL\]\ (.*?)\ için\ Fallback/Exact\ pozisyon\ kullanılıyor:\ (.*?)$	[DEBUG-SHELL] Using the Fallback/Exact position for ${1}: ${2}
+DEBUG-SHELL	^\[DEBUG\-SHELL\]\ (.*?)\ ExteriorShell\ bulundu\.\ Target:\ (.*?)$	[DEBUG-SHELL] ${1} ExteriorShell found. Target: ${2}
+DENEY	^────────\ \[DENEY\]\ Kasa\ kirilmis\ gibi\ davran\ ────────$	──────── [EXPERIMENT] Pretend the safe is cracked ────────
+DENEY	^\[DENEY\]\ '(.*?)'\ tekrar\ kilitli\ yapildi,\ deney\ bitti\.$	[EXPERIMENT] '${1}' locked again, experiment over.
+DENEY	^\[DENEY\]\ Geri\ alinamadi:\ (.*?)$	[EXPERIMENT] Could not undo: ${1}
+DENEY	^────────\ \[DENEY\]\ son\ ────────$	──────── [EXPERIMENT] end ────────
+DENEY	^\[DENEY\]\ Ana\ kamera\ yok\.$	[EXPERIMENT] No main camera.
+DENEY	^\[DENEY\]\ Isin\ atilamadi:\ (.*?)$	[EXPERIMENT] Ray could not be cast: ${1}
+DENEY	^\[DENEY\]\ Nisangahin\ onunde\ collider\ yok\.$	[EXPERIMENT] No collider in front of the crosshair.
+DENEY	^\[DENEY\]\ Nisangahin\ onunde\ kasa\ yok\.$	[EXPERIMENT] No safe in front of the crosshair.
+DENEY	^\[DENEY\]\ m_Cracked\ yazilamadi:\ (.*?)$	[EXPERIMENT] m_Cracked could not be written: ${1}
+DENEY	^\[DENEY\]\ '(.*?)'\ kirilmis\ sayildi\.\ Container\.IsSafeLocked\ artik=(.*?)\.\ SIMDI\ KASAYA\ BAK:\ yazi/ikon\ cikiyor\ mu\?\ Tekrar\ F11\ =\ geri\ al\.$	[EXPERIMENT] '${1}' is now treated as cracked. Container.IsSafeLocked is now=${2}. NOW LOOK AT THE SAFE: does the text/icon appear? F11 again = undo.
+DENEY	^\[DENEY\]\ Hata:\ (.*?)$	[EXPERIMENT] Error: ${1}
+DIS-EFEKT	^\[DIS\-EFEKT\]\ (.*?):\ dis\ efektler\ durduruldu:\ (.*?)$	[EXT-FX] ${1}: exterior effects stopped: ${2}
+DIS-EFEKT	^\[DIS\-EFEKT\]\ (.*?):\ baca\ ve\ pencere\ taramasi\ basarisiz:\ (.*?)$	[EXT-FX] ${1}: chimney and window scan failed: ${2}
+DIS-EFEKT	^\[DIS\-EFEKT\]\ (.*?):\ (.*?)\ ates,\ (.*?)\ baca\ \((.*?)\ ates\ kendi\ bacasina,\ (.*?)\ ates\ en\ yakin\ bacaya\ bagli\),\ (.*?)\ pencere\ cami\ slotu,\ (.*?)\ zemin\ isigi\.$	[EXT-FX] ${1}: ${2} fires, ${3} chimneys (${4} fires to their own chimney, ${5} fires bound to the nearest chimney), ${6} window glass slots, ${7} ground lights.
+DIS-EFEKT	^\[DIS\-EFEKT\]\ Onizleme\ kapatildi\ \((.*?)\)\.$	[EXT-FX] Preview turned off (${1}).
+DIS-EFEKT	^\[DIS\-EFEKT\]\ (.*?)\ teshis:\ tarama\ basarisiz,\ bu\ binada\ dis\ efektler\ kapali\.$	[EXT-FX] ${1} diagnosis: scan failed, exterior effects are off for this building.
+DIS-EFEKT	^\[DIS\-EFEKT\]\ (.*?)\ teshis:\ kabuk='(.*?)'\ acik=(.*?)\ gece=(.*?)\ duman=(.*?)\ parilti=(.*?)\ zemin=(.*?)\ titreme=(.*?)\ guc=(.*?)/(.*?)$	[EXT-FX] ${1} diagnosis: shell='${2}' active=${3} night=${4} smoke=${5} glow=${6} ground=${7} flicker=${8} strength=${9}/${10}
+DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ baca\ (.*?):\ artik\ yok$	[EXT-FX]   chimney ${1}: gone now
+DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ baca\ (.*?):\ '(.*?)'\ duman=\((.*?),\ (.*?),\ (.*?)\)\ kalan=(.*?)\ dk$	[EXT-FX]   chimney ${1}: '${2}' smoke=(${3}, ${4}, ${5}) remaining=${6} min
+DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ bu\ kabukta\ baca\ yok$	[EXT-FX]   no chimney on this shell
+DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ ates\ (.*?):\ '(.*?)'\ guid='(.*?)'\ yaniyor=(.*?)\ kalan=(.*?)\ dk\ \->\ (.*?)$	[EXT-FX]   fire ${1}: '${2}' guid='${3}' burning=${4} remaining=${5} min -> ${6}
+DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ klonda\ ates\ yok$	[EXT-FX]   no fire in the clone
+DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ pencere:\ '(.*?)'\ slot\ (.*?)\ '(.*?)'\ renk=\((.*?),\ (.*?),\ (.*?)\)\ emisyon=(.*?)\ emisyonDokusu=(.*?)$	[EXT-FX]   window: '${1}' slot ${2} '${3}' color=(${4}, ${5}, ${6}) emission=${7} emissionTexture=${8}
+DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ pencere\ cami\ slotu\ bulunamadi$	[EXT-FX]   no window glass slot found
+DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ zemin\ isigi\ (.*?):\ konum=\((.*?),\ (.*?),\ (.*?)\)\ agirlik=(.*?)$	[EXT-FX]   ground light ${1}: position=(${2}, ${3}, ${4}) weight=${5}
+DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ bu\ kabuk\ icin\ pencere\ konumu\ yok,\ zemin\ isigi\ eklenmedi$	[EXT-FX]   no window position for this shell, no ground light added
+DIS-EFEKT	^\[DIS\-EFEKT\]\ Onizleme\ hatasi:\ (.*?)$	[EXT-FX] Preview error: ${1}
+DUNYA-GORUNUMU	^\[DUNYA\-GORUNUMU\]\ Kuruldu:\ modlar\ FireManager\ listelerinde\ yalnizca\ bulunduklari\ yerin\ ateslerini\ goruyor\.$	[WORLD-VIEW] Installed: in FireManager's fire lists, mods see only the fires of the place the player is in, as in the vanilla game.
+DUNYA-GORUNUMU	^\[DUNYA\-GORUNUMU\]\ Kurulamadi:\ (.*?)$	[WORLD-VIEW] Could not be installed: ${1}
+DUNYA-GORUNUMU	^\[DUNYA\-GORUNUMU\]\ Kapatildi,\ modlar\ tam\ listeyi\ goruyor:\ (.*?)$	[WORLD-VIEW] Switched off, mods now see the full list: ${1}
+EARLY-ACTIVATE	^\[EARLY\-ACTIVATE\]\ Persist\ akisi:\ (.*?)\ erken\ aktif\ edildi\ \(oyuncu\ icerde\ kaydetti\)\.$	[EARLY-ACTIVATE] Persist flow: ${1} activated early (the player saved inside).
+EARLY-ACTIVATE	^\[EARLY\-ACTIVATE\]\ Kaydedilmis\ local\ pozisyon\ kullanildi:\ local=(.*?)\ \->\ world=(.*?)$	[EARLY-ACTIVATE] Used the saved local position: local=${1} -> world=${2}
+EARLY-ACTIVATE	^\[EARLY\-ACTIVATE\]\ Run\ akisi:\ (.*?)\ erken\ aktif\ edildi,\ oyuncu\ iceri\ spawn\ edildi\.$	[EARLY-ACTIVATE] Run flow: ${1} activated early, the player was spawned inside.
+EARLY-FLAG	^\[EARLY\-FLAG\]\ Oyuncu\ icerde\ kaydetti\ \((.*?)\),\ flag'ler\ erken\ set\ edildi\.$	[EARLY-FLAG] The player saved inside (${1}), flags were set early.
+ELEKTROLIZOR	^\[ELEKTROLIZOR\]\ (.*?):\ (.*?)\ elektrolizor\ hazirlanamadi,\ aurora\ sistemine\ kaydedilmedi\.\ Ilk\ hata:\ (.*?)$	[ELECTROLIZER] ${1}: ${2} electrolizers could not be prepared and were not registered with the aurora system. First error: ${3}
+ELEKTROLIZOR	^\[ELEKTROLIZOR\]\ AuroraModularElectrolizer\.Initialize\ bulunamadi;\ baslatilmamis\ klon\ elektrolizorleri\ aurora\ sistemine\ kaydedilmeyecek\.$	[ELECTROLIZER] AuroraModularElectrolizer.Initialize was not found; electrolizers in cloned buildings that were never started will not be registered with the aurora system.
+ETKILESIM-ONARIM	^\[ETKILESIM\-ONARIM\]\ Oyuncu\ bir\ klon\ sahnenin\ icinde\ degil\.$	[INTERACTION-REPAIR] The player is not inside a clone scene.
+ETKILESIM-ONARIM	^\[ETKILESIM\-ONARIM\]\ (.*?):\ (.*?)\ kapali\ collider\ geri\ acildi\.$	[INTERACTION-REPAIR] ${1}: ${2} disabled colliders re-enabled.
+ETKILESIM-ONARIM	^\[ETKILESIM\-ONARIM\]\ Hata:\ (.*?)$	[INTERACTION-REPAIR] Error: ${1}
+ETKILESIM-ONARIM	^\[ETKILESIM\-ONARIM\]\ (.*?):\ (.*?)\ kapali\ esya\ collider'i\ geri\ acildi\.$	[INTERACTION-REPAIR] ${1}: ${2} disabled item colliders were re-enabled.
+F10	^\[F10\]\ Hata:\ (.*?)$	[F10] Error: ${1}
+FADE	^\[FADE\]\ (.*?):\ Ekran\ karartildi,\ klon\ sahne\ yukleniyor\.\.\.$	[FADE] ${1}: screen blacked out, loading the clone scene...
+FADE	^\[FADE\]\ (.*?):\ Klon\ sahne\ hazir,\ ekran\ aciliyor\.$	[FADE] ${1}: clone scene ready, opening the screen.
+FADE	^\[FADE\]\ (.*?):\ Klon\ sahne\ hazir\ ama\ diger\ instance'lar\ bekleniyor,\ ekran\ acilmadi\.$	[FADE] ${1}: clone scene ready but other instances are still pending, the screen was not opened.
+FIRE-DEDUP	^\[FIRE\-DEDUP\]\ Ates\ listesi\ okunamadi:\ (.*?)$	[FIRE-DEDUP] The fire list could not be read: ${1}
+FIRE-DEDUP	^\[FIRE\-DEDUP\]\ Kopya\ ates\ silindi:\ '(.*?)'\ parent=(.*?)\ pos=\((.*?),(.*?),(.*?)\)$	[FIRE-DEDUP] Duplicate fire deleted: '${1}' parent=${2} pos=(${3},${4},${5})
+FIRE-DEDUP	^\[FIRE\-DEDUP\]\ '(.*?)'\ silinemedi:\ (.*?)$	[FIRE-DEDUP] '${1}' could not be deleted: ${2}
+FIRE-DEDUP	^\[FIRE\-DEDUP\]\ Ust\ uste\ binmis\ (.*?)\ kopya\ ates\ temizlendi,\ FireManager'da\ (.*?)\ ates\ kaldi\.$	[FIRE-DEDUP] ${1} overlapping duplicate fires cleaned up, ${2} fires left in FireManager.
+FIRE-DIAG	^\[FIRE\-DIAG:kayit\-ani\]\ FireManager\.m_Fires=(.*?)\ \(olu=(.*?)\)$	[FIRE-DIAG:while-saving] FireManager.m_Fires=${1} (dead=${2})
+FIRE-DIAG	^\[FIRE\-DIAG:yukleme\-oncesi\]\ FireManager\.m_Fires=(.*?)\ \(olu=(.*?)\)$	[FIRE-DIAG:before-load] FireManager.m_Fires=${1} (dead=${2})
+FIRE-DIAG	^\[FIRE\-DIAG:yukleme\-sonrasi\]\ FireManager\.m_Fires=(.*?)\ \(olu=(.*?)\)$	[FIRE-DIAG:after-load] FireManager.m_Fires=${1} (dead=${2})
+FIRE-DIAG	^\[FIRE\-DIAG:(.*?)\]\ FireManager\.m_Fires=(.*?)\ \(olu=(.*?)\)$	[FIRE-DIAG:${1}] FireManager.m_Fires=${2} (dead=${3})
+FIRE-DIAG	^\[FIRE\-DIAG:(.*?)\]\ \(m_Fires\ okunamadi:\ (.*?)\)\ FireManager\.m_Fires=(.*?)\ \(olu=(.*?)\)$	[FIRE-DIAG:${1}] (m_Fires could not be read: ${2}) FireManager.m_Fires=${3} (dead=${4})
+FIRE-DIAG	^\[FIRE\-DIAG:kayit\-ani\]\ \ \ (.*?)\ '(.*?)'\ parent=(.*?)\ pos=\((.*?)\)\ guid=(.*?)\ yaniyor=(.*?)\ kalanOmur=(.*?)sn\ elapsed=(.*?)\ durum=(.*?)\ kayitli=(.*?)\ acik=(.*?)$	[FIRE-DIAG:while-saving]   ${1} '${2}' parent=${3} pos=(${4}) guid=${5} burning=${6} lifeLeft=${7}s elapsed=${8} state=${9} registered=${10} active=${11}
+FIRE-DIAG	^\[FIRE\-DIAG:yukleme\-oncesi\]\ \ \ (.*?)\ '(.*?)'\ parent=(.*?)\ pos=\((.*?)\)\ guid=(.*?)\ yaniyor=(.*?)\ kalanOmur=(.*?)sn\ elapsed=(.*?)\ durum=(.*?)\ kayitli=(.*?)\ acik=(.*?)$	[FIRE-DIAG:before-load]   ${1} '${2}' parent=${3} pos=(${4}) guid=${5} burning=${6} lifeLeft=${7}s elapsed=${8} state=${9} registered=${10} active=${11}
+FIRE-DIAG	^\[FIRE\-DIAG:yukleme\-sonrasi\]\ \ \ (.*?)\ '(.*?)'\ parent=(.*?)\ pos=\((.*?)\)\ guid=(.*?)\ yaniyor=(.*?)\ kalanOmur=(.*?)sn\ elapsed=(.*?)\ durum=(.*?)\ kayitli=(.*?)\ acik=(.*?)$	[FIRE-DIAG:after-load]   ${1} '${2}' parent=${3} pos=(${4}) guid=${5} burning=${6} lifeLeft=${7}s elapsed=${8} state=${9} registered=${10} active=${11}
+FIRE-DIAG	^\[FIRE\-DIAG:(.*?)\]\ \ \ (.*?)\ '(.*?)'\ parent=(.*?)\ pos=\((.*?)\)\ guid=(.*?)\ yaniyor=(.*?)\ kalanOmur=(.*?)sn\ elapsed=(.*?)\ durum=(.*?)\ kayitli=(.*?)\ acik=(.*?)$	[FIRE-DIAG:${1}]   ${2} '${3}' parent=${4} pos=(${5}) guid=${6} burning=${7} lifeLeft=${8}s elapsed=${9} state=${10} registered=${11} active=${12}
+FIRE-DIAG	^\[FIRE\-DIAG:(.*?)\]\ Dokum\ basarisiz:\ (.*?)$	[FIRE-DIAG:${1}] Dump failed: ${2}
+FIRE-DIAG	^\[FIRE\-DIAG\]\ Ates\ datasi\ dosyaya\ yazildi\ \((.*?)\ karakter\):\ (.*?)$	[FIRE-DIAG] Fire data written to file (${1} characters): ${2}
+FIRE-DIAG	^\[FIRE\-DIAG\]\ Ates\ datasi\ yazilamadi:\ (.*?)$	[FIRE-DIAG] Fire data could not be written: ${1}
+FIRE-DIAG	^\[FIRE\-DIAG\]\ Eski\ dokum\ '(.*?)'\ silinemedi:\ (.*?)$	[FIRE-DIAG] Old dump '${1}' could not be deleted: ${2}
+FIRE-DIAG	^\[FIRE\-DIAG\]\ Eski\ dokumler\ temizlenemedi:\ (.*?)$	[FIRE-DIAG] Old dumps could not be cleaned up: ${1}
+FIRE-DIAG	^\[FIRE\-DIAG\]\ (.*?)\ eski\ ates\ dokumu\ temizlendi\.$	[FIRE-DIAG] ${1} old fire dumps cleaned up.
+FIRE-DIAG	^\[FIRE\-DIAG:(.*?)\]\ \ \ (.*?)$	[FIRE-DIAG:${1}]   ${2}
+FIRE-RESTORE	^\[FIRE\-RESTORE\]\ (.*?)\ sn\ beklendi,\ (.*?)\ klon\ ates\ objesi\ FireManager'a\ kaydedildi,\ ates\ datasi\ uygulaniyor\.$	[FIRE-RESTORE] Waited ${1}s, ${2} clone fire objects registered with FireManager, applying fire data.
+FIRE-RESTORE	^\[FIRE\-RESTORE\]\ Ates\ kayitlari\ cozulemedi:\ (.*?)$	[FIRE-RESTORE] Fire records could not be parsed: ${1}
+FIRE-RESTORE	^\[FIRE\-RESTORE\]\ '(.*?)'\ durumu\ uygulanamadi:\ (.*?)$	[FIRE-RESTORE] The state of '${1}' could not be applied: ${2}
+FIRE-RESTORE	^\[FIRE\-RESTORE\]\ '(.*?)'\ geri\ yakildi:\ yaniyor=(.*?)\ kalanOmur=(.*?)sn\ pos=\((.*?),(.*?),(.*?)\)$	[FIRE-RESTORE] '${1}' relit: burning=${2} remainingLife=${3}s pos=(${4},${5},${6})
+FIRE-RESTORE	^\[FIRE\-RESTORE\]\ Kapali\ binalardaki\ (.*?)\ ates\ geri\ yuklendi\ \((.*?)\ bina\ bunun\ icin\ bir\ karelik\ acildi\)\.$	[FIRE-RESTORE] ${1} fires in closed buildings restored (${2} buildings were opened for one frame to do it).
+FIRE-STEAL	^\[FIRE\-STEAL\]\ Ates\ datasi\ basariyla\ kopyalandi\ \((.*?)\ karakter\)\.$	[FIRE-STEAL] Fire data copied successfully (${1} characters).
+GEAR-DEFER	^\[GEAR\-DEFER\]\ GearManager\.Deserialize\ ic\ mekan\ sahnesi\ yuklenirken\ engellendi,\ sahne\ yuklenince\ tekrar\ calistirilacak\.\ \((.*?)\)$	[GEAR-DEFER] GearManager.Deserialize was blocked while an interior scene was loading; it will run again once the scene has loaded. (${1})
+GEAR-DEFER	^\[GEAR\-DEFER\]\ Ertelenen\ GearManager\.Deserialize\ calistirildi\.\ \((.*?)\)$	[GEAR-DEFER] The deferred GearManager.Deserialize was executed. (${1})
+GEAR-DEFER	^\[GEAR\-DEFER\]\ Ertelenen\ cagri\ basarisiz:\ (.*?)$	[GEAR-DEFER] The deferred call failed: ${1}
+GEAR-DEFER	^\[GEAR\-DEFER\]\ Bolge\ degisiyor,\ calistirilamamis\ (.*?)\ ertelenmis\ GearManager\.Deserialize\ cagrisi\ atildi\.$	[GEAR-DEFER] The region is changing, ${1} deferred GearManager.Deserialize calls that never ran were dropped.
+GEAR-FIX	^\[GEAR\-FIX\]\ GearManager\.m_Gear\ icinde\ (.*?)\ olu\ kayit\ vardi,\ kayit\ yazilmadan\ once\ temizlendi\.$	[GEAR-FIX] GearManager.m_Gear held ${1} dead entries, cleaned up before the save was written.
+GEAR-FIX	^\[GEAR\-FIX\]\ m_Gear\ temizligi\ hatasi:\ (.*?)$	[GEAR-FIX] m_Gear cleanup error: ${1}
+GEAR-INIT	^\[GEAR\-INIT\]\ (.*?)\ gorunmez\ olarak\ aktif\ edildi\ \(container\ Awake\ tetikleme\)\.$	[GEAR-INIT] ${1} activated invisibly (to trigger container Awake).
+GEAR-LEAK	^\[GEAR\-LEAK\]\ (.*?):\ '(.*?)'\ kopyasi\ silindi\ \(klonun\ kendi\ esyasi,\ oyunun\ kaydindan\ geri\ gelmis\)\.$	[GEAR-LEAK] ${1}: duplicate of '${2}' deleted (the clone's own item, came back from the game's save).
+GEAR-LEAK	^\[GEAR\-LEAK\]\ (.*?):\ oyunun\ kendi\ kaydindan\ gelen\ (.*?)\ kopya\ esya\ temizlendi\ \(klonun\ disinda\ kalmis\ kopyalar\)\.$	[GEAR-LEAK] ${1}: ${2} duplicate items from the game's own save cleaned up (copies left outside the clone).
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ (.*?)\ gear\ save\ dosyasi\ bulunamadi,\ atlaniyor\.$	[GEAR-RESTORE] ${1} gear save file not found, skipping.
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ (.*?):\ gear\ dosyasi\ okunamadi\ \(kayit\ var\ gibi\ ama\ cozulemedi\),\ esyalara\ dokunulmuyor\.$	[GEAR-RESTORE] ${1}: the gear file could not be read (a save appears to exist but could not be parsed), the items are being left alone.
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ (.*?)\ kayitli\ gear\ yok,\ sablon\ lootu\ temizlenecek\.$	[GEAR-RESTORE] ${1} has no saved gear, the template loot will be cleared.
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ (.*?):\ (.*?)\ kapali\ \(hayalet\)\ kayit\ atlandi\ —\ konteyner\ icerigi/alinmis\ esya/elenmis\ loot\.$	[GEAR-RESTORE] ${1}: ${2} disabled (ghost) records skipped - container contents/taken items/filtered-out loot.
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ (.*?):\ (.*?)\ mevcut\ gear\ silindi\ \(dupelama\ onleme\)\.$	[GEAR-RESTORE] ${1}: ${2} existing gear items deleted (duplicate prevention).
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ Durumlu\ spawn\ basarisiz\ \((.*?)\):\ (.*?)\ —\ duz\ spawn'a\ dusuluyor\.$	[GEAR-RESTORE] Stateful spawn failed (${1}): ${2} - falling back to a plain spawn.
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ PREFAB\ BULUNAMADI:\ (.*?)\ \(orijinal:\ (.*?)\)$	[GEAR-RESTORE] PREFAB NOT FOUND: ${1} (original: ${2})
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ SPAWNED:\ (.*?)\ worldPos=(.*?)\ durumlu=(.*?)$	[GEAR-RESTORE] SPAWNED: ${1} worldPos=${2} stateful=${3}
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ (.*?):\ (.*?)\ gear\ geri\ yuklendi\ \((.*?)\ durum\ verisiyle\),\ (.*?)\ prefab\ bulunamadi\ \(toplam\ kayit:\ (.*?)\)$	[GEAR-RESTORE] ${1}: ${2} gear items restored (${3} with state data), ${4} prefabs not found (total records: ${5})
+GEAR-SAVE	^\[GEAR\-SAVE\]\ SerializeToString\ hatasi:\ (.*?)\ \-\ (.*?)$	[GEAR-SAVE] SerializeToString error: ${1} - ${2}
+GEAR-SAVE	^\[GEAR\-SAVE\]\ (.*?):\ klon\ disindan\ (.*?)\ esya\ sahiplenildi\.$	[GEAR-SAVE] ${1}: ${2} items from outside the clone were adopted.
+GEAR-SAVE	^\[GEAR\-SAVE\]\ EXTRA\ obje:\ (.*?)\ parent=(.*?)\ posKey=(.*?)$	[GEAR-SAVE] EXTRA object: ${1} parent=${2} posKey=${3}
+GEAR-SKIP	^\[GEAR\-SKIP\]\ \ \ XX\ (.*?)\ parent=(.*?)\ konteynerde=(.*?)\ acik=(.*?)$	[GEAR-SKIP]   XX ${1} parent=${2} inContainer=${3} active=${4}
+GEAR-TEST	^\[GEAR\-TEST\]\ (.*?):\ (.*?)\ esya\ kaydedildi\ \((.*?)\ extra\),\ (.*?)\ atlandi\ \(konteyner/alinmis/elenmis\):\ (.*?)$	[GEAR-TEST] ${1}: ${2} items saved (${3} extra), ${4} skipped (in a container/taken/filtered out): ${5}
+GEAR-WARMUP	^\[GEAR\-WARMUP\]\ (.*?)\ farkli\ prefab\ istendi:\ (.*?)\ yuklendi,\ (.*?)\ basarisiz,\ (.*?)\ hala\ bekliyor\ \((.*?)\ ms\)\.$	[GEAR-WARMUP] ${1} distinct prefabs requested: ${2} loaded, ${3} failed, ${4} still pending (${5} ms).
+HYDRATE	^\[HYDRATE\]\ (.*?):\ siraya\ alindi\ \(kuyruk=(.*?)\)\.$	[HYDRATE] ${1}: queued (queue=${2}).
+HYDRATE	^\[HYDRATE\]\ (.*?):\ arka\ plandaki\ dolum\ devralindi\ \((.*?)\)\.$	[HYDRATE] ${1}: took over the background fill (${2}).
+HYDRATE	^\[HYDRATE\]\ (.*?):\ aninda\ dolduruluyor\ \((.*?)\)\.$	[HYDRATE] ${1}: filling immediately (${2}).
+HYDRATE	^\[HYDRATE\]\ (.*?):\ icerik\ yuklendi\ \((yayilmis),\ (.*?)\ ms\)\ \|\ aktarim=(.*?)\ mobilya=(.*?)\ esya=(.*?)\ konteyner=(.*?)\ durum=(.*?)\ gorunum=(.*?)\ ms$	[HYDRATE] ${1}: content loaded (spread over several frames, ${3} ms) | import=${4} furniture=${5} gear=${6} containers=${7} state=${8} visual=${9} ms
+HYDRATE	^\[HYDRATE\]\ (.*?):\ icerik\ yuklendi\ \((aninda),\ (.*?)\ ms\)\ \|\ aktarim=(.*?)\ mobilya=(.*?)\ esya=(.*?)\ konteyner=(.*?)\ durum=(.*?)\ gorunum=(.*?)\ ms$	[HYDRATE] ${1}: content loaded (all at once, ${3} ms) | import=${4} furniture=${5} gear=${6} containers=${7} state=${8} visual=${9} ms
+HYDRATE	^\[HYDRATE\]\ (.*?):\ kapali\ placeable\ sayisi\ adim\ adim\ \-\ basta=(.*?)\ mobilyadan\ sonra=(.*?)\ esyadan\ sonra=(.*?)\ konteynerden\ sonra=(.*?)\ durumdan\ sonra=(.*?)\ sonda=(.*?)$	[HYDRATE] ${1}: disabled placeable count step by step - start=${2} after furniture=${3} after gear=${4} after containers=${5} after state=${6} end=${7}
+HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 0/7\ eski\ kayit\ yoklamasi$	[HYDRATE-STEP] ${1}: 0/7 checking for older save data
+HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 1/7\ mod\ oncesi\ kayit\ aktarimi$	[HYDRATE-STEP] ${1}: 1/7 importing the save from before the mod
+HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 2/7\ oyuncunun\ yerlestirdigi\ mobilya$	[HYDRATE-STEP] ${1}: 2/7 furniture the player placed
+HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 3/7\ tasinmis\ sahne\ mobilyasi$	[HYDRATE-STEP] ${1}: 3/7 scene furniture that was moved
+HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 4/7\ yerdeki\ esyalar$	[HYDRATE-STEP] ${1}: 4/7 items lying in the building
+HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 5/7\ konteyner\ icerikleri$	[HYDRATE-STEP] ${1}: 5/7 container contents
+HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 6/7\ kirik/hasat\ edilmis\ objeler\ ve\ cop\ durumu$	[HYDRATE-STEP] ${1}: 6/7 broken or harvested objects and junk state
+HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 7/7\ gorunurluk\ ve\ colliderlar$	[HYDRATE-STEP] ${1}: 7/7 visibility and colliders
+HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ (.*?)$	[HYDRATE-STEP] ${1}: ${2}
+ICERIDE-FLAG	^\[ICERIDE\-FLAG\]\ (.*?):\ hicbir\ klon\ acik\ degil\ ama\ oyuncu\ park\ edilmis\ ic\ mekanin\ hacminde\ duruyor\ \-\ bayrak\ ve\ kayit\ OLDUGU\ GIBI\ birakildi\.\ Ic\ mekan\ oyuncunun\ etrafinda\ kapanmis;\ asil\ hata\ o\.$	[INSIDE-FLAG] ${1}: no clone is open, but the player is standing inside the parked interior's space - the flag and the save were left AS THEY ARE. The interior was closed around the player; that is the real bug.
+ICERIDE-FLAG	^\[ICERIDE\-FLAG\]\ Hicbir\ klon\ sahne\ acik\ degilken\ 'oyuncu\ iceride'\ bayragi\ acik\ kalmisti\ \-\ temizlendi\ \(ruzgar\ korumasi\ ve\ ic\ mekan\ sicakligi\ normale\ dondu\)\.$	[INSIDE-FLAG] The 'player inside' flag was left on while no clone scene was open - cleared (wind shelter and indoor temperature are back to normal).
+INDOOR-STATE	^\[INDOOR\-STATE\]\ (.*?):\ ic\ mekan\ tetigi\ kaydedildi\ \(count=(.*?)\)\.$	[INDOOR-STATE] ${1}: the indoor space trigger was registered (count=${2}).
+INDOOR-STATE	^\[INDOOR\-STATE\]\ (.*?):\ ic\ mekan\ tetigi\ birakildi\ \(count=(.*?)\)\.$	[INDOOR-STATE] ${1}: the indoor space trigger was released (count=${2}).
+INDOOR-STATE	^\[INDOOR\-STATE\]\ (.*?):\ tetigi\ kayitliyken\ klon\ yok\ edildi\ \-\ kayit\ birakilamadi\.$	[INDOOR-STATE] ${1}: the clone was destroyed while its trigger was still registered - the registration could not be released.
+ISI	^\[ISI\]\ bina=disarida\ alan=yok\((.*?)\)\ icOrtam=(.*?)\ icSahne=(.*?)\ sahne=(.*?)\ aktifSahne=(.*?)\ ates=(.*?)\ \|\ taban=(.*?)\ ic\ deger=(.*?)\ \(tabana\ ek\ (.*?)\)\ ates\ haric=(.*?)\ anlik=(.*?)\ \|\ kar=(.*?)\ ruzgar=(.*?)$	[TEMPERATURE] building=outside indoor space=none(${1}) indoorEnvironment=${2} indoorScene=${3} scene=${4} activeScene=${5} fires seen by mods/all=${6} | outdoor base=${7} indoor=${8} (${9} over the base) without fires=${10} felt=${11} | blizzard drop=${12} wind chill=${13}
+ISI	^\[ISI\]\ bina=disarida\ alan=(.*?)\((.*?)\)\ icOrtam=(.*?)\ icSahne=(.*?)\ sahne=(.*?)\ aktifSahne=(.*?)\ ates=(.*?)\ \|\ taban=(.*?)\ ic\ deger=(.*?)\ \(tabana\ ek\ (.*?)\)\ ates\ haric=(.*?)\ anlik=(.*?)\ \|\ kar=(.*?)\ ruzgar=(.*?)$	[TEMPERATURE] building=outside indoor space=${1}(${2}) indoorEnvironment=${3} indoorScene=${4} scene=${5} activeScene=${6} fires seen by mods/all=${7} | outdoor base=${8} indoor=${9} (${10} over the base) without fires=${11} felt=${12} | blizzard drop=${13} wind chill=${14}
+ISI	^\[ISI\]\ bina=(.*?)\ alan=yok\((.*?)\)\ icOrtam=(.*?)\ icSahne=(.*?)\ sahne=(.*?)\ aktifSahne=(.*?)\ ates=(.*?)\ \|\ taban=(.*?)\ ic\ deger=(.*?)\ \(tabana\ ek\ (.*?)\)\ ates\ haric=(.*?)\ anlik=(.*?)\ \|\ kar=(.*?)\ ruzgar=(.*?)$	[TEMPERATURE] building=${1} indoor space=none(${2}) indoorEnvironment=${3} indoorScene=${4} scene=${5} activeScene=${6} fires seen by mods/all=${7} | outdoor base=${8} indoor=${9} (${10} over the base) without fires=${11} felt=${12} | blizzard drop=${13} wind chill=${14}
+ISI	^\[ISI\]\ bina=(.*?)\ alan=(.*?)\((.*?)\)\ icOrtam=(.*?)\ icSahne=(.*?)\ sahne=(.*?)\ aktifSahne=(.*?)\ ates=(.*?)\ \|\ taban=(.*?)\ ic\ deger=(.*?)\ \(tabana\ ek\ (.*?)\)\ ates\ haric=(.*?)\ anlik=(.*?)\ \|\ kar=(.*?)\ ruzgar=(.*?)$	[TEMPERATURE] building=${1} indoor space=${2}(${3}) indoorEnvironment=${4} indoorScene=${5} scene=${6} activeScene=${7} fires seen by mods/all=${8} | outdoor base=${9} indoor=${10} (${11} over the base) without fires=${12} felt=${13} | blizzard drop=${14} wind chill=${15}
+ISI	^\[ISI\]\ \(Shift\+F10\)\ bina=disarida\ alan=yok\((.*?)\)\ icOrtam=(.*?)\ icSahne=(.*?)\ sahne=(.*?)\ aktifSahne=(.*?)\ ates=(.*?)\ \|\ taban=(.*?)\ ic\ deger=(.*?)\ \(tabana\ ek\ (.*?)\)\ ates\ haric=(.*?)\ anlik=(.*?)\ \|\ kar=(.*?)\ ruzgar=(.*?)$	[TEMPERATURE] (Shift+F10) building=outside indoor space=none(${1}) indoorEnvironment=${2} indoorScene=${3} scene=${4} activeScene=${5} fires seen by mods/all=${6} | outdoor base=${7} indoor=${8} (${9} over the base) without fires=${10} felt=${11} | blizzard drop=${12} wind chill=${13}
+ISI	^\[ISI\]\ \(Shift\+F10\)\ bina=disarida\ alan=(.*?)\((.*?)\)\ icOrtam=(.*?)\ icSahne=(.*?)\ sahne=(.*?)\ aktifSahne=(.*?)\ ates=(.*?)\ \|\ taban=(.*?)\ ic\ deger=(.*?)\ \(tabana\ ek\ (.*?)\)\ ates\ haric=(.*?)\ anlik=(.*?)\ \|\ kar=(.*?)\ ruzgar=(.*?)$	[TEMPERATURE] (Shift+F10) building=outside indoor space=${1}(${2}) indoorEnvironment=${3} indoorScene=${4} scene=${5} activeScene=${6} fires seen by mods/all=${7} | outdoor base=${8} indoor=${9} (${10} over the base) without fires=${11} felt=${12} | blizzard drop=${13} wind chill=${14}
+ISI	^\[ISI\]\ \(Shift\+F10\)\ bina=(.*?)\ alan=yok\((.*?)\)\ icOrtam=(.*?)\ icSahne=(.*?)\ sahne=(.*?)\ aktifSahne=(.*?)\ ates=(.*?)\ \|\ taban=(.*?)\ ic\ deger=(.*?)\ \(tabana\ ek\ (.*?)\)\ ates\ haric=(.*?)\ anlik=(.*?)\ \|\ kar=(.*?)\ ruzgar=(.*?)$	[TEMPERATURE] (Shift+F10) building=${1} indoor space=none(${2}) indoorEnvironment=${3} indoorScene=${4} scene=${5} activeScene=${6} fires seen by mods/all=${7} | outdoor base=${8} indoor=${9} (${10} over the base) without fires=${11} felt=${12} | blizzard drop=${13} wind chill=${14}
+ISI	^\[ISI\]\ \(Shift\+F10\)\ bina=(.*?)\ alan=(.*?)\((.*?)\)\ icOrtam=(.*?)\ icSahne=(.*?)\ sahne=(.*?)\ aktifSahne=(.*?)\ ates=(.*?)\ \|\ taban=(.*?)\ ic\ deger=(.*?)\ \(tabana\ ek\ (.*?)\)\ ates\ haric=(.*?)\ anlik=(.*?)\ \|\ kar=(.*?)\ ruzgar=(.*?)$	[TEMPERATURE] (Shift+F10) building=${1} indoor space=${2}(${3}) indoorEnvironment=${4} indoorScene=${5} scene=${6} activeScene=${7} fires seen by mods/all=${8} | outdoor base=${9} indoor=${10} (${11} over the base) without fires=${12} felt=${13} | blizzard drop=${14} wind chill=${15}
+ISTISNA	^\[ISTISNA\]\ Major\ Miseries:\ hangarin\ alt\ kati\ bina\ koordinatiyla\ olculuyor\.$	[MOD-EXCEPTION] Major Miseries: whether the player is on the hangar's sheltered lower floor is now judged by their height inside the building.
+ISTISNA	^\[ISTISNA\]\ Major\ Miseries\ hangar\ istisnasi\ kurulamadi:\ AuroraInfluenceManager\.IsPlayerInAFHangarShelterZone\ bulunamadi\.$	[MOD-EXCEPTION] The special handling for the Major Miseries hangar could not be set up: AuroraInfluenceManager.IsPlayerInAFHangarShelterZone was not found.
+ISTISNA	^\[ISTISNA\]\ Major\ Miseries\ hangar\ istisnasi\ kurulamadi:\ (.*?)$	[MOD-EXCEPTION] The special handling for the Major Miseries hangar could not be set up: ${1}
+ISTISNA	^\[ISTISNA\]\ Weather\ Overhaul:\ bina\ icinde\ de\ bolgenin\ acik\ havasini\ goruyor;\ islanma\ ve\ sicaklik\ icerideki\ gibi\.$	[MOD-EXCEPTION] Weather Overhaul: it still sees the region's open sky from inside a building; getting wet and temperature still work as indoors.
+ISTISNA	^\[ISTISNA\]\ Weather\ Overhaul\ istisnasi\ kurulamadi:\ Weather\ Overhaul'un\ beklenen\ uyeleri\ bulunamadi\ \(surum\ degismis\ olabilir\)\.$	[MOD-EXCEPTION] The special handling for Weather Overhaul could not be set up: the parts of Weather Overhaul it needs were not found (its version may have changed).
+ISTISNA	^\[ISTISNA\]\ Weather\ Overhaul\ istisnasi\ kurulamadi:\ (.*?)$	[MOD-EXCEPTION] The special handling for Weather Overhaul could not be set up: ${1}
+ISTISNA	^\[ISTISNA\]\ Hangar\ siginagi\ bina\ koordinatiyla\ olculdu:\ alt\ kat,\ korunuyor\ \(bir\ kez\ yazilir\)\.$	[MOD-EXCEPTION] Hangar shelter judged by height inside the building: lower floor, sheltered (logged once).
+ISTISNA	^\[ISTISNA\]\ Hangar\ siginagi\ bina\ koordinatiyla\ olculdu:\ ust\ kat\ \(bir\ kez\ yazilir\)\.$	[MOD-EXCEPTION] Hangar shelter judged by height inside the building: upper floor, not sheltered (logged once).
+ISTISNA	^\[ISTISNA\]\ Weather\ Overhaul\ bina\ icinde\ bolgenin\ acik\ havasini\ goruyor\ \(bir\ kez\ yazilir\)\.$	[MOD-EXCEPTION] Weather Overhaul is seeing the region's open sky from inside the building (logged once).
+ISTISNA	^\[ISTISNA\]\ (.*?)\ istisnasi\ hata\ verdi\ \(bir\ kez\ yazilir\):\ (.*?)$	[MOD-EXCEPTION] The ${1} special handling threw an error (logged once): ${2}
+JUNK	^\[JUNK\]\ (.*?):\ duzenleme\ modu,\ cop\ bayragi\ klonun\ durumuna\ cekildi\ \(klon=(.*?),\ bolge=(.*?)\)\.$	[JUNK] ${1}: customizing mode, the junk flag was set to the clone's own state (clone=${2}, region=${3}).
+JUNK	^\[JUNK\]\ (.*?):\ copler\ temizlendi\ \((.*?)\ obje\)\.\ Oyunun\ temizligi\ baska\ yerlerden\ (.*?)\ copu\ da\ kapatmisti,\ geri\ acildi\.$	[JUNK] ${1}: junk cleared (${2} objects). The game's own clear had also disabled ${3} junk objects elsewhere; they were re-enabled.
+JUNK	^\[JUNK\]\ Oyunun\ cop\ temizligi\ klonlardaki\ (.*?)\ copu\ da\ kapatmisti,\ geri\ acildi\ \(klonun\ copu\ klonun\ kendi\ kaydina\ bagli\)\.$	[JUNK] The game's junk clear had also disabled ${1} junk objects inside clones; they were re-enabled (a clone's junk belongs to the clone's own save).
+JUNK	^\[JUNK\]\ StartCustomizing\ prefix\ hatasi:\ (.*?)$	[JUNK] StartCustomizing prefix error: ${1}
+JUNK	^\[JUNK\]\ ClearJunk\ prefix\ hatasi:\ (.*?)$	[JUNK] ClearJunk prefix error: ${1}
+JUNK	^\[JUNK\]\ ClearJunk\ postfix\ hatasi:\ (.*?)$	[JUNK] ClearJunk postfix error: ${1}
+JUNK	^\[JUNK\]\ SaveSceneData\ prefix\ hatasi:\ (.*?)$	[JUNK] SaveSceneData prefix error: ${1}
+JUNK	^\[JUNK\]\ SaveSceneData\ postfix\ hatasi:\ (.*?)$	[JUNK] SaveSceneData postfix error: ${1}
+JUNK-LOAD	^\[JUNK\-LOAD\]\ (.*?)\ durum\ dosyasi\ okunamadi:\ (.*?)$	[JUNK-LOAD] ${1} state file could not be read: ${2}
+JUNK-LOAD	^\[JUNK\-LOAD\]\ (.*?):\ kayit\ 'temizlendi'\ diyor,\ (.*?)\ cop\ kapatildi\.$	[JUNK-LOAD] ${1}: the save says 'cleared', ${2} junk objects disabled.
+JUNK-LOAD	^\[JUNK\-LOAD\]\ (.*?):\ kayit\ 'temizlenmedi'\ diyor,\ (.*?)\ cop\ geri\ acildi\.$	[JUNK-LOAD] ${1}: the save says 'not cleared', ${2} junk objects re-enabled.
+KAPALI-ZAMAN	^\[KAPALI\-ZAMAN\]\ (.*?)\ park\ halindeyken\ isitilamadi:\ (.*?)$	[CLOSED-TIME] ${1}: its fires' heat could not be kept going while the building is parked: ${2}
+KAPALI-ZAMAN	^\[KAPALI\-ZAMAN\]\ (.*?):\ park\ halinde\ (.*?)\ ates\ isitmaya\ devam\ ediyor\.$	[CLOSED-TIME] ${1}: ${2} fires keep heating the building while it is parked.
+KAPALI-ZAMAN	^\[KAPALI\-ZAMAN\]\ (.*?)\ icin\ zaman\ ilerletilemedi:\ (.*?)$	[CLOSED-TIME] Time could not be advanced for ${1}: ${2}
+KAPALI-ZAMAN	^\[KAPALI\-ZAMAN\]\ (.*?):\ (.*?)\ ates,\ (.*?)\ tencere,\ (.*?)\ lamba,\ (.*?)\ mesale,\ (.*?)\ fisek\ takip\ ediliyor\.$	[CLOSED-TIME] ${1}: tracking ${2} fires, ${3} cooking pots, ${4} lamps, ${5} torches and ${6} flares.
+KAPALI-ZAMAN	^\[KAPALI\-ZAMAN\]\ (.*?):\ (.*?)\ ates,\ (.*?)\ tencere,\ (.*?)\ lamba,\ (.*?)\ mesale,\ (.*?)\ fisek,\ (.*?)\ kurutma\ takip\ ediliyor\.$	[CLOSED-TIME] ${1}: tracking ${2} fires, ${3} cooking pots, ${4} lamps, ${5} torches, ${6} flares and ${7} curing items.
+KAPISIZ-CIKIS	^\[KAPISIZ\-CIKIS\]\ (.*?):\ bina\ yuklu\ bolgede\ degil,\ 'oyuncu\ iceride'\ durumu\ temizlendi\.$	[DOORLESS-EXIT] ${1}: the building is not in the loaded region, so the saved 'player is inside' state was cleared.
+KAPISIZ-CIKIS	^\[KAPISIZ\-CIKIS\]\ (.*?):\ oyuncu\ kapi\ kullanmadan\ binanin\ disina\ cikmis\ \(pos=(.*?)\),\ ic\ mekan\ kapatiliyor\.$	[DOORLESS-EXIT] ${1}: the player has left the building without using a door (pos=${2}), closing the interior.
+KAYIP-TESHIS	^\[KAYIP\-TESHIS\]\ (?:KAPALI\ \ )\ '(.*?)'\ renderer=(.*?)/(.*?)\ guid=(.*?)\ \|\ (.*?)$	[MISSING-DIAG] DISABLED  '${1}' renderer=${2}/${3} guid=${4} | ${5}
+KAYIP-TESHIS	^\[KAYIP\-TESHIS\]\ (?:GORUNMEZ)\ '(.*?)'\ renderer=(.*?)/(.*?)\ guid=(.*?)\ \|\ (.*?)$	[MISSING-DIAG] INVISIBLE '${1}' renderer=${2}/${3} guid=${4} | ${5}
+KAYIP-TESHIS	^\[KAYIP\-TESHIS\]\ (.*?)\ '(.*?)'\ renderer=(.*?)/(.*?)\ guid=(.*?)\ \|\ (.*?)$	[MISSING-DIAG] ${1} '${2}' renderer=${3}/${4} guid=${5} | ${6}
+KAYIP-TESHIS	^\[KAYIP\-TESHIS\]\ (.*?):\ (.*?)\ kapali\ \((.*?)\ oyuncunun\ koydugu,\ (.*?)\ parcalanmis,\ (.*?)\ sebebi\ bilinmeyen\ sablon\),\ (.*?)\ acik\ ama\ renderer'i\ kapali,\ (.*?)\ saglam\.\ \(ithalatin\ kapattigi:\ (.*?),\ kayitli\ yerlestirilmis:\ (.*?)\)$	[MISSING-DIAG] ${1}: ${2} disabled (${3} placed by the player, ${4} broken down, ${5} template objects with an unknown reason), ${6} enabled but with the renderer off, ${7} fine. (disabled by the import: ${8}, recorded as placed: ${9})
+KAYIP-TESHIS	^\[KAYIP\-TESHIS\]\ Dis\ dunya\ gizleme\ listesi:\ (.*?)\ obje,\ bunlardan\ (.*?)\ tanesi\ hala\ acik\ \(klon\ acik=(.*?)\)\.$	[MISSING-DIAG] Outside-world hide list: ${1} objects, ${2} of them are still enabled (clone open=${3}).
+KAYIT-ADI	^\[KAYIT\-ADI\]\ Kuruldu:\ modlarin\ kayda\ verdigi\ ic\ sahne\ adlari\ yuklu\ bolgenin\ adina\ cevriliyor\.$	[SAVE-NAME] Installed: when a mod hands an interior scene's name to the save, the loaded region's name is written instead.
+KAYIT-ADI	^\[KAYIT\-ADI\]\ Kurulamadi:\ (.*?)$	[SAVE-NAME] Could not be installed: ${1}
+KAYIT-ADI	^\[KAYIT\-ADI\]\ (.*?):\ bir\ mod\ '(.*?)'\ verdi,\ yuklu\ sahne\ '(.*?)'\ yazildi\.$	[SAVE-NAME] ${1}: a mod gave '${2}'; the loaded scene '${3}' was written instead.
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)'\ slot\ sorgusu:\ (.*?)\ \(kayit=\(yok\),\ dosyalar=\(yok\)\)\.$	[SAVE-IDENTITY] '${1}' slot probe: ${2} (save=(none), files=(none)).
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)'\ slot\ sorgusu:\ (.*?)\ \(kayit=\(yok\),\ dosyalar=(.*?)\)\.$	[SAVE-IDENTITY] '${1}' slot probe: ${2} (save=(none), files=${3}).
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)'\ slot\ sorgusu:\ (.*?)\ \(kayit=(.*?),\ dosyalar=\(yok\)\)\.$	[SAVE-IDENTITY] '${1}' slot probe: ${2} (save=${3}, files=(none)).
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Kimlik\ hafizasi\ sifirlandi\ \((.*?)\)\ \-\ onceki\ kayit\ '(.*?)'\.$	[SAVE-IDENTITY] Identity memory reset (${1}) - the previous save was '${2}'.
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Kapali\ \(EnableSaveIdentityGuard=false\)\ \-\ bayat\ veri\ kontrolu\ yapilmiyor\.$	[SAVE-IDENTITY] Disabled (EnableSaveIdentityGuard=false) - the stale data check is not being performed.
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)'\ slot\ sorgusu:\ (.*?)\ \(kayit=(.*?),\ dosyalar=(.*?)\)\.$	[SAVE-IDENTITY] '${1}' slot probe: ${2} (save=${3}, files=${4}).
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)'\ icin\ mod\ verisi\ var\ ama\ kimlik\ damgasi\ yok\ \(bu\ kontrolden\ onceki\ bir\ surumden\ kalmis\)\.\ Bu\ yukleme\ dogrulanamiyor;\ ic\ mekanlar\ bu\ kayda\ ait\ gorunmuyorsa\ Tools\\\\ResetInteriorLoot\.ps1\ ile\ '(.*?)'\ verisini\ sifirlayin\.\ Bir\ sonraki\ kayittan\ itibaren\ otomatik\ korunacak\.$	[SAVE-IDENTITY] There is mod data for '${1}' but no identity stamp (left over from a version older than this check). This load cannot be verified; if the interiors do not look like they belong to this save, reset the '${2}' data with Tools\\ResetInteriorLoot.ps1. It will be protected automatically from the next save onwards.
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)'\ ilk\ kez\ damgalanacak\ \(tag=(.*?)\)\.$	[SAVE-IDENTITY] '${1}' will be stamped for the first time (tag=${2}).
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)':\ kayit\ dosyasinda\ damga\ var\ ama\ degeri\ okunamadi\ \-\ dogrulanmis\ sayiliyor\ \(dosyalar=(.*?)\)\.$	[SAVE-IDENTITY] '${1}': the save file carries a stamp but its value could not be read - treated as verified (files=${2}).
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)':\ oyunun\ kayit\ slotu\ bu\ anda\ okunamiyor,\ kimlik\ dogrulanamadi\ \-\ veriye\ DOKUNULMUYOR\ \(dosyalar=(.*?)\)\.\ Bu\ yuklemede\ bayat\ veri\ korumasi\ devre\ disi;\ ic\ mekanlar\ bu\ kayda\ ait\ gorunmuyorsa\ Tools\\\\ResetInteriorLoot\.ps1\ ile\ '(.*?)'\ verisini\ sifirlayin\.$	[SAVE-IDENTITY] '${1}': the game's save slot cannot be read at the moment, the identity could not be verified - the data is NOT BEING TOUCHED (files=${2}). Stale data protection is disabled for this load; if the interiors do not look like they belong to this save, reset the '${3}' data with Tools\\ResetInteriorLoot.ps1.
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)':\ oynanan\ sure\ geriye\ gitti\ \((.*?)h\ \->\ (.*?)h\)\.\ Ayni\ oyunun\ daha\ eski\ bir\ kaydi\ yuklenmis\ olabilir;\ ic\ mekanlar\ dunyadan\ ileride\ olabilir\.$	[SAVE-IDENTITY] '${1}': the played time went backwards (${2}h -> ${3}h). An older save of the same game may have been loaded; the interiors may be ahead of the world.
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)'\ dogrulandi\ \(tag=(.*?)\)\.$	[SAVE-IDENTITY] '${1}' verified (tag=${2}).
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)'\ icin\ BASKA\ BIR\ OYUNA\ ait\ mod\ verisi\ bulundu\ \-\ (.*?)\.\ Oyun\ silinen\ kayitlarin\ slot\ adini\ yeniden\ kullanir,\ bu\ yuzden\ eski\ ic\ mekan\ duzeni\ yeni\ oyuna\ karisabiliyordu\.\ Veriler\ karantinaya\ aliniyor\.$	[SAVE-IDENTITY] Mod data belonging to ANOTHER GAME was found for '${1}' - ${2}. The game reuses the slot names of deleted saves, which is how an old interior layout could bleed into a new game. The data is being quarantined.
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Damga\ atlandi:\ yazilan\ slot\ '(.*?)'\ guncel\ kayit\ '(.*?)'\ degil\.$	[SAVE-IDENTITY] Stamp skipped: the slot written '${1}' is not the current save '${2}'.
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Damga\ kayit\ dosyasina\ yazilamadi:\ (.*?)$	[SAVE-IDENTITY] The stamp could not be written to the save file: ${1}
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Oyun\ damgayi\ kabul\ etmedi,\ kimlik\ dosyasi\ yazilmiyor\.$	[SAVE-IDENTITY] The game did not accept the stamp, the identity file is not being written.
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ '(.*?)'\ tasinamadi:\ (.*?)$	[SAVE-IDENTITY] '${1}' could not be moved: ${2}
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Karantina\ klasoru\ hazirlanamadi:\ (.*?)$	[SAVE-IDENTITY] The quarantine folder could not be prepared: ${1}
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ (.*?)\ dosya\ karantinaya\ alindi:\ (.*?)$	[SAVE-IDENTITY] ${1} files quarantined: ${2}
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Slot\ anahtari\ sorgulanamadi\ \((.*?)\):\ (.*?)$	[SAVE-IDENTITY] The slot key could not be queried (${1}): ${2}
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Slot\ anahtar\ listesi\ okunamadi\ \((.*?)\):\ (.*?)$	[SAVE-IDENTITY] The slot key list could not be read (${1}): ${2}
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Slot\ damgasi\ okunamadi\ \(Il2CppSystem\.String\):\ (.*?)$	[SAVE-IDENTITY] The slot stamp could not be read (Il2CppSystem.String): ${1}
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Slot\ damgasi\ okunamadi\ \(string\):\ (.*?)$	[SAVE-IDENTITY] The slot stamp could not be read (string): ${1}
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Kimlik\ dosyasi\ okunamadi:\ (.*?)$	[SAVE-IDENTITY] The identity file could not be read: ${1}
+KAYIT-KIMLIGI	^\[KAYIT\-KIMLIGI\]\ Kimlik\ dosyasi\ yazilamadi:\ (.*?)$	[SAVE-IDENTITY] The identity file could not be written: ${1}
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ su\ anda\ oynanan\ kayit\ \-\ mod\ verisine\ DOKUNULMADI\ \(oyun\ kayit\ dosyalarini\ sildi\)\.$	[SAVE-DELETE] '${1}' is the save currently being played - the mod data was NOT TOUCHED (the game deleted the save files).
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ kayit\ listesinde\ gorunmuyor\ \-\ ikinci\ bir\ kontrol\ bekleniyor\ \(oyun\ kayit\ dosyalarini\ sildi\)\.$	[SAVE-DELETE] '${1}' does not appear in the save list - waiting for a second check (the game deleted the save files).
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ icin\ mod\ verisi\ kaldirildi\ \(oyun\ kayit\ dosyalarini\ sildi\):\ (.*?)\ dosya(.*?)\.$	[SAVE-DELETE] Mod data for '${1}' was removed (the game deleted the save files): ${2} files${3}.
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ icin\ kaldirilacak\ mod\ verisi\ yoktu\ \(oyun\ kayit\ dosyalarini\ sildi\)\.$	[SAVE-DELETE] There was no mod data to remove for '${1}' (the game deleted the save files).
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ su\ anda\ oynanan\ kayit\ \-\ mod\ verisine\ DOKUNULMADI\ \(oyuncu\ kayit\ slotunu\ sildi\)\.$	[SAVE-DELETE] '${1}' is the save currently being played - the mod data was NOT TOUCHED (the player deleted the save slot).
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ kayit\ listesinde\ gorunmuyor\ \-\ ikinci\ bir\ kontrol\ bekleniyor\ \(oyuncu\ kayit\ slotunu\ sildi\)\.$	[SAVE-DELETE] '${1}' does not appear in the save list - waiting for a second check (the player deleted the save slot).
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ icin\ mod\ verisi\ kaldirildi\ \(oyuncu\ kayit\ slotunu\ sildi\):\ (.*?)\ dosya(.*?)\.$	[SAVE-DELETE] Mod data for '${1}' was removed (the player deleted the save slot): ${2} files${3}.
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ icin\ kaldirilacak\ mod\ verisi\ yoktu\ \(oyuncu\ kayit\ slotunu\ sildi\)\.$	[SAVE-DELETE] There was no mod data to remove for '${1}' (the player deleted the save slot).
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ su\ anda\ oynanan\ kayit\ \-\ mod\ verisine\ DOKUNULMADI\ \((.*?)\)\.$	[SAVE-DELETE] '${1}' is the save currently being played - the mod data was NOT TOUCHED (${2}).
+KAYIT-SILME	^\[KAYIT\-SILME\]\ Oyunun\ kayit\ listesi\ okunamiyor\ \((.*?)\)\ \-\ (.*?)\ kayit\ adi\ kontrol\ edilmedi\.$	[SAVE-DELETE] The game's save list cannot be read (${1}) - ${2} save names were not checked.
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ kayit\ listesinde\ gorunmuyor\ \-\ ikinci\ bir\ kontrol\ bekleniyor\ \((.*?)\)\.$	[SAVE-DELETE] '${1}' does not appear in the save list - waiting for a second check (${2}).
+KAYIT-SILME	^\[KAYIT\-SILME\]\ Veri\ klasorune\ ulasilamadi:\ (.*?)$	[SAVE-DELETE] The data folder could not be reached: ${1}
+KAYIT-SILME	^\[KAYIT\-SILME\]\ Veri\ klasoru\ listelenemedi:\ (.*?)$	[SAVE-DELETE] The data folder could not be listed: ${1}
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ silinemedi:\ (.*?)$	[SAVE-DELETE] '${1}' could not be deleted: ${2}
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ icin\ mod\ verisi\ kaldirildi\ \((.*?)\):\ (.*?)\ dosya(.*?)\.$	[SAVE-DELETE] Mod data for '${1}' was removed (${2}): ${3} files${4}.
+KAYIT-SILME	^\[KAYIT\-SILME\]\ '(.*?)'\ icin\ kaldirilacak\ mod\ verisi\ yoktu\ \((.*?)\)\.$	[SAVE-DELETE] There was no mod data to remove for '${1}' (${2}).
+KAYIT-SILME	^\[KAYIT\-SILME\]\ PlayerPrefs\ sorgulanamadi:\ (.*?)$	[SAVE-DELETE] PlayerPrefs could not be queried: ${1}
+KAYIT-SILME	^\[KAYIT\-SILME\]\ HasSaveSlot\('(.*?)'\)\ sorulamadi:\ (.*?)$	[SAVE-DELETE] HasSaveSlot('${1}') could not be queried: ${2}
+KAYIT-SILME	^\[KAYIT\-SILME\]\ SaveExists\('(.*?)'\)\ sorulamadi:\ (.*?)$	[SAVE-DELETE] SaveExists('${1}') could not be queried: ${2}
+KAYIT-SILME	^\[KAYIT\-SILME\]\ Kayit\ listesi\ sorulamadi:\ (.*?)$	[SAVE-DELETE] The save list could not be queried: ${1}
+KAYIT-SILME	^\[KAYIT\-SILME\]\ Hata:\ (.*?)$	[SAVE-DELETE] Error: ${1}
+KAYIT-SILME	^\[KAYIT\-SILME\]\ Silinen\ slotun\ adi\ okunamadi:\ (.*?)$	[SAVE-DELETE] The name of the deleted slot could not be read: ${1}
+KOK-GORUNUMU	^\[KOK\-GORUNUMU\]\ Kuruldu:\ modlar\ yuklu\ sahneleri\ ve\ kok\ nesnelerini\ vanilla\ oyundaki\ gibi\ goruyor\.$	[SCENE-ROOT-VIEW] Installed: mods see the loaded scenes and their top-level objects as in the vanilla game.
+KOK-GORUNUMU	^\[KOK\-GORUNUMU\]\ Kurulamadi:\ (.*?)$	[SCENE-ROOT-VIEW] Could not be installed: ${1}
+KOK-GORUNUMU	^\[KOK\-GORUNUMU\]\ (.*?)\ yuklu\ sahneleri\ taradi;\ bolge\ goruntusu\ verildi\.$	[SCENE-ROOT-VIEW] ${1} looked through the loaded scenes and was shown the region, as outdoors in the vanilla game.
+KOK-GORUNUMU	^\[KOK\-GORUNUMU\]\ (.*?)\ yuklu\ sahneleri\ taradi;\ (.*?)\ goruntusu\ verildi\.$	[SCENE-ROOT-VIEW] ${1} looked through the loaded scenes and was shown ${2}, as inside it in the vanilla game.
+KOK-GORUNUMU	^\[KOK\-GORUNUMU\]\ Kapatildi,\ modlar\ gercek\ sahneleri\ goruyor:\ (.*?)$	[SCENE-ROOT-VIEW] Switched off, mods now see the real scenes: ${1}
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ disarida,\ sebep:\ erken\ bayrak:\ icerde\ kaydedilmis\)$	[LOCATION] The player is inside: ${1} (before: outside, reason: early flag: the game was saved inside)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ (.*?),\ sebep:\ erken\ bayrak:\ icerde\ kaydedilmis\)$	[LOCATION] The player is inside: ${1} (before: ${2}, reason: early flag: the game was saved inside)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ disarida,\ sebep:\ ruzgar\ duzeltmesi\)$	[LOCATION] The player is inside: ${1} (before: outside, reason: wind fix)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ (.*?),\ sebep:\ ruzgar\ duzeltmesi\)$	[LOCATION] The player is inside: ${1} (before: ${2}, reason: wind fix)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ disarida,\ sebep:\ gorunurluk\ senkronu\)$	[LOCATION] The player is inside: ${1} (before: outside, reason: visibility sync)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ (.*?),\ sebep:\ gorunurluk\ senkronu\)$	[LOCATION] The player is inside: ${1} (before: ${2}, reason: visibility sync)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ disarida,\ sebep:\ kapidan\ giris\)$	[LOCATION] The player is inside: ${1} (before: outside, reason: came in through the door)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ (.*?),\ sebep:\ kapidan\ giris\)$	[LOCATION] The player is inside: ${1} (before: ${2}, reason: came in through the door)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ disarida,\ sebep:\ alt\-mekan\ gecisi\)$	[LOCATION] The player is inside: ${1} (before: outside, reason: moved into a connected interior such as a basement)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ (.*?),\ sebep:\ alt\-mekan\ gecisi\)$	[LOCATION] The player is inside: ${1} (before: ${2}, reason: moved into a connected interior such as a basement)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ disarida,\ sebep:\ alt\-mekandan\ geri\ donus\)$	[LOCATION] The player is inside: ${1} (before: outside, reason: came back from a connected interior such as a basement)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ (.*?),\ sebep:\ alt\-mekandan\ geri\ donus\)$	[LOCATION] The player is inside: ${1} (before: ${2}, reason: came back from a connected interior such as a basement)
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ disarida,\ sebep:\ (.*?)\)$	[LOCATION] The player is inside: ${1} (before: outside, reason: ${2})
+KONUM	^\[KONUM\]\ Oyuncu\ iceride:\ (.*?)\ \(onceki:\ (.*?),\ sebep:\ (.*?)\)$	[LOCATION] The player is inside: ${1} (before: ${2}, reason: ${3})
+KONUM	^\[KONUM\]\ Oyuncu\ disarida\ \(onceki:\ (.*?),\ sebep:\ ana\ menu\)$	[LOCATION] The player is outside (before: ${1}, reason: main menu)
+KONUM	^\[KONUM\]\ Oyuncu\ disarida\ \(onceki:\ (.*?),\ sebep:\ takili\ bayrak\ bekcisi\)$	[LOCATION] The player is outside (before: ${1}, reason: stuck-flag guard)
+KONUM	^\[KONUM\]\ Oyuncu\ disarida\ \(onceki:\ (.*?),\ sebep:\ sahne\ kaldirildi:\ (.*?)\)$	[LOCATION] The player is outside (before: ${1}, reason: scene unloaded: ${2})
+KONUM	^\[KONUM\]\ Oyuncu\ disarida\ \(onceki:\ (.*?),\ sebep:\ bina\ yuklu\ bolgede\ degil\)$	[LOCATION] The player is outside (before: ${1}, reason: the building is not in the loaded region)
+KONUM	^\[KONUM\]\ Oyuncu\ disarida\ \(onceki:\ (.*?),\ sebep:\ kapisiz\ cikis\)$	[LOCATION] The player is outside (before: ${1}, reason: left without using a door)
+KONUM	^\[KONUM\]\ Oyuncu\ disarida\ \(onceki:\ (.*?),\ sebep:\ kapidan\ cikis\)$	[LOCATION] The player is outside (before: ${1}, reason: went out through the door)
+KONUM	^\[KONUM\]\ Oyuncu\ disarida\ \(onceki:\ (.*?),\ sebep:\ (.*?)\)$	[LOCATION] The player is outside (before: ${1}, reason: ${2})
+KURULUM	^\[KURULUM\]\ (.*?)\ '(.*?)'$	[SETUP] ${1} '${2}'
+LEGACY	^\[LEGACY\]\ (.*?):\ oyun\ henuz\ yeni\ \(<0\.05sa\),\ devralinacak\ gecmis\ yok\ \-\ karar\ diske\ YAZILMIYOR,\ sonraki\ bolge\ yuklemesinde\ yeniden\ sorulacak\.$	[LEGACY] ${1}: the game is still new (<0.05h), there is no history to inherit - the decision is NOT written to disk and will be asked again on the next region load.
+LEGACY	^\[LEGACY\]\ (.*?):\ '(.*?)'\ sahnesini\ birden\ fazla\ bina\ paylasiyor\ ve\ bu\ bina\ hicbir\ kayit\ anahtarina\ baglanamadi\.\ Yanlis\ binaya\ veri\ aktarmamak\ icin\ ATLANIYOR\.\ \(F6\ ile\ kayittaki\ anahtarlari\ listeleyip\ config'e\ LegacySceneKeyOverride\ yazabilirsiniz\.\)$	[LEGACY] ${1}: more than one building shares the '${2}' scene and this building could not be bound to any save key. SKIPPING so data is not imported into the wrong building. (Press F6 to list the keys in the save, then set LegacySceneKeyOverride in the config.)
+LEGACY	^\[LEGACY\]\ (.*?):\ eski\ kayitta\ bu\ bina\ yok\ \(hic\ girilmemis\),\ normal\ ilk\ loot\ akisi\ calisacak\.$	[LEGACY] ${1}: this building is not in the old save (never entered), the normal first loot flow will run.
+LEGACY	^\[LEGACY\]\ (.*?):\ eski\ \(mod\ oncesi\)\ kayit\ verisi\ bulundu\ \(kaynak=(.*?),\ id=(.*?)\)\.\ Oyuncu\ yaklastiginda\ aktarilacak\.$	[LEGACY] ${1}: old (pre-mod) save data found (source=${2}, id=${3}). It will be imported when the player comes near.
+LEGACY	^\[LEGACY\]\ (.*?):\ 'yeni\ oyun'\ isareti\ bulundu\ ama\ oyun\ artik\ yeni\ degil\ \-\ isaret\ siliniyor,\ eski\ kayit\ yeniden\ kontrol\ edilecek\.$	[LEGACY] ${1}: a 'new game' marker was found but the game is no longer new - deleting the marker, the old save will be checked again.
+LEGACY	^\[LEGACY\]\ (.*?):\ karar\ zaten\ verilmis\ \(isaret='(.*?)'\),\ aktarim\ atlaniyor\.$	[LEGACY] ${1}: the decision has already been made (marker='${2}'), skipping the import.
+LEGACY	^\[LEGACY\]\ (.*?):\ kapi\ GUID'i\ bulunamadi,\ geriye\ kalan\ tek\ anahtar\ '(.*?)'\ eslendi\.$	[LEGACY] ${1}: door GUID not found, matched the one remaining key '${2}'.
+LEGACY	^\[LEGACY\]\ Slot\ okuma\ \(string\)\ basarisiz:\ id=(.*?)\ byGuid=(.*?)\ \-\ (.*?)$	[LEGACY] Slot read (string) failed: id=${1} byGuid=${2} - ${3}
+LEGACY	^\[LEGACY\]\ Slot\ okuma\ \(obje\)\ basarisiz:\ id=(.*?)\ byGuid=(.*?)\ \-\ (.*?)$	[LEGACY] Slot read (object) failed: id=${1} byGuid=${2} - ${3}
+LEGACY	^\[LEGACY\]\ (.*?):\ kayit\ okunamadi\ \-\ (.*?)$	[LEGACY] ${1}: the save could not be read - ${2}
+LEGACY	^\[LEGACY\]\ (.*?):\ yedek\ yazilamadi\ \-\ (.*?)$	[LEGACY] ${1}: backup could not be written - ${2}
+LEGACY	^\[LEGACY\]\ (.*?):\ SceneSaveGameFormat\ cozulemedi\ \-\ (.*?)$	[LEGACY] ${1}: SceneSaveGameFormat could not be parsed - ${2}
+LEGACY	^\[LEGACY\]\ (.*?):\ yerlestirilmis\ obje\ olusturma\ hatasi\ \-\ (.*?)$	[LEGACY] ${1}: placed-object creation error - ${2}
+LEGACY	^\[LEGACY\]\ (.*?):\ konteyner\ aktarimi\ hatasi\ \-\ (.*?)$	[LEGACY] ${1}: container import error - ${2}
+LEGACY	^\[LEGACY\]\ (.*?):\ esya\ aktarimi\ hatasi\ \-\ (.*?)$	[LEGACY] ${1}: gear import error - ${2}
+LEGACY	^\[LEGACY\]\ (.*?):\ etkilesim\ durumu\ aktarimi\ hatasi\ \-\ (.*?)$	[LEGACY] ${1}: interaction state import error - ${2}
+LEGACY	^\[LEGACY\]\ (.*?):\ cop\ durumu\ aktarimi\ hatasi\ \-\ (.*?)$	[LEGACY] ${1}: junk state import error - ${2}
+LEGACY	^\[LEGACY\]\ (.*?):\ eski\ kayit\ aktarildi\ \-\ (.*?)\ esya,\ (.*?)\ konteyner,\ (.*?)\ etkilesim\ durumu,\ (.*?)\ yerlestirilmis\ obje\.$	[LEGACY] ${1}: old save imported - ${2} items, ${3} containers, ${4} interaction states, ${5} placed objects.
+LEGACY	^\[LEGACY\]\ (.*?):\ (.*?)\.\ Aktarim\ iptal\ edildi\.$	[LEGACY] ${1}: ${2}. Import canceled.
+LEGACY	^\[LEGACY\]\ (.*?):\ bu\ bina\ bu\ oturumda\ fazla\ loot\ ile\ gorunebilir;\ bir\ sonraki\ bolge\ yuklemesinde\ normal\ loot\ akisina\ donecek\.\ Yeniden\ denemek\ icin\ SeamlessInteriorsData\ icindeki\ '\*_(.*?)_legacy\.json'\ dosyasini\ silin\.$	[LEGACY] ${1}: this building may show too much loot this session; it will return to the normal loot flow on the next region load. To try again, delete the '*_${2}_legacy.json' file inside SeamlessInteriorsData.
+LEGACY	^\[LEGACY\]\ Marker\ yazilamadi:\ (.*?)$	[LEGACY] Marker could not be written: ${1}
+LEGACY-CONTAINER	^\[LEGACY\-CONTAINER\]\ ContainerSaveList\ cozulemedi:\ (.*?)$	[LEGACY-CONTAINER] ContainerSaveList could not be parsed: ${1}
+LEGACY-CONTAINER	^\[LEGACY\-CONTAINER\]\ ESLESMEDI\ prefab='(.*?)'\ guid='(.*?)'\ pos=(.*?)\ \|\ (.*?)$	[LEGACY-CONTAINER] NO MATCH prefab='${1}' guid='${2}' pos=${3} | ${4}
+LEGACY-CONTAINER	^\[LEGACY\-CONTAINER\]\ (.*?):\ (.*?)/(.*?)\ konteyner\ eslesti\ \(guid=(.*?),\ pozisyon=(.*?),\ isim=(.*?)\),\ (.*?)\ eslesmedi\.\ Klonda\ (.*?)\ konteyner\ var\.$	[LEGACY-CONTAINER] ${1}: ${2}/${3} containers matched (guid=${4}, position=${5}, name=${6}), ${7} did not match. The clone has ${8} containers.
+LEGACY-CONTAINER	^\[LEGACY\-CONTAINER\]\ KLONDA:\ '(.*?)'\ local=(.*?)\ guid='(.*?)'$	[LEGACY-CONTAINER] IN CLONE: '${1}' local=${2} guid='${3}'
+LEGACY-GEAR	^\[LEGACY\-GEAR\]\ GearSaveList\ cozulemedi:\ (.*?)$	[LEGACY-GEAR] GearSaveList could not be parsed: ${1}
+LEGACY-PLACEABLE	^\[LEGACY\-PLACEABLE\]\ KALDIRILDI:\ '(.*?)'\ guid=(.*?)$	[LEGACY-PLACEABLE] REMOVED: '${1}' guid=${2}
+LEGACY-PLACEABLE	^\[LEGACY\-PLACEABLE\]\ '(.*?)'\ uygulanamadi:\ (.*?)$	[LEGACY-PLACEABLE] '${1}' could not be applied: ${2}
+LEGACY-PLACEABLE	^\[LEGACY\-PLACEABLE\]\ (.*?):\ (.*?)\ tasinmis,\ (.*?)\ oyuncunun\ koydugu,\ (.*?)\ kaldirilmis\ \(klonda\ kapatildi\),\ (.*?)\ kaldirilmis\ ama\ klonda\ yok\ \(toplam\ kayit\ (.*?)\)\.$	[LEGACY-PLACEABLE] ${1}: ${2} moved, ${3} placed by the player, ${4} removed (disabled in the clone), ${5} removed but not present in the clone (total records ${6}).
+LEGACY-PLACEABLE	^\[LEGACY\-PLACEABLE\]\ (.*?):\ kayit\ dokumu\ \-\ Active=(.*?)\ Removed=(.*?)\ OnPlayer=(.*?)\ Inactive=(.*?)\ Unregistered=(.*?)\ \|\ konum\ tasiyan\ kayit=(.*?),\ klonda\ guid'i\ bulunan=(.*?)\.$	[LEGACY-PLACEABLE] ${1}: record dump - Active=${2} Removed=${3} OnPlayer=${4} Inactive=${5} Unregistered=${6} | records carrying a position=${7}, guid found in the clone=${8}.
+LEGACY-PLACEABLE	^\[LEGACY\-PLACEABLE\]\ (.*?):\ eski\ kayittaki\ yerlesim\ listesi\ (.*?)\ kayit\ iceriyor\ ama\ hicbirinde\ konum\ yok\ \(hepsi\ 'kaldirildi'\)\.\ Orijinal\ sahnedeki\ yerlestirmeler\ oyunun\ kaydina\ hic\ yazilmamis\ \-\ mobilya\ konumlari\ aktarilamaz\.$	[LEGACY-PLACEABLE] ${1}: the placement list in the old save holds ${2} records but none of them carries a position (all 'removed'). The placements in the original scene were never written to the game's save - furniture positions cannot be imported.
+LEGACY-RSO	^\[LEGACY\-RSO\]\ (.*?):\ liste\ cozulemedi\ \-\ (.*?)$	[LEGACY-RSO] ${1}: the list could not be parsed - ${2}
+LEGACY-RSO	^\[LEGACY\-RSO\]\ (.*?):\ (.*?)\ filtre,\ (.*?)\ aday\ \-\ (.*?)\ acik\ birakildi,\ (.*?)\ kapatildi\ \(kayitta\ (.*?)\ secilmis\ obje\)\.$	[LEGACY-RSO] ${1}: ${2} filters, ${3} candidates - ${4} left enabled, ${5} disabled (${6} chosen objects in the save).
+LEGACY-STATE	^\[LEGACY\-STATE\]\ (.*?):\ guid'siz\ kayit\ atlandi\.$	[LEGACY-STATE] ${1}: record without a guid skipped.
+LEGACY-TESHIS	^\[LEGACY\-TESHIS\]\ ─────\ Aktif\ kayit:\ '(.*?)'\ ─────$	[LEGACY-DIAG] ───── Active save: '${1}' ─────
+LEGACY-TESHIS	^\[LEGACY\-TESHIS\]\ Sahne\ anahtari\ listesi\ alinamadi\ \(null\)\.$	[LEGACY-DIAG] The scene key list could not be obtained (null).
+LEGACY-TESHIS	^\[LEGACY\-TESHIS\]\ Kayitta\ (.*?)\ sahne\ anahtari\ var:$	[LEGACY-DIAG] The save holds ${1} scene keys:
+LEGACY-TESHIS	^\[LEGACY\-TESHIS\]\ \ \ \[(.*?)\]\ (.*?)$	[LEGACY-DIAG]   [${1}] ${2}
+LEGACY-TESHIS	^\[LEGACY\-TESHIS\]\ Sahne\ anahtarlari\ okunamadi:\ (.*?)$	[LEGACY-DIAG] Scene keys could not be read: ${1}
+LEGACY-TESHIS	^\[LEGACY\-TESHIS\]\ (.*?):\ sahne='(.*?)'\ durum=(.*?)\ kaynak=(.*?)\ id='(.*?)'\ kapiGUID='(.*?)'\ hidrate=(.*?)\ isaret=(.*?)$	[LEGACY-DIAG] ${1}: scene='${2}' state=${3} source=${4} id='${5}' doorGUID='${6}' hydrated=${7} marker=${8}
+LEGACY-TESHIS	^\[LEGACY\-TESHIS\]\ Hata:\ (.*?)$	[LEGACY-DIAG] Error: ${1}
+LIGHT-BIND	^\[LIGHT\-BIND\]\ (.*?):\ yonetici=(.*?)\ \(calisan=(.*?),\ acilan=(.*?)\),\ klon\ disina\ bagli=(.*?),\ yeniden\ baglanan=(.*?),\ klon\ ambient\ objesi=(.*?)$	[LIGHT-BIND] ${1}: managers=${2} (running=${3}, reactivated=${4}), bound outside the clone=${5}, rebound=${6}, clone ambient object=${7}
+LIGHT-BLOCK	^\[LIGHT\-BLOCK\]\ (.*?):\ '(.*?)'\ global\ ambient\ yazmasi\ engellendi\ \(sahip\ degil\)\.$	[LIGHT-BLOCK] ${1}: '${2}' writing the global ambient light was blocked (not the owner).
+LIGHT-BLOCK	^\[LIGHT\-BLOCK\]\ (.*?):\ '(.*?)'\ (.*?)\ engellendi\ \(sahip\ degil\)\.$	[LIGHT-BLOCK] ${1}: '${2}' ${3} blocked (not the owner).
+LIGHT-OWNER	^\[LIGHT\-OWNER\]\ (.*?)\ global\ aydinlatmanin\ sahibi\ oldu\.$	[LIGHT-OWNER] ${1} took ownership of the global lighting.
+LIGHT-OWNER	^\[LIGHT\-OWNER\]\ Sahiplik\ birakildi\ \((.*?)\),\ dis\ dunya\ ambient'i\ geri\ yuklendi\.$	[LIGHT-OWNER] Ownership released (${1}), the outside-world ambient was restored.
+LIGHT-OWNER	^\[LIGHT\-OWNER\]\ Sahiplik\ devredildi:\ (.*?)\ \->\ (.*?)$	[LIGHT-OWNER] Ownership handed over: ${1} -> ${2}
+LIGHT-OWNER	^\[LIGHT\-OWNER\]\ (.*?):\ onceki\ ziyaretten\ kalan\ ic\ mekan\ ambient'i\ geri\ uygulandi\.$	[LIGHT-OWNER] ${1}: the interior ambient left over from the previous visit was reapplied.
+LIGHT-OWNER	^\[LIGHT\-OWNER\]\ (.*?):\ (.*?),\ dis\ ambient\ x(.*?)\ ile\ karartildi\ \(son\ care\)\.$	[LIGHT-OWNER] ${1}: ${2}, the outside ambient was darkened by x${3} (last resort).
+LIGHT-OWNER	^\[LIGHT\-OWNER\]\ (.*?):\ ic\ mekan\ ambient'i\ kuruldu\ \(mode=(.*?),\ light=(.*?)\)\ —\ dis\ dunya\ yazari\ artik\ engelleniyor\.$	[LIGHT-OWNER] ${1}: the interior ambient was installed (mode=${2}, light=${3}) - the outside-world writer is now blocked.
+LOAD-STATE	^\[LOAD\-STATE\]\ (.*?):\ kayit\ 'disarida'\ diyor\ ama\ oyuncu\ park\ edilmis\ odanin\ icinde\ duruyor\ \-\ konuma\ uyuluyor\.$	[LOAD-STATE] ${1}: the save says 'outside' but the player is standing in the parked room - going by where the player is.
+LOAD-STATE	^\[LOAD\-STATE\]\ (.*?):\ geometri\ 'iceride'\ dedi\ ama\ kayit\ 'disarida'\ diyor,\ kayda\ uyuluyor\.$	[LOAD-STATE] ${1}: the geometry said 'inside' but the save says 'outside', following the save.
+LOOT-LOCK	^\[LOOT\-LOCK\]\ (.*?):\ kayitli\ icerik\ dosyasi\ yok,\ 'loot\ uretildi'\ bayragi\ yok\ sayiliyor\ \-\ sablon\ lootu\ korunup\ yeniden\ elenecek\.$	[LOOT-LOCK] ${1}: there is no saved content file, so the 'loot generated' flag is being ignored - the template loot will be kept and filtered again.
+LOOT-ROLL	^\[LOOT\-ROLL\]\ (.*?)\ \(mod=(.*?)\):\ (.*?)\ RandomSpawnObject'in\ (.*?)\ tanesi\ elendi\.\ Aday=(.*?)\ \(elemeden\ once\ kapali=(.*?)\),\ zorlugun\ istedigi=(.*?)\.\ Dogma\ sansi:\ (.*?)\ esyadan\ (.*?)\ tanesi\ elendi\.\ Acik\ esya:\ (.*?)\ \->\ (.*?)\.$	[LOOT-ROLL] ${1} (mode=${2}): ${4} of ${3} RandomSpawnObjects were filtered out. Candidates=${5} (disabled before filtering=${6}), difficulty quota=${7}. Spawn chance: ${9} of ${8} items filtered out. Enabled items: ${10} -> ${11}.
+LOOT-ROLL	^\[LOOT\-ROLL\]\ (.*?):\ '(.*?)'\ dogma\ sansi\ atilamadi:\ (.*?)$	[LOOT-ROLL] ${1}: the spawn chance for '${2}' could not be rolled: ${3}
+LOOT-ROLL	^\[LOOT\-ROLL\]\ Eleme\ basarisiz:\ (.*?)$	[LOOT-ROLL] Filtering failed: ${1}
+MOD-GECIS	^\[MOD\-GECIS\]\ (.*?)\ icin\ kayitli\ 'oyuncu\ iceride'\ bilgisi\ kullanilmadi:\ oyuncuyu\ sahneyi\ yukleten\ mod\ yerlestiriyor\.$	[MOD-TRANSITION] The saved 'player is inside ${1}' state was not used: the mod that loaded the scene decides where the player goes.
+MOD-GECIS	^\[MOD\-GECIS\]\ Bir\ mod\ (.*?)\ icindeyken\ '(.*?)'\ sahnesini\ yukletti\.$	[MOD-TRANSITION] A mod loaded the scene '${2}' while the player was inside ${1}.
+NESNE-GORUNUMU	^\[NESNE\-GORUNUMU\]\ Kuruldu:\ modlar\ FindObjectsOfType\ ile\ yalnizca\ bulunduklari\ yerin\ nesnelerini\ buluyor\.$	[OBJECT-VIEW] Installed: mods searching with FindObjectsOfType find only the objects of the place the player is in, as in the vanilla game.
+NESNE-GORUNUMU	^\[NESNE\-GORUNUMU\]\ Kurulamadi:\ FindObjectsOfType'in\ motor\ adresi\ bulunamadi\ \(oyun\ surumu\ degismis\ olabilir\)\.$	[OBJECT-VIEW] Could not be installed: the engine address of FindObjectsOfType was not found (the game version may have changed).
+NESNE-GORUNUMU	^\[NESNE\-GORUNUMU\]\ Kurulamadi:\ (.*?)$	[OBJECT-VIEW] Could not be installed: ${1}
+NESNE-GORUNUMU	^\[NESNE\-GORUNUMU\]\ Kapatildi,\ modlar\ tum\ nesneleri\ buluyor:\ (.*?)$	[OBJECT-VIEW] Switched off, mods now find every object: ${1}
+NESNE-GORUNUMU	^\[NESNE\-GORUNUMU\]\ (.*?)\ disarida\ (.*?)\ aradi:\ (.*?)\ nesneden\ (.*?)\ tanesi\ gosterildi\.$	[OBJECT-VIEW] ${1} searched for ${2} outdoors: ${4} of ${3} objects were shown.
+NESNE-GORUNUMU	^\[NESNE\-GORUNUMU\]\ (.*?)\ (.*?)\ icinde\ (.*?)\ aradi:\ (.*?)\ nesneden\ (.*?)\ tanesi\ gosterildi\.$	[OBJECT-VIEW] ${1} searched for ${3} inside ${2}: ${5} of ${4} objects were shown.
+NEW GAME	^\[NEW\ GAME\]\ Temizleme\ ATLANDI\ \(scene=(.*?),\ supported=(.*?),\ restore=(.*?)\)\.$	[NEW GAME] Cleanup SKIPPED (scene=${1}, supported=${2}, restore=${3}).
+NEW GAME	^\[NEW\ GAME\]\ Onceki\ save'den\ kalan\ PlayerInside\ bilgisi\ temizlendi\.$	[NEW GAME] PlayerInside data left over from a previous save was cleared.
+NEW GAME	^\[NEW\ GAME\]\ Eski\ Placeable\ JSON\ silindi:\ (.*?)$	[NEW GAME] Old Placeable JSON deleted: ${1}
+NEW GAME	^\[NEW\ GAME\]\ Eski\ Gear\ JSON\ silindi:\ (.*?)$	[NEW GAME] Old Gear JSON deleted: ${1}
+NEW GAME	^\[NEW\ GAME\]\ Eski\ Container\ JSON\ silindi:\ (.*?)$	[NEW GAME] Old Container JSON deleted: ${1}
+NEW GAME	^\[NEW\ GAME\]\ Eski\ Etkilesim\ Durumu\ JSON\ silindi:\ (.*?)$	[NEW GAME] Old interaction state JSON deleted: ${1}
+NEW GAME	^\[NEW\ GAME\]\ Eski\ Cop\ \(junk\)\ durumu\ JSON\ silindi:\ (.*?)$	[NEW GAME] Old junk state JSON deleted: ${1}
+NEW GAME DETECTED	^\[NEW\ GAME\ DETECTED\]\ (.*?)\ loot\ lock\ resetlendi!\ Eşyalar\ doğacak\.$	[NEW GAME DETECTED] ${1} loot lock reset! Items will spawn.
+OLCEK-TESHIS	^\[OLCEK\-TESHIS\]\ Oyuncu\ bir\ klon\ sahnenin\ icinde\ degil,\ tarama\ atlandi\.$	[SCALE-DIAG] The player is not inside a clone scene, scan skipped.
+OLCEK-TESHIS	^\[OLCEK\-TESHIS\]\ '(.*?)'\ local=(.*?)\ world=(.*?)\ parent='(.*?)'$	[SCALE-DIAG] '${1}' local=${2} world=${3} parent='${4}'
+OLCEK-TESHIS	^\[OLCEK\-TESHIS\]\ (.*?):\ (.*?)\ esya\ tarandi,\ (.*?)\ tanesinin\ olcegi\ bozuk\.$	[SCALE-DIAG] ${1}: ${2} items scanned, ${3} of them have a broken scale.
+ORPHAN-CLEANUP	^\[ORPHAN\-CLEANUP\]\ '(.*?)'\ korundu\ \-\ oyunun\ yerlestirme\ kokunun\ altinda\.$	[ORPHAN-CLEANUP] '${1}' preserved - it is under the game's own placement root.
+ORPHAN-CLEANUP	^\[ORPHAN\-CLEANUP\]\ '(.*?)'\ yok\ edildi\ \(sahne='(.*?)',\ parent='(.*?)'\)\.$	[ORPHAN-CLEANUP] '${1}' destroyed (scene='${2}', parent='${3}').
+PENCERE	^\[PENCERE\]\ (.*?):\ '(.*?)'\ camda\ renk/emisyon\ ozelligi\ yok,\ atlandi\.$	[WINDOW] ${1}: '${2}' glass has no color/emission property, skipped.
+PERF	^\[PERF\]\ Olcum\ ACIK\ \(Shift\+F6\)$	[PERF] Measuring ON (Shift+F6)
+PERF	^\[PERF\]\ Olcum\ KAPALI\ \(Shift\+F6\)$	[PERF] Measuring OFF (Shift+F6)
+PERF	^\[PERF\]\ disarida\ \|\ fps\ (.*?)\ \(en\ kotu\ kare\ (.*?)\ ms\)\ \|\ SI\ (.*?)\ ms/kare:(.*?)\ \|\ cagri/kare:(.*?)\ \|\ collider\-borc\ (.*?)\ \|\ gc\ (.*?)/(.*?)/(.*?)$	[PERF] outside | fps ${1} (worst frame ${2} ms) | SI ${3} ms/frame:${4} | calls/frame:${5} | colliders switched off by SI ${6} | gc ${7}/${8}/${9}
+PERF	^\[PERF\]\ (.*?)\ \|\ fps\ (.*?)\ \(en\ kotu\ kare\ (.*?)\ ms\)\ \|\ SI\ (.*?)\ ms/kare:(.*?)\ \|\ cagri/kare:(.*?)\ \|\ collider\-borc\ (.*?)\ \|\ gc\ (.*?)/(.*?)/(.*?)$	[PERF] ${1} | fps ${2} (worst frame ${3} ms) | SI ${4} ms/frame:${5} | calls/frame:${6} | colliders switched off by SI ${7} | gc ${8}/${9}/${10}
+PERF-BELLEK	^\[PERF\-BELLEK\]\ kare\ basina\ (.*?)\ KB\ ayriliyor:\ SI\ (.*?)\ KB,\ digerleri\ (.*?)\ KB\ \|\ heap\ (.*?)\ MB$	[PERF-MEMORY] ${1} KB allocated per frame: SI ${2} KB, everything else ${3} KB | heap ${4} MB
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \(ACIK\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=dolu$	[PERF-BUILDING] ${1} (open) gear=${2} furniture=${3} renderers=${4} colliders=${5} contents=loaded
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \(ACIK\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=bos$	[PERF-BUILDING] ${1} (open) gear=${2} furniture=${3} renderers=${4} colliders=${5} contents=not loaded
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \(ACIK\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=(.*?)$	[PERF-BUILDING] ${1} (open) gear=${2} furniture=${3} renderers=${4} colliders=${5} contents=${6}
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \(park\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=dolu$	[PERF-BUILDING] ${1} (parked) gear=${2} furniture=${3} renderers=${4} colliders=${5} contents=loaded
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \(park\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=bos$	[PERF-BUILDING] ${1} (parked) gear=${2} furniture=${3} renderers=${4} colliders=${5} contents=not loaded
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \(park\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=(.*?)$	[PERF-BUILDING] ${1} (parked) gear=${2} furniture=${3} renderers=${4} colliders=${5} contents=${6}
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \(kapali\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=dolu$	[PERF-BUILDING] ${1} (closed) gear=${2} furniture=${3} renderers=${4} colliders=${5} contents=loaded
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \(kapali\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=bos$	[PERF-BUILDING] ${1} (closed) gear=${2} furniture=${3} renderers=${4} colliders=${5} contents=not loaded
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \(kapali\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=(.*?)$	[PERF-BUILDING] ${1} (closed) gear=${2} furniture=${3} renderers=${4} colliders=${5} contents=${6}
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \((.*?)\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=dolu$	[PERF-BUILDING] ${1} (${2}) gear=${3} furniture=${4} renderers=${5} colliders=${6} contents=loaded
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \((.*?)\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=bos$	[PERF-BUILDING] ${1} (${2}) gear=${3} furniture=${4} renderers=${5} colliders=${6} contents=not loaded
+PERF-BINA	^\[PERF\-BINA\]\ (.*?)\ \((.*?)\)\ esya=(.*?)\ mobilya=(.*?)\ renderer=(.*?)\ collider=(.*?)\ icerik=(.*?)$	[PERF-BUILDING] ${1} (${2}) gear=${3} furniture=${4} renderers=${5} colliders=${6} contents=${7}
+PERF-BINA	^\[PERF\-BINA\]\ Toplam\ (.*?)\ bina:\ (.*?)\ esya,\ (.*?)\ mobilya\ \(bir\ tam\ klon\ taramasinin\ gezdigi\ nesne\ sayisi\)\.$	[PERF-BUILDING] ${1} buildings in total: ${2} gear items, ${3} pieces of furniture (how many objects one full scan of the clones has to walk through).
+PERF-ISIK	^\[PERF\-ISIK\]\ '(.*?)'\ \(ust:\ (.*?)\)\ tip=(.*?)\ menzil=(.*?)\ parlaklik=(.*?)\ golge=(.*?)\ mod=(.*?)$	[PERF-LIGHT] '${1}' (parent: ${2}) type=${3} range=${4} intensity=${5} shadows=${6} mode=${7}
+PERF-SAHNE	^\[PERF\-SAHNE\]\ renderer=(.*?)\ \(acik\ (.*?)\ binada\ (.*?)\)\ yanan\ isik=(.*?)\ \(golgeli\ (.*?);\ binalarda\ yanan\ (.*?),\ golgeli\ (.*?)\)\ parcacik=(.*?)\ \|\ kamera\ uzak=(.*?)\ \|\ arazi\ agac=(.*?)\ detay=(.*?)\ pikselHata=(.*?)\ \|\ golge=(.*?)m\ lodBias=(.*?)\ pikselIsik=(.*?)$	[PERF-SCENE] renderers=${1} (${3} in ${2} open buildings) lights on=${4} (${5} casting shadows; in buildings ${6} on, ${7} casting shadows) particle systems=${8} | camera far plane=${9} | terrain trees=${10} detail=${11} pixelError=${12} | shadow distance=${13}m lodBias=${14} pixelLights=${15}
+PERF-SAHNE	^\[PERF\-SAHNE\]\ Sahne\ sayimi\ yapilamadi:\ (.*?)$	[PERF-SCENE] The scene count could not be taken: ${1}
+PERF-TARAMA	^\[PERF\-TARAMA\]\ (.*?)\ sn\ icinde\ toplam\ (.*?)\ ms\ \(saniyede\ (.*?)\ ms\):(.*?)$	[PERF-SCAN] ${2} ms in total over ${1} s (${3} ms per second):${4}
+PERSIST	^\[PERSIST\]\ (.*?)\ DontDestroyOnLoad'a\ tasindi\.$	[PERSIST] ${1} moved to DontDestroyOnLoad.
+PERSIST	^\[PERSIST\]\ Klon\ interior\ (.*?)'a\ geri\ baglandi:\ (.*?)$	[PERSIST] Clone interior reattached to ${1}: ${2}
+PERSIST-FIX	^\[PERSIST\-FIX\]\ Kaydedilmis\ local\ pozisyon\ ile\ duzeltildi:\ (.*?)$	[PERSIST-FIX] Corrected using the saved local position: ${1}
+PERSIST-FIX	^\[PERSIST\-FIX\]\ Oyuncu\ Y\ duzeltildi\ \(fallback\):\ (.*?)$	[PERSIST-FIX] Player Y corrected (fallback): ${1}
+PLACEABLE-FIX	^\[PLACEABLE\-FIX\]\ SerializeInventory\ oncesi\ olu/silinmis\ referans\ temizlendi:\ (.*?)$	[PLACEABLE-FIX] A dead/deleted reference was cleaned up before SerializeInventory: ${1}
+PLACEABLE-FIX	^\[PLACEABLE\-FIX\]\ Hata:\ (.*?)$	[PLACEABLE-FIX] Error: ${1}
+PLACEABLE-LOAD	^\[PLACEABLE\-LOAD\]\ (.*?)\ Save\ dosyasi\ bulunamadi,\ atlaniyor\.$	[PLACEABLE-LOAD] ${1} save file not found, skipping.
+PLACEABLE-LOAD	^\[PLACEABLE\-LOAD\]\ (.*?):\ (.*?)/(.*?)\ Placeable\ geri\ yuklendi\ \((.*?)\ degismis,\ (.*?)\ yerlestirilmis\ obje\ kapatilmaktan\ korundu,\ (.*?)\ obje\ oyuncunun\ cantasinda\ oldugu\ icin\ gizlendi\)\.$	[PLACEABLE-LOAD] ${1}: ${2}/${3} Placeables restored (${4} changed, ${5} placed objects protected from being disabled, ${6} objects hidden because they are in the player's backpack).
+PLACEABLE-SAVE	^\[PLACEABLE\-SAVE\]\ (.*?):\ (.*?)\ Placeable\ kaydedildi\ \((.*?)\ tasinmis\):\ (.*?)$	[PLACEABLE-SAVE] ${1}: ${2} Placeables saved (${3} moved): ${4}
+PLACEABLE-SAVE	^\[PLACEABLE\-SAVE\]\ (.*?):\ klon\ disindan\ (.*?)\ obje\ sahiplenildi\.$	[PLACEABLE-SAVE] ${1}: ${2} objects from outside the clone were adopted.
+PLACEABLE-SAVE	^\[PLACEABLE\-SAVE\]\ MOVED\ obje:\ guid=(.*?)\ parent=(.*?)\ relPos=(.*?)$	[PLACEABLE-SAVE] MOVED object: guid=${1} parent=${2} relPos=${3}
+PLACEABLE-SAVE	^\[PLACEABLE\-SAVE\]\ Hata:\ (.*?)$	[PLACEABLE-SAVE] Error: ${1}
+PLACED-FIX	^\[PLACED\-FIX\]\ (.*?):\ '(.*?)'\ kapali\ kalmisti,\ geri\ acildi\.$	[PLACED-FIX] ${1}: '${2}' had been left switched off; switched back on.
+PORTAL-BLOCK	^\[PORTAL\-BLOCK\]\ (.*?)\ henuz\ hazir\ degil,\ gecis\ engellendi\.$	[PORTAL-BLOCK] ${1} is not ready yet, the transition was blocked.
+PORTAL-FIX	^\[PORTAL\-FIX\]\ Dısarı\ cıkıs\ Y\ ekseni\ otomatik\ duzeltildi\.\ Cıkarılan\ Yükseklik:\ (.*?)$	[PORTAL-FIX] The exit Y axis was corrected automatically. Height removed: ${1}
+PORTAL-SAVE	^\[PORTAL\-SAVE\]\ Orijinal\ ic\ mekana\ gecis\ oncesi\ Placeable\ pozisyonlari\ ve\ konteyner\ verileri\ kaydedildi\.$	[PORTAL-SAVE] Placeable positions and container data were saved before the transition into the original interior.
+PORTAL-SAVE	^\[PORTAL\-SAVE\]\ Hata:\ (.*?)$	[PORTAL-SAVE] Error: ${1}
+RSO-CLEANUP	^\[RSO\-CLEANUP\]\ (.*?):\ (.*?)\ RSO\ component\ SetActive\ oncesi\ yok\ edildi\.$	[RSO-CLEANUP] ${1}: ${2} RSO components destroyed before SetActive.
+SAHNE-GORUNUMU	^\[SAHNE\-GORUNUMU\]\ Kurulamadi:\ MonoMod\ bulunamadi\.$	[SCENE-VIEW] Could not be installed: MonoMod was not found.
+SAHNE-GORUNUMU	^\[SAHNE\-GORUNUMU\]\ Kurulamadi:\ Weather\.IsIndoorScene\ ya\ da\ GameManager\.m_ActiveScene\ bulunamadi\.$	[SCENE-VIEW] Could not be installed: Weather.IsIndoorScene or GameManager.m_ActiveScene was not found.
+SAHNE-GORUNUMU	^\[SAHNE\-GORUNUMU\]\ Kurulamadi:\ (.*?)$	[SCENE-VIEW] Could not be installed: ${1}
+SAHNE-GORUNUMU	^\[SAHNE\-GORUNUMU\]\ Kuruldu:\ bina\ icinde\ modlar\ IsIndoorScene,\ m_ActiveScene\ ve\ Scene\.name\ icin\ ic\ sahneyi\ goruyor\.$	[SCENE-VIEW] Installed: inside a building, mods asking IsIndoorScene, m_ActiveScene and Scene.name get the interior scene, as in the vanilla game.
+SAHNE-GORUNUMU	^\[SAHNE\-GORUNUMU\]\ Kuruldu:\ bina\ icinde\ modlar\ IsIndoorScene\ ve\ m_ActiveScene\ icin\ ic\ sahneyi\ goruyor\.\ Scene\.name\ kancasi\ kurulamadi:\ (.*?)$	[SCENE-VIEW] Installed: inside a building, mods asking IsIndoorScene and m_ActiveScene get the interior scene, as in the vanilla game. The Scene.name hook could not be installed: ${1}
+SAHNE-GORUNUMU	^\[SAHNE\-GORUNUMU\]\ Kuruldu:\ bina\ icinde\ modlar\ (.*?)\ icin\ ic\ sahneyi\ goruyor\.(.*?)$	[SCENE-VIEW] Installed: inside a building, mods asking ${1} get the interior scene.${2}
+SAHNE-GORUNUMU	^\[SAHNE\-GORUNUMU\]\ (.*?):\ modlar\ ic\ sahne\ '(.*?)'\ goruyor\.$	[SCENE-VIEW] ${1}: mods see the interior scene '${2}'.
+SAHNE-GORUNUMU	^\[SAHNE\-GORUNUMU\]\ (.*?):\ ic\ sahne\ '(.*?)'\.$	[SCENE-VIEW] ${1}: interior scene '${2}'.
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ Kuruldu:\ (.*?)\ sahne\ olayi\ aboneligi\ sablon\ sahnelerden\ korunuyor\.$	[SCENE-SHIELD] Installed: ${1} mod subscriptions to scene events will not be told about template scenes.
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ Kurulamadi,\ sablon\ sahneler\ diger\ modlara\ duyurulacak:\ (.*?)$	[SCENE-SHIELD] Could not be installed, so other mods will be told about template scenes: ${1}
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ '(.*?)'\ sablon\ sahnesi\ diger\ modlara\ duyurulmadi\ \(yuklendi\);\ sonrakiler\ sessiz\.$	[SCENE-SHIELD] Other mods were not told that the template scene '${1}' loaded; later ones are logged only with verbose logging on.
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ '(.*?)'\ yuklendi:\ yalnizca\ SI'ya\ iletildi\.$	[SCENE-SHIELD] Template scene '${1}' loaded: only SI was told.
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ '(.*?)'\ sablon\ sahnesi\ diger\ modlara\ duyurulmadi\ \(hazir\);\ sonrakiler\ sessiz\.$	[SCENE-SHIELD] Other mods were not told that the template scene '${1}' initialized; later ones are logged only with verbose logging on.
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ '(.*?)'\ hazir:\ yalnizca\ SI'ya\ iletildi\.$	[SCENE-SHIELD] Template scene '${1}' initialized: only SI was told.
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ '(.*?)'\ sablon\ sahnesi\ diger\ modlara\ duyurulmadi\ \(kaldirildi\);\ sonrakiler\ sessiz\.$	[SCENE-SHIELD] Other mods were not told that the template scene '${1}' unloaded; later ones are logged only with verbose logging on.
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ '(.*?)'\ kaldirildi:\ yalnizca\ SI'ya\ iletildi\.$	[SCENE-SHIELD] Template scene '${1}' unloaded: only SI was told.
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ '(.*?)'\ sablon\ sahnesi\ diger\ modlara\ duyurulmadi\ \((.*?)\);\ sonrakiler\ sessiz\.$	[SCENE-SHIELD] Other mods were not told that the template scene '${1}' ${2}; later ones are logged only with verbose logging on.
+SAHNE-KALKANI	^\[SAHNE\-KALKANI\]\ '(.*?)'\ (.*?):\ yalnizca\ SI'ya\ iletildi\.$	[SCENE-SHIELD] Template scene '${1}' ${2}: only SI was told.
+SAHNE-KILIDI	^\[SAHNE\-KILIDI\]\ Ic\ mekan\ sahne\ yukleme\ kilidi\ (.*?)\ saniyeden\ uzun\ suredir\ acik\ kalmis\ \(yarida\ kesilmis\ bir\ yukleme\),\ zorla\ birakildi\.$	[SCENE-LOCK] The interior scene load lock has been held for more than ${1} seconds (an interrupted load), force released.
+SAVE-FAILED	^\[SAVE\-FAILED\]\ Oyun\ kayit\ hatasi\ verdi!\ debugInfo:\ (.*?)$	[SAVE-FAILED] The game reported a save error! debugInfo: ${1}
+SAVE-LOAD-FIX	^\[SAVE\-LOAD\-FIX\]\ (.*?)\ Yanlis\ gorunum\ tespit\ edildi,\ duzeltiliyor\.$	[SAVE-LOAD-FIX] ${1} wrong visibility detected, correcting.
+SAVE-LOAD-FIX	^\[SAVE\-LOAD\-FIX\]\ Kaydedilmis\ local\ pozisyon\ ile\ duzeltildi:\ (.*?)\ \(yukari:\ (.*?)m\)$	[SAVE-LOAD-FIX] Corrected using the saved local position: ${1} (up: ${2}m)
+SAVE-LOAD-FIX	^\[SAVE\-LOAD\-FIX\]\ Oyuncu\ Y\ duzeltildi\ \(raycast\ fallback\):\ (.*?)\ \(yukari:\ (.*?)m\)$	[SAVE-LOAD-FIX] Player Y corrected (raycast fallback): ${1} (up: ${2}m)
+SAVE-STATE	^\[SAVE\-STATE\]\ Oyuncu\ local\ pozisyon\ kaydedildi:\ (.*?)\ rot:\ (.*?)$	[SAVE-STATE] Player local position saved: ${1} rot: ${2}
+SAVE-STATE	^\[SAVE\-STATE\]\ Oyuncu\ disarida\ kaydetti,\ eski\ local\ pozisyon\ kaydi\ silindi\.$	[SAVE-STATE] The player saved outside, the old local position record was deleted.
+SAVE-STATE	^\[SAVE\-STATE\]\ Oyuncu\ kayit\ pozisyonu:\ DISARIDA$	[SAVE-STATE] Player save position: OUTSIDE
+SAVE-STATE	^\[SAVE\-STATE\]\ Oyuncu\ kayit\ pozisyonu:\ (.*?)$	[SAVE-STATE] Player save position: ${1}
+SCREEN-FAILSAFE	^\[SCREEN\-FAILSAFE\]\ 60\ saniye\ doldu,\ ekran\ zorla\ aciliyor!$	[SCREEN-FAILSAFE] 60 seconds elapsed, force-opening the screen!
+SCREEN-HOLD	^\[SCREEN\-HOLD\]\ Ekran\ karartildi,\ (.*?)\ instance\ yuklenecek\.$	[SCREEN-HOLD] Screen blacked out, ${1} instances will load.
+SCREEN-RELEASE	^\[SCREEN\-RELEASE\]\ Tum\ instance'lar\ hazir,\ ekran\ aciliyor\.$	[SCREEN-RELEASE] All instances ready, opening the screen.
+SCREEN-RELEASE	^\[SCREEN\-RELEASE\]\ Persist\ akisi:\ klonlar\ geri\ baglandi,\ ekran\ aciliyor\.$	[SCREEN-RELEASE] Persist flow: clones reattached, opening the screen.
+SETTINGS	^\[SETTINGS\]\ Legacy\ Save\ Import:\ (.*?)\ \(F6\ teshis\)$	[SETTINGS] Legacy Save Import: ${1} (F6 diagnostics)
+SETTINGS	^\[SETTINGS\]\ Window\ Glow:\ (.*?)\ \(flicker\ (.*?),\ strength\ (.*?)\)\ \(Shift\+F9\ onizleme\)$	[SETTINGS] Window Glow: ${1} (flicker ${2}, strength ${3}) (Shift+F9 preview)
+SPAWN-PLACEABLE	^\[SPAWN\-PLACEABLE\]\ '(.*?)'\ klon\ disindan\ alindi\ \(parent='(.*?)'\)\.$	[SPAWN-PLACEABLE] '${1}' was taken from outside the clone (parent='${2}').
+SPAWN-PLACEABLE	^\[SPAWN\-PLACEABLE\]\ '(.*?)'\ uygulanamadi:\ (.*?)$	[SPAWN-PLACEABLE] '${1}' could not be applied: ${2}
+SPAWN-PLACEABLE-LOAD	^\[SPAWN\-PLACEABLE\-LOAD\]\ OLUSTURULAMADI:\ '(.*?)'$	[SPAWN-PLACEABLE-LOAD] COULD NOT CREATE: '${1}'
+SPAWN-PLACEABLE-LOAD	^\[SPAWN\-PLACEABLE\-LOAD\]\ (.*?):\ toplam\ (.*?)\ obje\ geri\ getirilemedi\.$	[SPAWN-PLACEABLE-LOAD] ${1}: ${2} objects in total could not be restored.
+SPAWN-PLACEABLE-LOAD	^\[SPAWN\-PLACEABLE\-LOAD\]\ (.*?):\ (.*?)/(.*?)\ yerlestirilmis\ obje\ geri\ yuklendi\ \((.*?)\ tanesi\ oyuncunun\ cantasinda,\ atlandi\)\.$	[SPAWN-PLACEABLE-LOAD] ${1}: ${2}/${3} placed objects restored (${4} of them are in the player's backpack, skipped).
+SPAWN-PLACEABLE-LOAD	^\[SPAWN\-PLACEABLE\-LOAD\]\ (.*?):\ (.*?)/(.*?)\ yerlestirilmis\ obje\ geri\ yuklendi\.$	[SPAWN-PLACEABLE-LOAD] ${1}: ${2}/${3} placed objects restored.
+SPAWN-PLACEABLE-REPAIR	^\[SPAWN\-PLACEABLE\-REPAIR\]\ (.*?):\ (.*?)\ yerlestirilmis\ obje\ disaridan\ kapatilmis/gizlenmisti,\ geri\ acildi\.$	[SPAWN-PLACEABLE-REPAIR] ${1}: ${2} placed objects had been disabled/hidden from outside, re-enabled.
+SPAWN-PLACEABLE-SAVE	^\[SPAWN\-PLACEABLE\-SAVE\]\ '(.*?)'\ kaydedilemedi:\ (.*?)$	[SPAWN-PLACEABLE-SAVE] '${1}' could not be saved: ${2}
+SPAWN-PLACEABLE-SAVE	^\[SPAWN\-PLACEABLE\-SAVE\]\ (.*?):\ (.*?)\ yerlestirilmis\ obje\ kaydedildi\.$	[SPAWN-PLACEABLE-SAVE] ${1}: ${2} placed objects saved.
+STATE-LOAD	^\[STATE\-LOAD\]\ (.*?)\ durum\ dosyasi\ yok,\ atlaniyor\.$	[STATE-LOAD] ${1} has no state file, skipping.
+STATE-LOAD	^\[STATE\-LOAD\]\ (.*?):\ dosyada\ durum\ verisi\ yok\.$	[STATE-LOAD] ${1}: no state data in the file.
+STATE-LOAD	^\[STATE\-LOAD\]\ (.*?):\ (.*?)/(.*?)\ durum\ geri\ yuklendi\ \((.*?)\ eslesmedi\)\.$	[STATE-LOAD] ${1}: ${2}/${3} states restored (${4} did not match).
+STATE-LOAD	^\[STATE\-LOAD\]\ ATLANDI\ \(belirsiz\ kimlik\):\ (.*?)$	[STATE-LOAD] SKIPPED (ambiguous identity): ${1}
+STATE-LOAD	^\[STATE\-LOAD\]\ ESLESME\ YOK:\ (.*?)$	[STATE-LOAD] NO MATCH: ${1}
+STATE-LOAD	^\[STATE\-LOAD\]\ Deserialize\ hatasi:\ (.*?)\ \-\ (.*?)$	[STATE-LOAD] Deserialize error: ${1} - ${2}
+STATE-SAVE	^\[STATE\-SAVE\]\ Serialize\ hatasi:\ (.*?)\ '(.*?)'\ \-\ (.*?)$	[STATE-SAVE] Serialize error: ${1} '${2}' - ${3}
+STATE-SAVE	^\[STATE\-SAVE\]\ ATLANDI\ \(belirsiz\ kimlik\):\ (.*?)$	[STATE-SAVE] SKIPPED (ambiguous identity): ${1}
+STATE-SAVE	^\[STATE\-SAVE\]\ (.*?):\ BreakDown=(.*?)\ Harvestable=(.*?)\ Smashable=(.*?)\ OpenClose=(.*?)\ Lock=(.*?)\ \(toplam\ (.*?)\)$	[STATE-SAVE] ${1}: BreakDown=${2} Harvestable=${3} Smashable=${4} OpenClose=${5} Lock=${6} (${7} total)
+STRAY-SWEEP	^\[STRAY\-SWEEP\]\ (.*?)\ sahipsiz\ obje\ klon\ sahnelere\ alindi\ ve\ gizlendi\.$	[STRAY-SWEEP] ${1} objects that belonged to no building were moved into the clone scenes and hidden.
+SUB-LINK-BLOCK	^\[SUB\-LINK\-BLOCK\]\ (.*?)\ henuz\ hazir\ degil\.$	[SUB-LINK-BLOCK] ${1} is not ready yet.
+TASINAN-DEKOR	^\[TASINAN\-DEKOR\]\ Yerlestirme\ kaydi\ okunamadi:\ (.*?)$	[CARRIED-DECOR] Placement record could not be read: ${1}
+TASINAN-DEKOR	^\[TASINAN\-DEKOR\]\ Kontrol\ basarisiz:\ (.*?)$	[CARRIED-DECOR] Check failed: ${1}
+TASINAN-DEKOR	^\[TASINAN\-DEKOR\]\ '(.*?)'\ gizlenemedi:\ (.*?)$	[CARRIED-DECOR] '${1}' could not be hidden: ${2}
+TASINAN-DEKOR	^\[TASINAN\-DEKOR\]\ '(.*?)'\ cantada\ oldugu\ halde\ dunyada\ duruyordu,\ gizlendi\.$	[CARRIED-DECOR] '${1}' was standing in the world even though it is in the backpack, hidden.
+TESHIS	^────────\ \[TESHIS\]\ Esya\ etkilesimi\ ────────$	──────── [DIAG] Item interaction ────────
+TESHIS	^\[TESHIS\]\ Oyuncu\ bulunamadi\.$	[DIAG] Player not found.
+TESHIS	^────────\ \[TESHIS\]\ son\ ────────$	──────── [DIAG] end ────────
+TESHIS	^\[TESHIS\]\ PlayerManager\ yok\.$	[DIAG] No PlayerManager.
+TESHIS	^\[TESHIS\]\ Oyuncu:\ aktifEtkilesim=(.*?)\ nisangahaYakin=(.*?)\ kontrolModu=(.*?)\ yerlestirilenObje=(.*?)$	[DIAG] Player: activeInteraction=${1} nearCrosshair=${2} controlMode=${3} objectToPlace=${4}
+TESHIS	^\[TESHIS\]\ Safehouse\ durumu\ okunamadi:\ (.*?)$	[DIAG] Safehouse state could not be read: ${1}
+TESHIS	^\[TESHIS\]\ Sahnedeki\ SafeCracking\ sayisi:\ (.*?)$	[DIAG] SafeCracking count in the scene: ${1}
+TESHIS	^\[TESHIS\]\ \ \ kasa\ '(.*?)'\ sahip=(.*?)\ aktif=(.*?)\ kilitli=(.*?)\ pos=\((.*?),(.*?),(.*?)\)\ parent=(.*?)\ sahne=(.*?)$	[DIAG]   safe '${1}' owner=${2} active=${3} locked=${4} pos=(${5},${6},${7}) parent=${8} scene=${9}
+TESHIS	^\[TESHIS\]\ Kasa\ sayimi\ basarisiz:\ (.*?)$	[DIAG] Safe census failed: ${1}
+TESHIS	^\[TESHIS\]\ Ana\ kamera\ bulunamadi,\ nisangah\ testi\ atlandi\.$	[DIAG] Main camera not found, crosshair test skipped.
+TESHIS	^\[TESHIS\]\ Nisangahin\ onunde\ (.*?)m\ icinde\ HICBIR\ collider\ yok\.\ \(Bakilan\ esyanin\ collider'i\ kapali\ olabilir\ —\ asagidaki\ listeye\ bak\.\)$	[DIAG] NO collider within ${1}m in front of the crosshair. (The collider of the item you are looking at may be disabled - see the list below.)
+TESHIS	^\[TESHIS\]\ Nisangah\ isini\ (.*?)\ collider'a\ carpti\ \(yakindan\ uzaga\):$	[DIAG] The crosshair ray hit ${1} colliders (near to far):
+TESHIS	^\[TESHIS\]\ \ \ (.*?)\.\ (.*?)\ d=(.*?)m\ layer=(.*?)\((.*?)\)\ trigger=(.*?)\ gear=(.*?)\ placeable=(.*?)\ parent=(.*?)$	[DIAG]   ${1}. ${2} d=${3}m layer=${4}(${5}) trigger=${6} gear=${7} placeable=${8} parent=${9}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ kimlik:\ guid=(.*?)\ pdid=(.*?)$	[DIAG]      identity: guid=${1} pdid=${2}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ kimlik\ okunamadi:\ (.*?)$	[DIAG]      identity could not be read: ${1}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ Container\ aranamadi:\ (.*?)$	[DIAG]      Container lookup failed: ${1}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ Container\ '(.*?)'\ bilesenAcik=(.*?)\ aktif=(.*?)\ kilitli=(.*?)\ kasaKilitli=(.*?)\ aslaAcilamaz=(.*?)\ kasaVar=(.*?)\ kayittaPasif=(.*?)$	[DIAG]      Container '${1}' componentEnabled=${2} active=${3} locked=${4} safeLocked=${5} canNeverBeOpened=${6} hasSafe=${7} inactiveInSave=${8}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ SafeCracking\ '(.*?)'\ bilesenAcik=(.*?)\ aktif=(.*?)\ kirilmis=(.*?)\ acik=(.*?)\ zorluk=(.*?)\ tumblerSayisi=(.*?)\ tumblerlar=(.*?)\ kadran=(.*?)\ openClose=(.*?)\ panelRef=(.*?)\ sifre=(.*?)\ sifreUretilir=(.*?)\ kadranTik=(.*?)\ tamburSirasi=(.*?)$	[DIAG]      SafeCracking '${1}' componentEnabled=${2} active=${3} cracked=${4} open=${5} difficulty=${6} numTumblers=${7} tumblers=${8} dial=${9} openClose=${10} panelRef=${11} combination=${12} rollCombination=${13} ticksOnDial=${14} currentTumbler=${15}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ Etkilesim\ bileseni\ YOK\ \(bu\ obje\ zaten\ tiklanabilir\ degil\)\.$	[DIAG]      NO interaction component (this object is not clickable in the first place).
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ (.*?)\ '(.*?)'\ bilesenAcik=(.*?)\ \[taban\]\ IsEnabled=(.*?)\ CanInteract=(.*?)\ \|\ \[kendi\]\ IsEnabled=(.*?)\ CanInteract=(.*?)\ IsActive=(.*?)\ \|\ metin='(.*?)'\ hesaplananMetin='(.*?)'\ eylemMetni='(.*?)'$	[DIAG]      ${1} '${2}' componentEnabled=${3} [base] IsEnabled=${4} CanInteract=${5} | [own] IsEnabled=${6} CanInteract=${7} IsActive=${8} | text='${9}' computedText='${10}' actionText='${11}'
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ Etkilesim\ bilesenleri\ okunamadi:\ (.*?)$	[DIAG]      Interaction components could not be read: ${1}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ bilesenler\ \((.*?)\):\ (.*?)$	[DIAG]      components (${1}): ${2}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ bilesen\ listesi\ okunamadi:\ (.*?)$	[DIAG]      component list could not be read: ${1}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ collider'lar:\ (.*?)$	[DIAG]      colliders: ${1}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ collider\ listesi\ okunamadi:\ (.*?)$	[DIAG]      collider list could not be read: ${1}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ HoverIconsToShow\ YOK\.$	[DIAG]      NO HoverIconsToShow.
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ HoverIconsToShow:\ ikon\ listesi\ BOS\.$	[DIAG]      HoverIconsToShow: icon list is EMPTY.
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ HoverIconsToShow\ \((.*?)\):\ (.*?)$	[DIAG]      HoverIconsToShow (${1}): ${2}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ HoverIconsToShow\ okunamadi:\ (.*?)$	[DIAG]      HoverIconsToShow could not be read: ${1}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ XP\ modu=(.*?),\ DisableObjectForXPMode\ YOK\.$	[DIAG]      XP mode=${1}, no DisableObjectForXPMode.
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ XP\ modu=(.*?)\ \|\ DisableObjectForXPMode\ bilesenAcik=(.*?)\ buModaKapatilmali=(.*?)\ kapatilacakModlar=(.*?)\ storyAyri=(.*?)$	[DIAG]      XP mode=${1} | DisableObjectForXPMode componentEnabled=${2} shouldDisableForThisMode=${3} modesToDisable=${4} storySeparate=${5}
+TESHIS	^\[TESHIS\]\ \ \ \ \ \ XP\ modu\ kapisi\ okunamadi:\ (.*?)$	[DIAG]      XP mode gate could not be read: ${1}
+TESHIS	^\[TESHIS\]\ \ \ (.*?)(.*?)\ aktif=(.*?)\ collider=(.*?)/(.*?)\ renderer=(.*?)/(.*?)\ layer=(.*?)\((.*?)\)\ gearComp=(.*?)\ placeable=(.*?)$	[DIAG]   ${1}${2} active=${3} collider=${4}/${5} renderer=${6}/${7} layer=${8}(${9}) gearComp=${10} placeable=${11}
+TESHIS	^\[TESHIS\]\ (.*?)m\ icinde\ (.*?)\ esya\ var,\ (.*?)\ tanesi\ GORUNUYOR\ AMA\ COLLIDER'I\ KAPALI\.$	[DIAG] There are ${2} items within ${1}m, ${3} of them are VISIBLE BUT THEIR COLLIDER IS DISABLED.
+TESHIS	^\[TESHIS\]\ F10\ =\ bu\ klondaki\ kapali\ collider'lari\ aninda\ onar\.$	[DIAG] F10 = instantly repair the disabled colliders in this clone.
+TESHIS	^\[TESHIS\]\ Hata:\ (.*?)$	[DIAG] Error: ${1}
+TESHIS	^\[TESHIS\]\ Oyuncu\ HICBIR\ klon\ sahnenin\ icinde\ gorunmuyor\.$	[DIAG] The player does not appear to be inside ANY clone scene.
+TESHIS	^\[TESHIS\]\ Bulunulan\ klon:\ (.*?)$	[DIAG] Clone the player is in: ${1}
+TESHIS	^\[TESHIS\]\ SafehouseManager\ yok\.$	[DIAG] No SafehouseManager.
+TESHIS	^\[TESHIS\]\ Safehouse:\ duzenlenebilir=(.*?)\ duzenlemeModu=(.*?)$	[DIAG] Safehouse: customizable=${1} customizing=${2}
+UNLOAD	^\[UNLOAD\]\ Oyuncu\ icerde\ kaydetti\ \((.*?)\),\ s_IsPlayerInsideClone\ korundu\.$	[UNLOAD] The player saved inside (${1}), s_IsPlayerInsideClone was preserved.
+VANILLA-ALAN	^\[VANILLA\-ALAN\]\ (.*?):\ ic\ mekan\ alanindan\ cikildi\.$	[VANILLA-SPACE] ${1}: the player left the game's indoor space.
+VANILLA-ALAN	^\[VANILLA\-ALAN\]\ (.*?)\ icindeyken\ baska\ tetikleyici\ girisi:\ '(.*?)'\ <\-\ '(.*?)'\ \(etiket\ (.*?)\);\ sonrakiler\ yazilmayacak$	[VANILLA-SPACE] While the player was in ${1}, something else entered a trigger: '${2}' <- '${3}' (tag ${4}); further ones will not be logged
+VANILLA-ALAN	^\[VANILLA\-ALAN\]\ (.*?)\ icindeyken\ baska\ tetikleyici\ girisi:\ '(.*?)'\ <\-\ '(.*?)'\ \(etiket\ (.*?)\)$	[VANILLA-SPACE] While the player was in ${1}, something else entered a trigger: '${2}' <- '${3}' (tag ${4})
+VANILLA-ALAN	^\[VANILLA\-ALAN\]\ (.*?)\ icindeyken\ baska\ tetikleyici\ cikisi:\ '(.*?)'\ <\-\ '(.*?)'\ \(etiket\ (.*?)\);\ sonrakiler\ yazilmayacak$	[VANILLA-SPACE] While the player was in ${1}, something else left a trigger: '${2}' <- '${3}' (tag ${4}); further ones will not be logged
+VANILLA-ALAN	^\[VANILLA\-ALAN\]\ (.*?)\ icindeyken\ baska\ tetikleyici\ cikisi:\ '(.*?)'\ <\-\ '(.*?)'\ \(etiket\ (.*?)\)$	[VANILLA-SPACE] While the player was in ${1}, something else left a trigger: '${2}' <- '${3}' (tag ${4})
+VANILLA-ALAN	^\[VANILLA\-ALAN\]\ (.*?):\ oyuncu\ oyunun\ kendi\ ic\ mekan\ alanina\ girdi\.$	[VANILLA-SPACE] ${1}: the player entered the game's own indoor space.
+VANILLA-ALAN	^\[VANILLA\-ALAN\]\ (.*?):\ ic\ mekan\ alanina\ girildi\.$	[VANILLA-SPACE] ${1}: the player entered the indoor space.
+VANILLA-ALAN	^\[VANILLA\-ALAN\]\ (.*?):\ oyun\ alani\ kabul\ etmedi\ \(oyuncu\ etiketi\ '(.*?)'\),\ elle\ ayarlandi\.$	[VANILLA-SPACE] ${1}: the game did not accept the indoor space (player tag '${2}'), so it was set by hand.
+WATCHDOG	^\[WATCHDOG\]\ (.*?):\ oyuncu\ disarida\ ama\ klon\ sahne\ acik\ kalmis,\ kapatiliyor\.$	[WATCHDOG] ${1}: the player is outside but the clone scene was left open, closing it.
+WIND-FIX	^\[WIND\-FIX\]\ Oyuncu\ disarida,\ wind'e\ dokunulmadi\.$	[WIND-FIX] The player is outside, the wind was left alone.
+WIND-FIX	^\[WIND\-FIX\]\ Oyuncu\ icerde,\ wind\ ForceStopped=false\ yapildi,\ id=(.*?)$	[WIND-FIX] The player is inside, wind ForceStopped was set to false, id=${1}
+WIND-FIX-PRE	^\[WIND\-FIX\-PRE\]\ Wind\.Start\ oncesi\ ForceStopped=false\ yapildi,\ playerInside=(.*?)$	[WIND-FIX-PRE] ForceStopped was set to false before Wind.Start, playerInside=${1}
+WIND-POST-RUN	^\[WIND\-POST\-RUN\]\ Flag\ false\ ama\ oyuncu\ gercekten\ (.*?)\ icinde,\ duzeltildi\.$	[WIND-POST-RUN] The flag was false but the player really is inside ${1}, corrected.
+WIND-POST-RUN	^\[WIND\-POST\-RUN\]\ Kayit\ '(.*?)'\ diyor\ ama\ oyuncu\ orada\ degil\ \-\ bayat\ kayit,\ flag'e\ dokunulmadi\.$	[WIND-POST-RUN] The save says '${1}' but the player is not there - stale save, the flag was left alone.
+WIND-POST-RUN	^\[WIND\-POST\-RUN\]\ Oyuncu\ disarida,\ wind'e\ dokunulmadi\.$	[WIND-POST-RUN] The player is outside, the wind was left alone.
+WIND-POST-RUN	^\[WIND\-POST\-RUN\]\ Oyuncu\ icerde,\ wind\ ForceStopped=false,\ id=(.*?)$	[WIND-POST-RUN] The player is inside, wind ForceStopped=false, id=${1}
+WIND-RESTORE	^\[WIND\-RESTORE\]\ Sahnede\ Wind\ bulunamadi\.$	[WIND-RESTORE] No Wind found in the scene.
+WIND-RESTORE	^\[WIND\-RESTORE\]\ (.*?)\ Wind\ bulundu,\ insideClone=(.*?),\ occl=\((.*?)\)$	[WIND-RESTORE] ${1} Wind components found, insideClone=${2}, occl=(${3})
+ZORLA	^────────\ \[ZORLA\]\ Nisangahtaki\ etkilesim\ ────────$	──────── [FORCE] Interaction at the crosshair ────────
+ZORLA	^\[ZORLA\]\ Ana\ kamera\ yok\.$	[FORCE] No main camera.
+ZORLA	^\[ZORLA\]\ Isin\ atilamadi:\ (.*?)$	[FORCE] Ray could not be cast: ${1}
+ZORLA	^\[ZORLA\]\ Nisangahin\ onunde\ collider\ yok\.$	[FORCE] No collider in front of the crosshair.
+ZORLA	^\[ZORLA\]\ '(.*?)'\ uzerinde\ PerformInteraction\ cagriliyor\ \(mesafe=(.*?)m,\ CanInteract=(.*?)\)\.$	[FORCE] Calling PerformInteraction on '${1}' (distance=${2}m, CanInteract=${3}).
+ZORLA	^\[ZORLA\]\ PerformInteraction\ sonucu:\ (.*?)$	[FORCE] PerformInteraction result: ${1}
+ZORLA	^\[ZORLA\]\ PerformInteraction\ hata\ verdi:\ (.*?)$	[FORCE] PerformInteraction threw: ${1}
+ZORLA	^────────\ \[ZORLA\]\ son\ ────────$	──────── [FORCE] end ────────
+ZORLA	^\[ZORLA\]\ Nisangahin\ onunde\ ContainerInteraction\ tasiyan\ bir\ obje\ yok\.$	[FORCE] No object carrying a ContainerInteraction in front of the crosshair.
+SAVE-COMMIT	^\[SAVE\-COMMIT\]\ (.*?):\ (.*?)\ dosya\ oyunun\ disk\ kaydiyla\ birlikte\ kalici\ yapildi\.$	[SAVE-COMMIT] ${1}: ${2} files made permanent together with the game's disk save.
+SAVE-COMMIT	^\[SAVE\-COMMIT\]\ (.*?):\ diske\ kaydedilmemis\ (.*?)\ dosya\ atildi\ \(oyun\ da\ son\ disk\ kaydindan\ yukleniyor\)\.$	[SAVE-COMMIT] ${1}: ${2} files never saved to disk were discarded (the game is loading its last disk save too).
+SAVE-COMMIT	^\[SAVE\-COMMIT\]\ Commit\ hatasi:\ (.*)$	[SAVE-COMMIT] Commit error: ${1}
+SAVE-COMMIT	^\[SAVE\-COMMIT\]\ Discard\ hatasi:\ (.*)$	[SAVE-COMMIT] Discard error: ${1}
+SAVE-GUARD	^\[SAVE\-GUARD\]\ Okunamayan\ dosya\ saklandi:\ (.*?)$	[SAVE-GUARD] Unreadable file kept aside: ${1}
+SAVE-GUARD	^\[SAVE\-GUARD\]\ Yedeklenemedi:\ (.*)$	[SAVE-GUARD] Could not back it up: ${1}
+CONTAINER-LOAD	^\[CONTAINER\-LOAD\]\ (.*?):\ konteyner\ dosyasi\ okunamadi,\ korunuyor\.$	[CONTAINER-LOAD] ${1}: the container file could not be read, it is kept untouched.
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ '(.*?)'\ olusturulamadi:\ (.*)$	[GEAR-RESTORE] '${1}' could not be created: ${2}
+GEAR-RESTORE	^\[GEAR\-RESTORE\]\ (.*?):\ (.*?)\ gear\ geri\ yuklendi\ \((.*?)\ durum\ verisiyle\),\ (.*?)\ olusturulamadi\ ve\ kayitta\ korundu\ \(toplam\ kayit:\ (.*?)\)$	[GEAR-RESTORE] ${1}: ${2} gear items restored (${3} with state data), ${4} could not be created and were kept in the save (total records: ${5})
+HYDRATE	^\[HYDRATE\]\ (.*?):\ '(.*?)'\ adimi\ hata\ verdi,\ dosyasi\ korunuyor:\ (.*)$	[HYDRATE] ${1}: step '${2}' failed, its save file is kept untouched: ${3}
+HYDRATE	^\[HYDRATE\]\ (.*?):\ '(.*?)'\ adimi\ hata\ verdi:\ (.*)$	[HYDRATE] ${1}: step '${2}' failed: ${3}
+ADOPT	^\[ADOPT\]\ (.*?):\ '(.*?)'\ oyuncunun\ objesi\ olarak\ kaydedilecek\.$	[ADOPT] ${1}: '${2}' will be saved as the player's own object.
+DECOR-STATE	^\[DECOR\-STATE\]\ '(.*?)'\ durumu\ kaydedilemedi:\ (.*)$	[DECOR-STATE] '${1}' state could not be saved: ${2}
+DECOR-STATE	^\[DECOR\-STATE\]\ '(.*?)'\ kur\ kutusu\ geri\ yuklendi\ \((.*?)\ esya\)\.$	[DECOR-STATE] '${1}' curing box restored (${2} items).
+DECOR-STATE	^\[DECOR\-STATE\]\ '(.*?)'\ kur\ kutusu\ geri\ yuklenemedi:\ (.*)$	[DECOR-STATE] '${1}' curing box could not be restored: ${2}
+DECOR-STATE	^\[DECOR\-STATE\]\ '(.*?)'\ fotograf\ geri\ yuklenemedi:\ (.*)$	[DECOR-STATE] '${1}' photo could not be restored: ${2}
+LIGHT-MODE	^\[LIGHT\-MODE\]\ (.*?)\ (\d+)\ binaya\ hemen\ uygulandi\.$	[LIGHT-MODE] ${1} applied to ${2} buildings at once.
+LEGACY	^\[LEGACY\]\ (.*?):\ kur\ kutusu/fotograf\ aktarimi\ hatasi\ \-\ (.*)$	[LEGACY] ${1}: curing box/photo transfer error - ${2}

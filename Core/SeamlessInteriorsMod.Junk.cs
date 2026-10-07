@@ -59,11 +59,14 @@ namespace SeamlessInteriors
         {
             if (tag == null || tag.gameObject == null) return false;
 
+            // A placeable that is junk itself stays with the placeable save; junk lying ON
+            // furniture (paper on a shelf) is plain junk, the game's own clear hides it too.
+            if (tag.GetComponent<Il2CppTLD.Placement.Placeable>() != null) return false;
+
             Transform t = tag.transform;
             while (t != null)
             {
                 if (t.GetComponent<Il2Cpp.GearItem>() != null) return false;
-                if (t.GetComponent<Il2CppTLD.Placement.Placeable>() != null) return false;
                 t = t.parent;
             }
             return true;
@@ -336,11 +339,11 @@ namespace SeamlessInteriors
             string path = GetJunkStateSavePath(instance);
             bool cleared = false;
 
-            if (path != null && File.Exists(path))
+            if (path != null && SaveFiles.Exists(path))
             {
                 try
                 {
-                    cleared = File.ReadAllText(path).Contains("true");
+                    cleared = SaveFiles.Read(path).Contains("true");
                 }
                 catch (System.Exception ex)
                 {

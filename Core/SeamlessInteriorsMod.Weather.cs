@@ -14,27 +14,143 @@ namespace SeamlessInteriors
         // value - the two must be changed together.
         private static readonly Vector3 TRIGGER_PADDING = new Vector3(1.0f, 3.0f, 1.0f);
 
+        // Padding for the WEATHER KILL VOLUMES ONLY, deliberately separate from
+        // TRIGGER_PADDING above. The trigger box is also the safehouse collider and the
+        // volume IsPositionInVolume tests against (it subtracts TRIGGER_EXPANSION back
+        // out to recover the true room), so widening the kill volumes through the shared
+        // constant would push the safehouse 4.7m out past every exterior wall.
+        //
+        // The values come from what the base game gives its own indoor spaces, measured
+        // in the Mindful Cabin (Forsaken Airfield) against its 12.0 x 10.2 x 11.7m
+        // IndoorSpace trigger during a blizzard:
+        //
+        //   FallingSnowParticleKiller  14.49 x 10.00 x 14.25  -> 1.25m past the room on XZ
+        //   BlowingSnowParticleKiller  21.39 x 11.00 x 21.12  -> 4.70m past the room on XZ
+        //
+        // Blowing snow travels sideways and needs the far bigger catch volume; falling
+        // snow does not, and an oversized falling volume would carve a visible snow-free
+        // bubble around the building that the player can see through the windows.
+        // Bounds.Expand adds to the TOTAL size, so these are twice the per-side figure.
+        //
+        // Y keeps the author's original 3m rather than vanilla's, which is barely any:
+        // vanilla's falling volume is actually SHORTER than its room on Y. 3m is the
+        // margin that stops snow leaking through sloped and curved roofs.
+        private static readonly Vector3 FALLING_KILLER_PADDING = new Vector3(2.5f, 3.0f, 2.5f);
+        private static readonly Vector3 BLOWING_KILLER_PADDING = new Vector3(9.4f, 3.0f, 9.4f);
+
+        // Below this much rotation the clone is axis-aligned with the world.
+        private const float KILLER_ROTATION_EPSILON_DEGREES = 0.5f;
+
+        // Builds this clone's weather kill volumes: the dimensions of the prefab we brought
+        // into the world, plus padding on every side.
+        //
+        // The bounds are measured HERE rather than taken from the caller. Every caller used
+        // to pass the ComputeLocalInteriorBounds result, which is a floor-plan approximation
+        // that drops sparse and thin rectangles and so comes back short on a long building
+        // (see TryComputePrefabLocalBounds for what it discards and why). A kill volume that
+        // is short is a hole snow falls through, so it takes the prefab's real extent and
+        // the approximation is left to the callers that actually want a room shape.
         private static void BuildParticleKillerSlices(SeamlessInteriorInstance instance,
                                                       GameObject particleKillerObj,
-                                                      Bounds expandedBounds)
+                                                      Bounds fallbackLocalBounds)
         {
+            var uniStorm = GetCachedUniStorm();
+
+            // Out of the game's list BEFORE the set is rebuilt. Clearing only the mod's copy left a
+            // set that was in force orphaned in the game's list for good: at the hangar on
+            // 2026-09-22 the list held 144 killers at room height, two full sets of 72.
+            if (uniStorm != null && uniStorm.m_WeatherParticleManager != null)
+            {
+                var inForce = uniStorm.m_WeatherParticleManager.m_AllParticleKillers;
+                foreach (var pk in instance.CustomKillers) inForce.Remove(pk);
+            }
             instance.CustomKillers.Clear();
 
-            var uniStorm = GetCachedUniStorm();
             if (uniStorm == null || uniStorm.m_WeatherParticleManager == null) return;
 
-            // Slice on both Z and X to form a 2D grid. A single axis is not enough
-            // for wide or irregular buildings (e.g. the hangar).
-            int sliceCountZ = 6;
-            int sliceCountX = Mathf.Max(1, Mathf.CeilToInt(expandedBounds.size.x / expandedBounds.size.z * sliceCountZ));
-            if (sliceCountX > 6) sliceCountX = 6;   // cap the slice count
+            if (instance.Config != null && instance.Config.IsParked)
+            {
+                return;   // no killer for a parked room: see "A PARKED ROOM GETS NO KILLER" below
+            }
+
+            Bounds localBounds;
+            int meshesUsed, meshesSkipped;
+            if (TryComputePrefabLocalBounds(instance.MasterInterior, out localBounds,
+                                            out meshesUsed, out meshesSkipped))
+            {
+                if (s_DebugBounds)
+                    MelonLogger.Msg($"[KILL-BOUNDS] {instance.Config.ResolvedInstanceId}: prefab extent " +
+                                    $"{localBounds.size.x:F1} x {localBounds.size.y:F1} x {localBounds.size.z:F1} " +
+                                    $"from {meshesUsed} meshes ({meshesSkipped} skipped); " +
+                                    $"floor-plan approximation was " +
+                                    $"{fallbackLocalBounds.size.x:F1} x {fallbackLocalBounds.size.y:F1} x {fallbackLocalBounds.size.z:F1}");
+            }
+            else
+            {
+                // No meshes at all is not a case worth inventing a number for; fall back to
+                // what the caller measured rather than leaving the building uncovered.
+                localBounds = fallbackLocalBounds;
+                MelonLogger.Warning($"[KILL-BOUNDS] {instance.Config.ResolvedInstanceId}: no usable meshes, " +
+                                    "falling back to the floor-plan bounds for the kill volumes.");
+            }
+
+            // Two families with different reach, as the base game does it. Previously one
+            // set carried both flags at TRIGGER_PADDING, which is 0.5m per side on XZ -
+            // roughly a ninth of the room the game gives itself for blowing snow.
+            AddKillerFamily(instance, particleKillerObj, localBounds, FALLING_KILLER_PADDING,
+                            killsFalling: true, killsBlowing: false);
+            AddKillerFamily(instance, particleKillerObj, localBounds, BLOWING_KILLER_PADDING,
+                            killsFalling: false, killsBlowing: true);
+        }
+
+        private static void AddKillerFamily(SeamlessInteriorInstance instance,
+                                            GameObject particleKillerObj,
+                                            Bounds localBounds,
+                                            Vector3 padding,
+                                            bool killsFalling,
+                                            bool killsBlowing)
+        {
+            Bounds expandedBounds = localBounds;
+            expandedBounds.Expand(padding);
+
+            Transform killerT = particleKillerObj.transform;
+
+            // WHY SLICE AT ALL: a killer takes a WORLD-SPACE AABB, so a rotated clone's
+            // volume has to be approximated by an axis-aligned one. Cutting it into a grid
+            // first and enveloping each piece separately tracks the rotated volume far more
+            // tightly than one envelope around the whole thing, which for a 45 degree
+            // building overshoots by about 40 percent on each horizontal axis.
+            //
+            // With NO rotation that reasoning disappears entirely: the union of a grid
+            // partition of a box is exactly the box, so the slices were only ever costing
+            // per-particle tests for identical coverage. Most configs are unrotated, so
+            // emit one killer for those instead of up to 36.
+            bool rotated = Quaternion.Angle(killerT.rotation, Quaternion.identity) > KILLER_ROTATION_EPSILON_DEGREES;
+
+            int sliceCountX = 1;
+            int sliceCountZ = 1;
+
+            if (rotated)
+            {
+                // Slice on both Z and X to form a 2D grid. A single axis is not enough
+                // for wide or irregular buildings (e.g. the hangar).
+                //
+                // AT MOST 2 x 2 PER FAMILY, not the 6 x 6 it was. The game runs at most 32 killers at
+                // once (WeatherParticleManager.MAX_ACTIVE_PARTICLE_KILLERS, from the dump), and one
+                // rotated building held up to 72, so part of its cover could never be in force. The
+                // owner, 2026-09-22, after seeing the hangar's 72 drawn live: "It needs to be at most a
+                // few Rectangular prisms." Vanilla covers its L-shaped control tower with two boxes.
+                // A 2 x 2 grid of a room turned 45 degrees overshoots each side by about a fifth of the
+                // room's width, against none at 6 x 6 and nearly half with one box.
+                sliceCountZ = 2;
+                sliceCountX = Mathf.Max(1, Mathf.CeilToInt(expandedBounds.size.x / expandedBounds.size.z * sliceCountZ));
+                if (sliceCountX > 2) sliceCountX = 2;   // cap the slice count
+            }
 
             float sliceZ = expandedBounds.size.z / sliceCountZ;
             float sliceX = expandedBounds.size.x / sliceCountX;
             float startZ = expandedBounds.center.z - (expandedBounds.size.z / 2f) + (sliceZ / 2f);
             float startX = expandedBounds.center.x - (expandedBounds.size.x / 2f) + (sliceX / 2f);
-
-            Transform killerT = particleKillerObj.transform;
 
             for (int ix = 0; ix < sliceCountX; ix++)
             {
@@ -42,8 +158,8 @@ namespace SeamlessInteriors
                 {
                     var pki = new Il2CppTLD.WeatherParticle.WeatherParticleManager.ParticleKillerInstance();
                     pki.m_OwnerGameObject = particleKillerObj;
-                    pki.m_KillsFallingSnow = true;
-                    pki.m_KillsBlowingSnow = true;
+                    pki.m_KillsFallingSnow = killsFalling;
+                    pki.m_KillsBlowingSnow = killsBlowing;
 
                     Vector3 c = new Vector3(startX + (ix * sliceX), expandedBounds.center.y, startZ + (iz * sliceZ));
                     Vector3 e = new Vector3(sliceX / 2f, expandedBounds.size.y / 2f, sliceZ / 2f);
@@ -75,6 +191,18 @@ namespace SeamlessInteriors
             }
         }
 
+        // ─── A PARKED ROOM GETS NO KILLER ───
+        //
+        // From 2026-09-22 a parked room had one killer, the world box round the room plus 5 m (the
+        // hangar's set by the owner's eye), replacing slices that spread over 135 x 135 m at the
+        // hangar. It turned out to do nothing. While the player is in a parked room the snow is born
+        // at the ground (ParkedWeather.cs) and kept in a box moved down to the window cameras
+        // (Patches/ParkedSnowBoxPatches.cs), so no flake exists at the room's height to kill.
+        // Tested 2026-09-28 in a Mystery Lake blizzard with no killer registered for any room: the
+        // Camp Office with its killer removed, then Lake Cabin A, which never had one; owner, both
+        // times: no snow inside. The game also holds at most 32 killers in force and the region's
+        // own filled all 32. Rooms left in place still get the slices above.
+
         // Rebuilds only the particle killers for an instance whose trigger object
         // already exists (used after a reload).
         private void SetupWeatherParticleKillersOnly(SeamlessInteriorInstance instance, Bounds localBounds)
@@ -84,10 +212,8 @@ namespace SeamlessInteriors
             var particleKillerT = instance.MasterInterior.transform.Find("ParticleKiller");
             if (particleKillerT == null) return;
 
-            Bounds expandedBounds = localBounds;
-            expandedBounds.Expand(TRIGGER_PADDING);
-
-            BuildParticleKillerSlices(instance, particleKillerT.gameObject, expandedBounds);
+            // The kill volumes apply their own padding now, so the raw bounds go in.
+            BuildParticleKillerSlices(instance, particleKillerT.gameObject, localBounds);
         }
 
         // First-time setup: creates the ParticleKiller object, its trigger volume,
@@ -111,7 +237,9 @@ namespace SeamlessInteriors
             triggerBox.size = expandedBounds.size;
             instance.InteriorTrigger = triggerBox;
 
-            BuildParticleKillerSlices(instance, particleKillerObj, expandedBounds);
+            // NOT expandedBounds: the kill volumes reach much further than the trigger box
+            // and apply their own padding, so they take the raw interior bounds.
+            BuildParticleKillerSlices(instance, particleKillerObj, localBounds);
 
             // The box stays a plain volume: the doors, not physics, move the player in and out.
             CreateVanillaIndoorSpace(instance);
@@ -167,11 +295,30 @@ namespace SeamlessInteriors
 
             MelonLogger.Msg($"[WIND-RESTORE] {winds.Length} Wind bulundu, insideClone={s_IsPlayerInsideClone}, occl=({DescribeAudioOcclusion()})");
 
+            // ONLY RESTART A LOOP THAT IS ACTUALLY DEAD.
+            //
+            // This used to stop and repost every Wind on every load, OUTDOORS INCLUDED, a few
+            // lines after the mod had logged "the player is outside, the wind was left alone".
+            // Measured 2026-09-22: the two region loads where this ran (Forsaken Airfield, twice)
+            // came up with a long silence and then an abrupt loud gust, while the two loads where
+            // it did not run (Timberwolf Mountain, Sundered Pass) gave the game's normal low
+            // continuous bed. Throwing away a healthy loop to post a replacement is not free.
             foreach (var w in winds)
             {
                 if (w == null) continue;
-                ForceRestartWindAudio(w, "after-load");
+
+                if (w.m_WindLoopAudioInstance == 0)
+                {
+                    ForceRestartWindAudio(w, "after-load");
+                    continue;
+                }
+
+                MelonLogger.Msg($"[WIND-RESTORE] Calisan dongu korundu, id={w.m_WindLoopAudioInstance}.",
+                                $"[WIND-RESTORE] The running loop was left alone, id={w.m_WindLoopAudioInstance}.");
             }
+
+            // Then put the loop where the player's current inside/outside state says it belongs.
+            ApplyOutdoorWindForInsideState(s_IsPlayerInsideClone, "after-load");
 
             // Diagnostics: watch for the state degrading over the next 10 seconds.
             // Verbose logging only - doing 5 FindObjectOfType + log passes after
@@ -245,18 +392,13 @@ namespace SeamlessInteriors
                 yield break;
             }
 
-            // Indoors: clear ForceStopped, audio occlusion lowers the volume.
-            wind.m_WindAudioForceStopped = false;
+            // Indoors: the indoor rule owns the loop (stopped outright by default, the way a
+            // loading-screen interior does it; left running and merely occluded if the player
+            // has turned SilenceOutdoorWindIndoors off).
+            ApplyOutdoorWindForInsideState(true, "post-run");
 
-            // Force a restart if the loop never started.
-            // NOTE: a non-zero id does not prove the Wwise instance is alive; the real
-            // clean restart happens in RestoreWindAudioAfterLoad.
-            if (wind.m_WindLoopAudioInstance == 0)
-            {
-                ForceRestartWindAudio(wind, "post-run");
-            }
-
-            if (s_DebugBounds) MelonLogger.Msg($"[WIND-POST-RUN] Oyuncu icerde, wind ForceStopped=false, id={wind.m_WindLoopAudioInstance}");
+            if (s_DebugBounds) MelonLogger.Msg($"[WIND-POST-RUN] Oyuncu icerde, dis ruzgar sesi ic mekan kuralina gore ayarlandi, id={wind.m_WindLoopAudioInstance}",
+                                               $"[WIND-POST-RUN] The player is inside; the outdoor wind loop was set by the indoor rule, id={wind.m_WindLoopAudioInstance}");
         }
     }
 }

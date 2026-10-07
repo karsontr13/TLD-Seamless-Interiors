@@ -155,6 +155,9 @@ namespace SeamlessInteriors
                 // Safehouse "clear junk" (R) state.
                 SeamlessInteriorsMod.SaveAllJunkStates();
                 SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.SaveJunk, perf);
+
+                // Which windows are frosted and which have been cleaned.
+                SeamlessInteriorsMod.SaveAllWindowStates();
             }
             catch (System.Exception ex)
             {
@@ -345,6 +348,10 @@ namespace SeamlessInteriors
                     // object are pruned.
                     if (info.m_State == Il2CppTLD.Placement.PlacementState.OnPlayer) continue;
                     if (info.m_State == Il2CppTLD.Placement.PlacementState.Removed) continue;
+
+                    // No handle at all is the game's own pending record for an object that has not
+                    // woken up yet (inactive region variants); only a destroyed object is dead.
+                    if (ReferenceEquals(info.m_Handle, null)) continue;
 
                     if (info.m_Handle == null || info.m_Handle.gameObject == null)
                     {

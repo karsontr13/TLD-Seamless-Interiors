@@ -75,8 +75,8 @@ namespace SeamlessInteriors
                 // the same, but bailing here also skips the config/distance work.
                 if (instance.MasterInterior == null || !instance.MasterInterior.activeSelf) continue;
 
-                // Distance pre-filter: too far from FallbackPosition, no raycast.
-                if (Vector3.SqrMagnitude(pos - instance.Config.FallbackPosition) > 6400f) continue; // 80^2 = 6400
+                // Distance pre-filter: too far from either half of the building, no raycast.
+                if (instance.DistanceFrom(pos) > 80f) continue;
 
                 if (instance.IsPositionInside(pos)) { result = true; break; }
             }
