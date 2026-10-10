@@ -905,6 +905,14 @@ namespace SeamlessInteriors
                     RoomManyPaneObjects = new[] { "STR_RadarStation_InteriorWindowGlass_A" },
                 }
             },
+            // Zone of Contamination pump house: all room windows in one unreadable glass object the rule never
+            // read (0 of the building's 5) (2026-10-10).
+            {
+                "STR_PumpHouse_Ext_Prefab", new BuildingWindowOverride
+                {
+                    RoomManyPaneObjects = new[] { "PumpHouse_InteriorWindowGlass" },
+                }
+            },
             // Hunting Lodge: every room window is in one glass object, read as 2 windows of 16 m and the room
             // left unturned. Cut by its own geometry it gives the building's 16 (2026-10-10).
             {
