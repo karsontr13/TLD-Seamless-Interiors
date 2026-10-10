@@ -1211,8 +1211,14 @@ namespace SeamlessInteriors
         private static void AddRoomGlassSlotOpenings(string[] names, MeshRenderer[] all, Transform rootT, List<InteriorWindowOpening> result, string id)
         {
             Vector3 middle = Vector3.zero; int counted = 0;
+            // The room is still switched off when it is scanned: activeSelf, and mesh bounds (renderer bounds read zero).
             for (int i = 0; i < all.Length; i++)
-                if (all[i] != null && all[i].gameObject.activeInHierarchy) { middle += all[i].bounds.center; counted++; }
+            {
+                if (all[i] == null || !all[i].gameObject.activeSelf) continue;
+                var f = all[i].GetComponent<MeshFilter>();
+                if (f == null || f.sharedMesh == null) continue;
+                middle += all[i].transform.TransformPoint(f.sharedMesh.bounds.center); counted++;
+            }
             if (counted == 0) return;
             middle /= counted;
 
@@ -1220,7 +1226,7 @@ namespace SeamlessInteriors
             for (int i = 0; i < all.Length; i++)
             {
                 var r = all[i];
-                if (r == null || !r.gameObject.activeInHierarchy) continue;
+                if (r == null || !r.gameObject.activeSelf) continue;
                 bool named = false;
                 for (int n = 0; n < names.Length && !named; n++) named = r.gameObject.name.StartsWith(names[n], System.StringComparison.Ordinal);
                 if (!named) continue;
