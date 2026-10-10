@@ -97,6 +97,9 @@ namespace SeamlessInteriors
         // STR_WindowGlassMix. Read from the glass submesh, facing away from the room's middle (2026-10-10).
         public string[] RoomGlassSlotObjects;
 
+        // Seen from inside, the room's glass keeps the game's own material: SI's frost layer draws the
+        // glass texture's dirt past the frame where its UVs run along a strip (2026-10-10).
+        public bool RoomGlassKeepsOwnMaterial;
         // Room glass, by object name, joined into ONE window per set however far apart the pieces stand
         // (posts wider than the joining allows). A set takes its outside from the nearest window in the
         // same wall, not from a backdrop, and is added after the windows found by the rule, like
@@ -867,6 +870,15 @@ namespace SeamlessInteriors
                     RoomGlassSlotObjects = new[] { "STR_MaintenanceShedAMetal_Prefab" },
                     // Door 2's end pane has no glass in the room: a hole beside room window 1.
                     RoomOpeningsByHand = new[] { new RoomHandOpening { LikeRoomWindow = 1, BottomCm = -30f, TopCm = 30f, AcrossCm = -184f, WidthCm = 84f } },
+                }
+            },
+            // Bleak Inlet maintenance shed B. The windows are in the room's one big mesh; its office glass
+            // (STR_MaintenanceShedBInt_Glass) is an inner window and stays out (2026-10-10).
+            {
+                "STR_MaintenanceShedB_Prefab", new BuildingWindowOverride
+                {
+                    RoomGlassSlotObjects = new[] { "STR_MaintenanceShedBInt_Base_Prefab" },
+                    RoomGlassKeepsOwnMaterial = true,
                 }
             },
             // Hunting Lodge: every room window is in one glass object, read as 2 windows of 16 m and the room
