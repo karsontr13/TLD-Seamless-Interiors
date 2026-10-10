@@ -1000,7 +1000,10 @@ namespace SeamlessInteriors
             }
             int[] roomToShell; Vector3 meanSlide;
             double lapCenters = lapTimer.Elapsed.TotalMilliseconds;
-            bool fitted = FitWindowPattern(roomCenters, roomOutwards, shellCenters, shellOutwards, out roomToShell, out meanSlide);
+            BuildingWindowOverride pairRow;
+            bool fitted = TryGetBuildingWindowOverride(shellName, out pairRow) && !float.IsNaN(pairRow.PairInPlaceWithinCm)
+                ? PairWindowsInPlace(roomCenters, roomOutwards, shellCenters, shellOutwards, pairRow.PairInPlaceWithinCm / 100f, out roomToShell, out meanSlide)
+                : FitWindowPattern(roomCenters, roomOutwards, shellCenters, shellOutwards, out roomToShell, out meanSlide);
             double lapPairing = lapTimer.Elapsed.TotalMilliseconds;
             var shellToRoom = new int[spots.Length];
             for (int s = 0; s < shellToRoom.Length; s++) shellToRoom[s] = -1;

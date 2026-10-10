@@ -488,7 +488,7 @@ namespace SeamlessInteriors
                 // A neighbour's shell stays, unless that building stands inside this clone
                 // (TrailerSShape's middle trailer is CampTrailerB_3's shell).
                 if (other.ExteriorShell != null && t.IsChildOf(other.ExteriorShell.transform)
-                    && !ShellStandsInside(instance, other.ExteriorShell.transform.position)) return true;
+                    && !ShellStandsInside(instance, ShellPosition(other))) return true;
             }
             return false;
         }
@@ -1824,9 +1824,50 @@ namespace SeamlessInteriors
             return false;
         }
 
+        // Shells that group several buildings under one parent whose pivot stands far off in the region
+        // (the mine's three buildings, pivot 1.1 km away): matched by name alone, placed at the room's spot.
+        private static readonly HashSet<string> s_ShellGroups = new HashSet<string> { "Mine_Buildings" };
+
+        internal static bool IsShellGroup(string shellPrefabName)
+        {
+            return shellPrefabName != null && s_ShellGroups.Contains(shellPrefabName);
+        }
+
+        // Where the building stands, for distances: the shell's pivot, or for a group the room's configured spot.
+        internal static Vector3 ShellPosition(SeamlessInteriorInstance instance)
+        {
+            if (instance.Config != null && IsShellGroup(instance.Config.ExteriorShellPrefabName)) return instance.Config.FallbackPosition;
+            return instance.ExteriorShell.transform.position;
+        }
+
+        // How far the eye is from the building: from the pivot, or for a group from the box round its
+        // buildings, so each building's windows are drawn when it is near (the headframe stands 140 m off).
+        private static readonly Dictionary<int, Bounds> s_ShellGroupBounds = new Dictionary<int, Bounds>();
+
+        internal static float ShellDistanceFrom(SeamlessInteriorInstance instance, Vector3 eye)
+        {
+            if (instance.Config == null || !IsShellGroup(instance.Config.ExteriorShellPrefabName))
+                return (instance.ExteriorShell.transform.position - eye).magnitude;
+
+            int id = instance.ExteriorShell.GetInstanceID();
+            Bounds box;
+            if (!s_ShellGroupBounds.TryGetValue(id, out box))
+            {
+                bool any = false;
+                foreach (var r in instance.ExteriorShell.GetComponentsInChildren<MeshRenderer>(false))
+                {
+                    if (!any) { box = r.bounds; any = true; } else box.Encapsulate(r.bounds);
+                }
+                if (!any) box = new Bounds(ShellPosition(instance), Vector3.zero);
+                s_ShellGroupBounds[id] = box;
+            }
+            return Mathf.Sqrt(box.SqrDistance(eye));
+        }
+
         private static GameObject FindClosestShell(string shellPrefabName, Vector3 fallbackPosition)
         {
             if (string.IsNullOrEmpty(shellPrefabName)) return null;
+            bool group = IsShellGroup(shellPrefabName);
 
             // Collect the shells already claimed by other instances.
             var usedShells = new HashSet<int>();
@@ -1849,7 +1890,7 @@ namespace SeamlessInteriors
                 if (!go.activeInHierarchy) continue; // the name index can predate the variant pick
                 if (usedShells.Contains(go.GetInstanceID())) continue; // already in use
 
-                float dist = Vector3.Distance(go.transform.position, fallbackPosition);
+                float dist = group ? 0f : Vector3.Distance(go.transform.position, fallbackPosition);
                 if (dist <= SHELL_MATCH_MAX_DISTANCE && dist < bestDist)
                 {
                     bestDist = dist;

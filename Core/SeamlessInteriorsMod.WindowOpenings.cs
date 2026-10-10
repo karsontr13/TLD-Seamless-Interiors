@@ -1305,16 +1305,21 @@ namespace SeamlessInteriors
 
                 var filter = r.GetComponent<MeshFilter>();
                 Mesh mesh = filter != null ? filter.sharedMesh : null;
-                if (mesh == null || !mesh.isReadable) continue;
+                if (mesh == null) continue;
                 Material[] mats = r.sharedMaterials;
                 int slot = -1;
                 for (int k = 0; k < mats.Length && k < mesh.subMeshCount && slot < 0; k++)
                     if (mats[k] != null && mats[k].name.IndexOf("Glass", System.StringComparison.Ordinal) >= 0) slot = k;
                 if (slot < 0) continue;
 
-                foreach (var corners in SplitSlotGlassIntoWindows(mesh.vertices, mesh.GetTriangles(slot), r.transform, joinWithin))
+                Vector3[] vertices; int[] slotTriangles;
+                if (!TryReadSlot(mesh, slot, out vertices, out slotTriangles)) continue;
+                // An object big enough to hold rooms (the mine's 66 m connector) faces out from its own middle.
+                Vector3 own = Vector3.Scale(mesh.bounds.size, r.transform.lossyScale);
+                Vector3 from = own.magnitude > SLOT_GLASS_OWN_MIDDLE_ABOVE ? r.transform.TransformPoint(mesh.bounds.center) : middle;
+                foreach (var corners in SplitSlotGlassIntoWindows(vertices, slotTriangles, r.transform, joinWithin))
                 {
-                    AddSlotGlassOpening(r, corners, middle, result);
+                    AddSlotGlassOpening(r, corners, from, result);
                     added++;
                 }
             }
@@ -1331,6 +1336,28 @@ namespace SeamlessInteriors
         // (the room's frame hides the rest). Set by eye on the shed's garage strips, 2026-10-10.
         private const float SLOT_GLASS_VIEW_EXTRA_WIDTH = 0.20f;
         private const float SLOT_GLASS_VIEW_EXTRA_HEIGHT = 0.08f;
+        private const float SLOT_GLASS_OWN_MIDDLE_ABOVE = 30f;
+
+        // One submesh's triangles; an unreadable mesh is read from the GPU, whose index buffer is cut by the
+        // submesh's own range (the mine's conveyor connectors, 2026-10-10).
+        private static bool TryReadSlot(Mesh mesh, int slot, out Vector3[] vertices, out int[] triangles)
+        {
+            vertices = null; triangles = null;
+            if (mesh.isReadable) { vertices = mesh.vertices; triangles = mesh.GetTriangles(slot); return true; }
+
+            int[] all;
+            if (!TryReadMesh(mesh, out vertices, out all)) return false;
+            var sub = mesh.GetSubMesh(slot);
+            if (sub.indexStart < 0 || sub.indexStart + sub.indexCount > all.Length) return false;
+            triangles = new int[sub.indexCount];
+            for (int i = 0; i < sub.indexCount; i++)
+            {
+                int v = all[sub.indexStart + i] + sub.baseVertex;
+                if (v < 0 || v >= vertices.Length) return false;
+                triangles[i] = v;
+            }
+            return true;
+        }
 
         // A row's GlassSlotJoinWithinCm, or the bar gap when it has none.
         internal static float GlassSlotJoinWithin(BuildingWindowOverride row)
@@ -1338,7 +1365,8 @@ namespace SeamlessInteriors
             return row != null && !float.IsNaN(row.GlassSlotJoinWithinCm) ? row.GlassSlotJoinWithinCm / 100f : SLOT_GLASS_BAR_GAP;
         }
 
-        internal static List<List<Vector3>> SplitSlotGlassIntoWindows(Vector3[] vertices, int[] triangles, Transform t, float joinWithin)
+        // joinStacked: rows of panes one above the other are one window too (the mine's three-row windows).
+        internal static List<List<Vector3>> SplitSlotGlassIntoWindows(Vector3[] vertices, int[] triangles, Transform t, float joinWithin, bool joinStacked = false)
         {
             var tris = new List<Vector3[]>();
             var levels = new List<Vector3>();
@@ -1399,8 +1427,11 @@ namespace SeamlessInteriors
                         SpanOf(groups[a], right, n, out aLo, out aHi, out aBottom, out aTop, out aPlane);
                         SpanOf(groups[b], right, n, out bLo, out bHi, out bBottom, out bTop, out bPlane);
                         if (Mathf.Abs(aPlane - bPlane) > 0.1f) continue;
-                        if (Mathf.Min(aTop, bTop) - Mathf.Max(aBottom, bBottom) < 0.5f * Mathf.Min(aTop - aBottom, bTop - bBottom)) continue;
-                        if (Mathf.Max(bLo - aHi, aLo - bHi) > joinWithin) continue;
+                        bool sideBySide = Mathf.Min(aTop, bTop) - Mathf.Max(aBottom, bBottom) >= 0.5f * Mathf.Min(aTop - aBottom, bTop - bBottom)
+                                          && Mathf.Max(bLo - aHi, aLo - bHi) <= joinWithin;
+                        bool stacked = joinStacked && Mathf.Min(aHi, bHi) - Mathf.Max(aLo, bLo) >= 0.5f * Mathf.Min(aHi - aLo, bHi - bLo)
+                                       && Mathf.Max(bBottom - aTop, aBottom - bTop) <= joinWithin;
+                        if (!sideBySide && !stacked) continue;
                         groups[a].AddRange(groups[b]);
                         groups.RemoveAt(b); normals.RemoveAt(b);
                         joined = true;

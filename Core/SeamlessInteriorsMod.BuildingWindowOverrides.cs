@@ -102,6 +102,10 @@ namespace SeamlessInteriors
         // the room, one window per object outside.
         public float GlassSlotJoinWithinCm = float.NaN;
 
+        // The room already stands on its building: each building window is paired with the nearest
+        // same-facing room window within this distance, instead of the whole-pattern fit (the mine).
+        public float PairInPlaceWithinCm = float.NaN;
+
         // Seen from inside, the room's glass keeps the game's own material: SI's frost layer draws the
         // glass texture's dirt past the frame where its UVs run along a strip (2026-10-10).
         public bool RoomGlassKeepsOwnMaterial;
@@ -911,6 +915,24 @@ namespace SeamlessInteriors
                 "STR_PumpHouse_Ext_Prefab", new BuildingWindowOverride
                 {
                     RoomManyPaneObjects = new[] { "PumpHouse_InteriorWindowGlass" },
+                }
+            },
+            // Zone of Contamination mine: the concentrator, conveyor building and headframe are one room, and
+            // one shell group (Mine_Buildings, see IsShellGroup). Their glass is on six objects (2026-10-10).
+            {
+                "Mine_Buildings", new BuildingWindowOverride
+                {
+                    ShellGlassObjects = new[] { "OBJ_MineBuildingWindow_Ext_LOD0", "STR_ConveyorBuilding_Ext_Windows",
+                        "STR_ConveyorBuilding_Ext_Connector_A_Windows", "STR_ConveyorBuilding_Ext_Connector_B_Windows",
+                        "STR_ConveyorBuilding_Ext_Connector_C_Windows", "STR_Headframe_Ext_Windows" },
+                    GlassSlotJoinWithinCm = 30f,
+                    RoomManyPaneObjects = new[] { "STR_MineConcentratorWindow_Int_" },
+                    RoomWindowsWithoutBackdrop = new[] { "STR_MineConcentratorWindow_Int_A_LOD0", "STR_MineConcentratorWindow_Int_E_LOD0" },
+                    RoomGlassSlotObjects = new[] { "STR_ConveyorBuilding_Int_Connector_" },
+                    RoomTurnDegrees = 0f,
+                    PairInPlaceWithinCm = 550f,
+                    // No room behind these: the garage door's strip and the concentrator's top floor are wall inside.
+                    WindowsLeftAlone = new[] { 15, 17, 18, 19, 23, 24 },
                 }
             },
             // Hunting Lodge: every room window is in one glass object, read as 2 windows of 16 m and the room

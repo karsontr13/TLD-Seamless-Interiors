@@ -85,7 +85,7 @@ namespace SeamlessInteriors
             if (!TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out glassSnowRow) || !glassSnowRow.GlassSnow) return;
 
             s_GlassSnowSources = new List<GlassSnowSource>();
-            Bounds area = new Bounds(instance.ExteriorShell.transform.position, Vector3.zero);
+            Bounds area = new Bounds(ShellPosition(instance), Vector3.zero);
             // Mesh renderers only. The Community Hall's shell carries eight particle effects (smoke, snow
             // sheets) whose bounds stand at the world origin while idle, which stretched this box to
             // 2.4 x 2.3 km, half of Pleasant Valley: 712 snow meshes read in one frame, a 738 ms freeze on

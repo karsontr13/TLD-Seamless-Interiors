@@ -135,6 +135,45 @@ namespace SeamlessInteriors
 
         private const int WINDOW_PATTERN_EXHAUSTIVE_UP_TO = 100;     // room windows x panes; the Camp Office is 8 x 8
 
+        // A row's PairInPlaceWithinCm: a room already standing on its building, each window paired with the
+        // nearest same-facing one, nearest pairs first. The mine's 86 windows defeated the pattern search.
+        internal static bool PairWindowsInPlace(List<Vector3> roomCenters, List<Vector3> roomOutward,
+                                                List<Vector3> shellCenters, List<Vector3> shellOutward, float within,
+                                                out int[] roomToShell, out Vector3 meanSlide)
+        {
+            int rooms = roomCenters.Count, shells = shellCenters.Count;
+            roomToShell = new int[rooms];
+            for (int i = 0; i < rooms; i++) roomToShell[i] = -1;
+            meanSlide = Vector3.zero;
+
+            // Plain floats: Vector3 arithmetic calls into native code in this interop build (see below).
+            var rx = new float[rooms]; var ry = new float[rooms]; var rz = new float[rooms];
+            for (int i = 0; i < rooms; i++) { Vector3 c = roomCenters[i]; rx[i] = c.x; ry[i] = c.y; rz[i] = c.z; }
+            var sx = new float[shells]; var sy = new float[shells]; var sz = new float[shells];
+            for (int s = 0; s < shells; s++) { Vector3 c = shellCenters[s]; sx[s] = c.x; sy[s] = c.y; sz[s] = c.z; }
+
+            var pairs = new List<KeyValuePair<float, int>>();
+            float limit = within * within;
+            for (int i = 0; i < rooms; i++)
+                for (int s = 0; s < shells; s++)
+                {
+                    if (Vector3.Dot(shellOutward[s], roomOutward[i]) < WINDOW_PATTERN_SAME_FACING) continue;
+                    float dx = rx[i] - sx[s], dy = ry[i] - sy[s], dz = rz[i] - sz[s];
+                    float d = dx * dx + dy * dy + dz * dz;
+                    if (d <= limit) pairs.Add(new KeyValuePair<float, int>(d, i * shells + s));
+                }
+            pairs.Sort((a, b) => a.Key != b.Key ? a.Key.CompareTo(b.Key) : a.Value.CompareTo(b.Value));
+
+            var shellUsed = new bool[shells];
+            foreach (var pair in pairs)
+            {
+                int i = pair.Value / shells, s = pair.Value % shells;
+                if (roomToShell[i] >= 0 || shellUsed[s]) continue;
+                roomToShell[i] = s; shellUsed[s] = true;
+            }
+            return MeanSlideOf(roomCenters, shellCenters, roomToShell, out meanSlide);
+        }
+
         private static bool MeanSlideOf(List<Vector3> roomCenters, List<Vector3> shellCenters, int[] roomToShell, out Vector3 meanSlide)
         {
             meanSlide = Vector3.zero; int pairs = 0;

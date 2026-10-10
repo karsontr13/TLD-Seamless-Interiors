@@ -215,7 +215,7 @@ namespace SeamlessInteriors
                              && building.InstanceId != null
                              && ActiveInteriors.TryGetValue(building.InstanceId, out current) && current == instance;
 
-                if (alive) building.ShellDistance = (instance.ExteriorShell.transform.position - eye).magnitude;
+                if (alive) building.ShellDistance = ShellDistanceFrom(instance, eye);
 
                 if (!alive || building.ShellDistance > keepRange)
                 {
@@ -248,7 +248,7 @@ namespace SeamlessInteriors
                 string id = instance.Config.ResolvedInstanceId;
                 if (s_OutsideInUnsupported.Contains(id) || IsOutsideInBuilding(id)) continue;
 
-                float distance = (instance.ExteriorShell.transform.position - eye).sqrMagnitude;
+                float distance = ShellDistanceFrom(instance, eye); distance *= distance;
                 if (distance >= nextDistance) continue;
 
                 // Measured from the shell's own mesh where the author's table has no entry, and only

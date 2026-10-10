@@ -1012,7 +1012,10 @@ namespace SeamlessInteriors
                 fitRooms.Add(i); fitOnlyCenters.Add(fitRoomCenters[i]); fitOnlyOutward.Add(fitRoomOutward[i]);
             }
             int[] fitOnlyToShell; Vector3 fitSlide;
-            bool fitted = FitWindowPattern(fitOnlyCenters, fitOnlyOutward, fitShellCenters, fitShellOutward, out fitOnlyToShell, out fitSlide);
+            BuildingWindowOverride pairRow;
+            bool fitted = TryGetBuildingWindowOverride(shellName, out pairRow) && !float.IsNaN(pairRow.PairInPlaceWithinCm)
+                ? PairWindowsInPlace(fitOnlyCenters, fitOnlyOutward, fitShellCenters, fitShellOutward, pairRow.PairInPlaceWithinCm / 100f, out fitOnlyToShell, out fitSlide)
+                : FitWindowPattern(fitOnlyCenters, fitOnlyOutward, fitShellCenters, fitShellOutward, out fitOnlyToShell, out fitSlide);
             int[] roomToShell = new int[s_WindowPortalOpenings.Count];
             for (int i = 0; i < roomToShell.Length; i++) roomToShell[i] = -1;
             if (fitted && fitOnlyToShell != null) for (int k = 0; k < fitRooms.Count && k < fitOnlyToShell.Length; k++) roomToShell[fitRooms[k]] = fitOnlyToShell[k];
@@ -1566,7 +1569,7 @@ namespace SeamlessInteriors
             // from where that window actually is rather than from one offset for the whole
             // building. Needs the openings list populated, so it runs after the loop above.
             PairWindowOpeningsToShell(instance,
-                instance.ExteriorShell.transform.position - instance.MasterInterior.transform.position);
+                ShellPosition(instance) - instance.MasterInterior.transform.position);
             if (s_WallCamerasActive) BuildWallGroups(id);
 
             // Until the player-facing action exists, this preference is what decides whether a

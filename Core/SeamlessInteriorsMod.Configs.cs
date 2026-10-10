@@ -2651,7 +2651,8 @@ namespace SeamlessInteriors
                 InstanceId = "MineConcentratorBuilding_1",
                 ExteriorSceneName = "MiningRegion",
                 InteriorSceneBaseName = "MineConcentratorBuilding",
-                ExteriorShellPrefabName = "STR_ConveyorBuilding_Ext_Prefab",
+                // The parent of all three buildings (see IsShellGroup); the conveyor building alone stands 76 m off.
+                ExteriorShellPrefabName = "Mine_Buildings",
                 YOffset = 0f,
                 ScaleAdjustment = new Vector3(1f, 1f, 1f),
                 FallbackPosition = new Vector3(-258.5752f, 199.4149f, 140.2395f),

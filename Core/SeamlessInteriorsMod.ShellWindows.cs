@@ -426,7 +426,7 @@ namespace SeamlessInteriors
 
                 // The row asks for the object's panes one by one: cut as the room's slot glass is.
                 var pieces = new List<List<Vector3>>();
-                if (splitWithin > 0f) pieces.AddRange(SplitSlotGlassIntoWindows(vertices, triangles, meshT, splitWithin));
+                if (splitWithin > 0f) pieces.AddRange(SplitSlotGlassIntoWindows(vertices, triangles, meshT, splitWithin, true));
                 else
                 {
                     var allGlass = new List<Vector3>();
