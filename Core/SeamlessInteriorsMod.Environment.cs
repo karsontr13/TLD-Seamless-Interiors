@@ -1828,6 +1828,13 @@ namespace SeamlessInteriors
         // (the mine's three buildings, pivot 1.1 km away): matched by name alone, placed at the room's spot.
         private static readonly HashSet<string> s_ShellGroups = new HashSet<string> { "Mine_Buildings" };
 
+        // Shells whose pivot stands further from the room's spot than SHELL_MATCH_MAX_DISTANCE allows, with
+        // their own limit (Pleasant Valley's small barn: 11.9 m, so it was never bound, 2026-10-11).
+        private static readonly Dictionary<string, float> s_ShellMatchFarther = new Dictionary<string, float>
+        {
+            { "STR_BarnSmallA_Exterior_Prefab", 15f },
+        };
+
         internal static bool IsShellGroup(string shellPrefabName)
         {
             return shellPrefabName != null && s_ShellGroups.Contains(shellPrefabName);
@@ -1868,6 +1875,8 @@ namespace SeamlessInteriors
         {
             if (string.IsNullOrEmpty(shellPrefabName)) return null;
             bool group = IsShellGroup(shellPrefabName);
+            float limit;
+            if (!s_ShellMatchFarther.TryGetValue(shellPrefabName, out limit)) limit = SHELL_MATCH_MAX_DISTANCE;
 
             // Collect the shells already claimed by other instances.
             var usedShells = new HashSet<int>();
@@ -1891,7 +1900,7 @@ namespace SeamlessInteriors
                 if (usedShells.Contains(go.GetInstanceID())) continue; // already in use
 
                 float dist = group ? 0f : Vector3.Distance(go.transform.position, fallbackPosition);
-                if (dist <= SHELL_MATCH_MAX_DISTANCE && dist < bestDist)
+                if (dist <= limit && dist < bestDist)
                 {
                     bestDist = dist;
                     best = go;
