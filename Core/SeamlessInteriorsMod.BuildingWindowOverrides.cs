@@ -97,6 +97,11 @@ namespace SeamlessInteriors
         // STR_WindowGlassMix. Read from the glass submesh, facing away from the room's middle (2026-10-10).
         public string[] RoomGlassSlotObjects;
 
+        // Panes of one glass object further apart than this are separate windows, in the room's slot glass
+        // and the building's ExtraShellGlassObjects alike (Blackrock power plant door: two panes). NaN: 1 m in
+        // the room, one window per object outside.
+        public float GlassSlotJoinWithinCm = float.NaN;
+
         // Seen from inside, the room's glass keeps the game's own material: SI's frost layer draws the
         // glass texture's dirt past the frame where its UVs run along a strip (2026-10-10).
         public bool RoomGlassKeepsOwnMaterial;
@@ -879,6 +884,17 @@ namespace SeamlessInteriors
                 {
                     RoomGlassSlotObjects = new[] { "STR_MaintenanceShedBInt_Base_Prefab" },
                     RoomGlassKeepsOwnMaterial = true,
+                }
+            },
+            // Blackrock power plant. Its panes all hang under one parent on three walls, which the rule reads as a
+            // house and skips. The door's two panes are one glass object on both sides, 0.8 m apart (2026-10-10).
+            {
+                "STR_Powerplant_Ext_Prefab", new BuildingWindowOverride
+                {
+                    RoomManyPaneObjects = new[] { "STR_Powerplant_IntWindow00" },
+                    RoomGlassSlotObjects = new[] { "STR_MetalDoorExt_C_Double_Window" },
+                    ExtraShellGlassObjects = new[] { "STR_MetalDoorExt_C_Double_Window" },
+                    GlassSlotJoinWithinCm = 40f,
                 }
             },
             // Hunting Lodge: every room window is in one glass object, read as 2 windows of 16 m and the room

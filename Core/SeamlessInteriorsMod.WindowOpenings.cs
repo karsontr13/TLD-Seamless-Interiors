@@ -1261,7 +1261,7 @@ namespace SeamlessInteriors
             if (TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out byHand) && byHand.OpeningsWithNoGlass)
                 TryAddOpeningsWithNoGlass(instance, renderers, result);
             if (byHand != null && byHand.RoomGlassSlotObjects != null)
-                AddRoomGlassSlotOpenings(byHand.RoomGlassSlotObjects, renderers, rootT, result, instance.Config.InstanceId);
+                AddRoomGlassSlotOpenings(byHand.RoomGlassSlotObjects, renderers, rootT, result, instance.Config.InstanceId, GlassSlotJoinWithin(byHand));
             if (byHand != null && byHand.RoomOpeningsByHand != null)
                 AddRoomOpeningsByHand(byHand.RoomOpeningsByHand, result, instance.Config.InstanceId);
 
@@ -1280,7 +1280,7 @@ namespace SeamlessInteriors
 
         // Windows a row names (RoomGlassSlotObjects) whose glass the rule misses: measured from the submesh
         // whose material says Glass alone; added after the rule's windows so those keep their numbers.
-        private static void AddRoomGlassSlotOpenings(string[] names, MeshRenderer[] all, Transform rootT, List<InteriorWindowOpening> result, string id)
+        private static void AddRoomGlassSlotOpenings(string[] names, MeshRenderer[] all, Transform rootT, List<InteriorWindowOpening> result, string id, float joinWithin)
         {
             Vector3 middle = Vector3.zero; int counted = 0;
             // The room is still switched off when it is scanned: activeSelf, and mesh bounds (renderer bounds read zero).
@@ -1312,7 +1312,7 @@ namespace SeamlessInteriors
                     if (mats[k] != null && mats[k].name.IndexOf("Glass", System.StringComparison.Ordinal) >= 0) slot = k;
                 if (slot < 0) continue;
 
-                foreach (var corners in SplitSlotGlassIntoWindows(mesh.vertices, mesh.GetTriangles(slot), r.transform))
+                foreach (var corners in SplitSlotGlassIntoWindows(mesh.vertices, mesh.GetTriangles(slot), r.transform, joinWithin))
                 {
                     AddSlotGlassOpening(r, corners, middle, result);
                     added++;
@@ -1332,7 +1332,13 @@ namespace SeamlessInteriors
         private const float SLOT_GLASS_VIEW_EXTRA_WIDTH = 0.20f;
         private const float SLOT_GLASS_VIEW_EXTRA_HEIGHT = 0.08f;
 
-        private static List<List<Vector3>> SplitSlotGlassIntoWindows(Vector3[] vertices, int[] triangles, Transform t)
+        // A row's GlassSlotJoinWithinCm, or the bar gap when it has none.
+        internal static float GlassSlotJoinWithin(BuildingWindowOverride row)
+        {
+            return row != null && !float.IsNaN(row.GlassSlotJoinWithinCm) ? row.GlassSlotJoinWithinCm / 100f : SLOT_GLASS_BAR_GAP;
+        }
+
+        internal static List<List<Vector3>> SplitSlotGlassIntoWindows(Vector3[] vertices, int[] triangles, Transform t, float joinWithin)
         {
             var tris = new List<Vector3[]>();
             var levels = new List<Vector3>();
@@ -1394,7 +1400,7 @@ namespace SeamlessInteriors
                         SpanOf(groups[b], right, n, out bLo, out bHi, out bBottom, out bTop, out bPlane);
                         if (Mathf.Abs(aPlane - bPlane) > 0.1f) continue;
                         if (Mathf.Min(aTop, bTop) - Mathf.Max(aBottom, bBottom) < 0.5f * Mathf.Min(aTop - aBottom, bTop - bBottom)) continue;
-                        if (Mathf.Max(bLo - aHi, aLo - bHi) > SLOT_GLASS_BAR_GAP) continue;
+                        if (Mathf.Max(bLo - aHi, aLo - bHi) > joinWithin) continue;
                         groups[a].AddRange(groups[b]);
                         groups.RemoveAt(b); normals.RemoveAt(b);
                         joined = true;

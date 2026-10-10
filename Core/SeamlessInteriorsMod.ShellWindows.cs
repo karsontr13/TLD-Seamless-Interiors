@@ -412,6 +412,10 @@ namespace SeamlessInteriors
 
             Vector3 middle = any ? shellT.InverseTransformPoint(whole.center) : Vector3.zero;
 
+            BuildingWindowOverride byHand;
+            float splitWithin = TryGetBuildingWindowOverride(shellName, out byHand) && !float.IsNaN(byHand.GlassSlotJoinWithinCm)
+                ? GlassSlotJoinWithin(byHand) : -1f;
+
             var spots = new List<WindowSpot>();
             int glassTriangles = 0;
             for (int o = 0; o < owners.Count; o++)
@@ -420,14 +424,53 @@ namespace SeamlessInteriors
                 int[] triangles = ownerMesh[o].GetTriangles(ownerSubmesh[o]);
                 Transform meshT = ownerMeshT[o];
 
+                // The row asks for the object's panes one by one: cut as the room's slot glass is.
+                var pieces = new List<List<Vector3>>();
+                if (splitWithin > 0f) pieces.AddRange(SplitSlotGlassIntoWindows(vertices, triangles, meshT, splitWithin));
+                else
+                {
+                    var allGlass = new List<Vector3>();
+                    for (int t = 0; t + 2 < triangles.Length; t += 3)
+                        for (int c = 0; c < 3; c++) allGlass.Add(meshT.TransformPoint(vertices[triangles[t + c]]));
+                    pieces.Add(allGlass);
+                }
+
+                foreach (var piece in pieces)
+                {
+                    WindowSpot spot; int used;
+                    if (!MeasureShellPiece(piece, shellT, middle, out spot, out used)) continue;
+                    spots.Add(spot);
+                    glassTriangles += used;
+                }
+            }
+
+            // Cached BEFORE the self-check: a room whose windows are carried from the building's asks
+            // for these spots from inside FindInteriorWindowOpenings, and without the cache that is
+            // this measure calling itself for ever.
+            s_MeasuredShellWindows[shellName] = spots.ToArray();
+            int roomWindows = -1;
+            try { roomWindows = FindInteriorWindowOpenings(instance).Count; } catch { }
+            string tr = $"[PENCERE-OLCUM] {shellName}: cami cok nesneye yayilmis bina, tabloda adi gecen {owners.Count} nesneden {spots.Count} pencere olculdu ({glassTriangles} cam ucgeni, okunamayan {unreadable}); oda {roomWindows}.";
+            string en = $"[WINDOW-MEASURE] {shellName}: a building with its glass on many objects, measured {spots.Count} windows from the {owners.Count} objects the table names ({glassTriangles} glass triangles, unreadable {unreadable}); the room has {roomWindows}.";
+            if (spots.Count == 0 || (roomWindows >= 0 && roomWindows != spots.Count)) MelonLogger.Warning(tr, en);
+            else MelonLogger.Msg(tr, en);
+
+            return spots.ToArray();
+        }
+
+        // One window from world-space glass triangles (three corners each), measured in the shell's frame.
+        private static bool MeasureShellPiece(List<Vector3> corners, Transform shellT, Vector3 middle, out WindowSpot spot, out int used)
+        {
+            spot = default(WindowSpot); used = 0;
+            {
                 bool found = false; Vector3 facing = Vector3.zero;
                 float planeSum = 0f; int planes = 0;
                 float uLo = float.MaxValue, uHi = float.MinValue, vLo = float.MaxValue, vHi = float.MinValue;
-                for (int t = 0; t + 2 < triangles.Length; t += 3)
+                for (int t = 0; t + 2 < corners.Count; t += 3)
                 {
-                    Vector3 p0 = shellT.InverseTransformPoint(meshT.TransformPoint(vertices[triangles[t]]));
-                    Vector3 p1 = shellT.InverseTransformPoint(meshT.TransformPoint(vertices[triangles[t + 1]]));
-                    Vector3 p2 = shellT.InverseTransformPoint(meshT.TransformPoint(vertices[triangles[t + 2]]));
+                    Vector3 p0 = shellT.InverseTransformPoint(corners[t]);
+                    Vector3 p1 = shellT.InverseTransformPoint(corners[t + 1]);
+                    Vector3 p2 = shellT.InverseTransformPoint(corners[t + 2]);
                     Vector3 n = Vector3.Cross(p1 - p0, p2 - p0);
                     if (n.sqrMagnitude < 1e-10f) continue;
                     n.Normalize();
@@ -454,27 +497,15 @@ namespace SeamlessInteriors
                         if (u < uLo) uLo = u; if (u > uHi) uHi = u;
                         if (p.y < vLo) vLo = p.y; if (p.y > vHi) vHi = p.y;
                     }
-                    glassTriangles++;
+                    used++;
                 }
-                if (!found) continue;
+                if (!found) return false;
 
                 Vector3 across = Vector3.Cross(Vector3.up, facing);
                 Vector3 middleOfPane = facing * (planeSum / planes) + across * ((uLo + uHi) * 0.5f) + Vector3.up * ((vLo + vHi) * 0.5f);
-                spots.Add(new WindowSpot(middleOfPane.x, middleOfPane.y, middleOfPane.z, facing.x, facing.z, uHi - uLo, vHi - vLo));
+                spot = new WindowSpot(middleOfPane.x, middleOfPane.y, middleOfPane.z, facing.x, facing.z, uHi - uLo, vHi - vLo);
+                return true;
             }
-
-            // Cached BEFORE the self-check: a room whose windows are carried from the building's asks
-            // for these spots from inside FindInteriorWindowOpenings, and without the cache that is
-            // this measure calling itself for ever.
-            s_MeasuredShellWindows[shellName] = spots.ToArray();
-            int roomWindows = -1;
-            try { roomWindows = FindInteriorWindowOpenings(instance).Count; } catch { }
-            string tr = $"[PENCERE-OLCUM] {shellName}: cami cok nesneye yayilmis bina, tabloda adi gecen {owners.Count} nesneden {spots.Count} pencere olculdu ({glassTriangles} cam ucgeni, okunamayan {unreadable}); oda {roomWindows}.";
-            string en = $"[WINDOW-MEASURE] {shellName}: a building with its glass on many objects, measured {spots.Count} windows from the {owners.Count} objects the table names ({glassTriangles} glass triangles, unreadable {unreadable}); the room has {roomWindows}.";
-            if (spots.Count == 0 || (roomWindows >= 0 && roomWindows != spots.Count)) MelonLogger.Warning(tr, en);
-            else MelonLogger.Msg(tr, en);
-
-            return spots.ToArray();
         }
 
         private static bool ShellWindowTouches(ShellWindowCluster c, Vector3 normal, float plane, float uLo, float uHi, float vLo, float vHi)
