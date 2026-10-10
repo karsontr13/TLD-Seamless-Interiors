@@ -897,6 +897,14 @@ namespace SeamlessInteriors
                     GlassSlotJoinWithinCm = 40f,
                 }
             },
+            // Sundered Pass radar station: all room windows in one unreadable glass object, which the rule
+            // never read (0 of the building's 7). InteriorWindowGlass_B is inner office glass (2026-10-10).
+            {
+                "STR_RadarStation_Prefab", new BuildingWindowOverride
+                {
+                    RoomManyPaneObjects = new[] { "STR_RadarStation_InteriorWindowGlass_A" },
+                }
+            },
             // Hunting Lodge: every room window is in one glass object, read as 2 windows of 16 m and the room
             // left unturned. Cut by its own geometry it gives the building's 16 (2026-10-10).
             {
