@@ -550,11 +550,14 @@ namespace SeamlessInteriors
             if (ClonedInteriorLightingGuard.Owner != null) s_Saved = Shader.GetGlobalVector(s_LightingStrengthId);
         }
 
-        public static void Postfix(bool __state)
+        // A finalizer, so the restore also runs when Update throws (a template room's half-built light group
+        // throws for a few frames while loading); the throw is swallowed, as it is unpatched.
+        public static System.Exception Finalizer(bool __state)
         {
-            if (!__state) return;
+            if (!__state) return null;
             if (ClonedInteriorLightingGuard.Owner == null) Il2Cpp.LightingManager.SetLightingStrengthDefault();
             else Shader.SetGlobalVector(s_LightingStrengthId, s_Saved);
+            return null;
         }
     }
 
