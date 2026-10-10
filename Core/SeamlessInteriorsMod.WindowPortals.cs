@@ -395,6 +395,8 @@ namespace SeamlessInteriors
         private static int s_WindowPortalSlotCount;
 
         private static string s_WindowPortalInstanceId = null;
+        // The row's RoomGlassKeepsOwnMaterial for the building set up now: its glass is not frosted.
+        private static bool s_WindowPortalKeepsOwnGlass;
         private static List<InteriorWindowOpening> s_WindowPortalOpenings = new List<InteriorWindowOpening>();
         private static List<GameObject> s_WindowPortalQuads = new List<GameObject>();
         private static List<int> s_WindowPortalQuadTile = new List<int>();
@@ -1190,7 +1192,7 @@ namespace SeamlessInteriors
             var opening = s_WindowPortalOpenings[openingIndex];
             SetGlassShown(opening.Glass, !cleared);
             SetRenderersEnabled(opening.Frost, !cleared && InsideOutShowSnowSlab);
-            if (!cleared) GiveGlassTheFrostMaterial(opening.Glass);
+            if (!cleared && !s_WindowPortalKeepsOwnGlass) GiveGlassTheFrostMaterial(opening.Glass);
             s_WindowPaneCleared[openingIndex] = cleared;
         }
 
@@ -1532,6 +1534,8 @@ namespace SeamlessInteriors
             // the outside. A window nobody has touched falls back to the preference. One with no
             // window outside starts in its own recorded state (WindowFrostState.cs).
             s_WindowPortalSnowSlabApplied = InsideOutShowSnowSlab;
+            BuildingWindowOverride glassRow;
+            s_WindowPortalKeepsOwnGlass = TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out glassRow) && glassRow.RoomGlassKeepsOwnMaterial;
             for (int i = 0; i < s_WindowPortalOpenings.Count; i++)
                 ApplyWindowPane(i, IsRoomPaneCleaned(id, i));
 
@@ -2046,6 +2050,7 @@ namespace SeamlessInteriors
 
             s_WindowPortalSlotCount = 0;
             s_WindowPortalInstanceId = null;
+            s_WindowPortalKeepsOwnGlass = false;
         }
     }
 }
