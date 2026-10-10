@@ -547,8 +547,9 @@ namespace SeamlessInteriors
                                 // missed raycast never ejects the player from the building.
                                 if (playerT != null && instance.MasterInterior != null && instance.MasterInterior.activeSelf)
                                 {
-                                    bool looksOutside = !instance.IsPositionInside(playerT.position)
-                                                        && !instance.IsPositionInVolume(playerT.position, 2.0f);
+                                    bool looksOutside = PlayerIsInAnotherParkedBuilding(instance)
+                                                        || (!instance.IsPositionInside(playerT.position)
+                                                            && !instance.IsPositionInVolume(playerT.position, 2.0f));
 
                                     outsideConfirmations = looksOutside ? outsideConfirmations + 1 : 0;
 

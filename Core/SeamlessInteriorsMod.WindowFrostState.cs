@@ -49,6 +49,17 @@ namespace SeamlessInteriors
         private static readonly Dictionary<string, Dictionary<int, bool>> s_WindowCleaned
             = new Dictionary<string, Dictionary<int, bool>>();
 
+        // ROOM WINDOWS WITH NO WINDOW OUTSIDE (owner, 2026-10-01). Barn A's room has 13 windows and
+        // its building 10; room windows 0, 11 and 12 pair with nothing, so they had no record above
+        // and fell back to frosted at every entry while the ten paired ones came back clean: "Some
+        // windows start with them cleared and some start with them not cleared." There is no
+        // outside to match, so they are recorded by their own room window number (the index into
+        // s_WindowPortalOpenings, the number the room tags and the hand pairing use), in the same
+        // file under their own keys. The clean-the-window hover trigger goes through
+        // SetWindowPaneCleared, which routes here for these, so it is remembered by the mod itself.
+        private static readonly Dictionary<string, Dictionary<int, bool>> s_RoomWindowCleaned
+            = new Dictionary<string, Dictionary<int, bool>>();
+
         private static bool WindowCleanedDefault()
         {
             return s_PrefClearWindowPanes != null && s_PrefClearWindowPanes.Value;
@@ -94,6 +105,45 @@ namespace SeamlessInteriors
                     if (s_WindowPortalSpot[i] == window) ApplyWindowPane(i, cleaned);
         }
 
+        // The same two calls for a room window that pairs with no window outside. Only the inside
+        // ever shows it, so only the inside is told.
+        public static bool IsRoomWindowCleaned(string instanceId, int roomWindow)
+        {
+            if (instanceId == null || roomWindow < 0) return WindowCleanedDefault();
+
+            EnsureWindowStateLoaded(instanceId);
+
+            Dictionary<int, bool> building;
+            bool cleaned;
+            if (s_RoomWindowCleaned.TryGetValue(instanceId, out building) && building.TryGetValue(roomWindow, out cleaned))
+                return cleaned;
+            return WindowCleanedDefault();
+        }
+
+        public static void SetRoomWindowCleaned(string instanceId, int roomWindow, bool cleaned)
+        {
+            if (instanceId == null || roomWindow < 0) return;
+
+            EnsureWindowStateLoaded(instanceId);
+
+            Dictionary<int, bool> building;
+            if (!s_RoomWindowCleaned.TryGetValue(instanceId, out building))
+            {
+                building = new Dictionary<int, bool>();
+                s_RoomWindowCleaned[instanceId] = building;
+            }
+            building[roomWindow] = cleaned;
+
+            if (s_WindowPortalInstanceId == instanceId) ApplyWindowPane(roomWindow, cleaned);
+        }
+
+        // Which record a room window follows: its window outside when it has one, its own otherwise.
+        private static bool IsRoomPaneCleaned(string instanceId, int roomWindow)
+        {
+            int window = roomWindow >= 0 && roomWindow < s_WindowPortalSpot.Count ? s_WindowPortalSpot[roomWindow] : -1;
+            return window >= 0 ? IsWindowCleaned(instanceId, window) : IsRoomWindowCleaned(instanceId, roomWindow);
+        }
+
         // Every window of the building the player is at, from either side of its door.
         public static void SetAllWindowsCleaned(bool cleaned)
         {
@@ -106,10 +156,10 @@ namespace SeamlessInteriors
 
             for (int window = 0; window < windows; window++) SetWindowCleaned(instanceId, window, cleaned);
 
-            // Interior openings that paired with no shell window have no shared state to follow.
+            // Interior openings that paired with no shell window keep their own record.
             if (s_WindowPortalInstanceId == instanceId)
                 for (int i = 0; i < s_WindowPortalSpot.Count; i++)
-                    if (s_WindowPortalSpot[i] < 0) ApplyWindowPane(i, cleaned);
+                    if (s_WindowPortalSpot[i] < 0) SetRoomWindowCleaned(instanceId, i, cleaned);
         }
 
         public static bool AreAllWindowsCleaned()
@@ -124,6 +174,9 @@ namespace SeamlessInteriors
 
             for (int window = 0; window < windows; window++)
                 if (!IsWindowCleaned(instanceId, window)) return false;
+            if (s_WindowPortalInstanceId == instanceId)
+                for (int i = 0; i < s_WindowPortalSpot.Count; i++)
+                    if (s_WindowPortalSpot[i] < 0 && !IsRoomWindowCleaned(instanceId, i)) return false;
             return true;
         }
 
@@ -139,6 +192,7 @@ namespace SeamlessInteriors
         public static void ForgetAllWindowStates()
         {
             s_WindowCleaned.Clear();
+            s_RoomWindowCleaned.Clear();
             s_WindowStateLoaded.Clear();
             s_WindowStateSaveName = null;
         }
@@ -151,6 +205,7 @@ namespace SeamlessInteriors
             {
                 s_WindowStateSaveName = saveName;
                 s_WindowCleaned.Clear();
+                s_RoomWindowCleaned.Clear();
                 s_WindowStateLoaded.Clear();
             }
 
@@ -167,9 +222,15 @@ namespace SeamlessInteriors
                 ReadWindowList(json, "\"frosted\"", false, building);
                 if (building.Count > 0) s_WindowCleaned[instanceId] = building;
 
+                // Absent from files written before 2026-10-01, which then load as they always did.
+                var room = new Dictionary<int, bool>();
+                ReadWindowList(json, "\"roomCleaned\"", true, room);
+                ReadWindowList(json, "\"roomFrosted\"", false, room);
+                if (room.Count > 0) s_RoomWindowCleaned[instanceId] = room;
+
                 if (s_DebugBounds)
-                    MelonLogger.Msg($"[PENCERE-LOAD] {instanceId}: {building.Count} pencerenin durumu okundu.",
-                                    $"[WINDOW-LOAD] {instanceId}: state of {building.Count} windows read from the save.");
+                    MelonLogger.Msg($"[PENCERE-LOAD] {instanceId}: {building.Count} pencerenin, {room.Count} yalniz oda penceresinin durumu okundu.",
+                                    $"[WINDOW-LOAD] {instanceId}: state of {building.Count} windows and {room.Count} room-only windows read from the save.");
             }
             catch (System.Exception ex)
             {
@@ -216,15 +277,16 @@ namespace SeamlessInteriors
         {
             if (SaveGameSystem.m_CurrentSaveName != s_WindowStateSaveName) return;
 
-            Dictionary<int, bool> building;
+            Dictionary<int, bool> building, room;
             bool any = s_WindowCleaned.TryGetValue(instanceId, out building) && building.Count > 0;
+            bool anyRoom = s_RoomWindowCleaned.TryGetValue(instanceId, out room) && room.Count > 0;
 
             string path = GetWindowStateSavePath(instanceId);
             if (path == null) return;
 
             // Nothing recorded and nothing on disk: leave it that way. An untouched building gets
             // no file.
-            if (!any && !SaveFiles.Exists(path)) return;
+            if (!any && !anyRoom && !SaveFiles.Exists(path)) return;
 
             var cleanedList = new List<int>();
             var frostedList = new List<int>();
@@ -234,12 +296,23 @@ namespace SeamlessInteriors
             cleanedList.Sort();
             frostedList.Sort();
 
-            string json = "{\"v\":1,\"cleaned\":[" + string.Join(",", cleanedList) + "],\"frosted\":[" + string.Join(",", frostedList) + "]}";
+            var roomCleanedList = new List<int>();
+            var roomFrostedList = new List<int>();
+            if (anyRoom)
+                foreach (var pair in room)
+                    (pair.Value ? roomCleanedList : roomFrostedList).Add(pair.Key);
+            roomCleanedList.Sort();
+            roomFrostedList.Sort();
+
+            // Version stays 1: the room keys are additive, and a build without them reads the
+            // building lists exactly as before and ignores the rest.
+            string json = "{\"v\":1,\"cleaned\":[" + string.Join(",", cleanedList) + "],\"frosted\":[" + string.Join(",", frostedList) + "]"
+                        + ",\"roomCleaned\":[" + string.Join(",", roomCleanedList) + "],\"roomFrosted\":[" + string.Join(",", roomFrostedList) + "]}";
             JsonWriteCache.Write(path, json);
 
             if (s_DebugBounds)
-                MelonLogger.Msg($"[PENCERE-SAVE] {instanceId}: temiz={cleanedList.Count} buzlu={frostedList.Count}",
-                                $"[WINDOW-SAVE] {instanceId}: cleaned={cleanedList.Count} frosted={frostedList.Count}");
+                MelonLogger.Msg($"[PENCERE-SAVE] {instanceId}: temiz={cleanedList.Count} buzlu={frostedList.Count} yalniz oda temiz={roomCleanedList.Count} buzlu={roomFrostedList.Count}",
+                                $"[WINDOW-SAVE] {instanceId}: cleaned={cleanedList.Count} frosted={frostedList.Count} room-only cleaned={roomCleanedList.Count} frosted={roomFrostedList.Count}");
         }
     }
 }

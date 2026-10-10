@@ -64,6 +64,27 @@ namespace SeamlessInteriors
         // The interior's private layer while a portal is showing it. Unused by the game.
         private const int OUTSIDE_IN_INTERIOR_LAYER = 3;
 
+        // One layer per held room, so a camera draws only its own room: rooms of close neighbors
+        // overlap at park height (Milton H2/F3, 2026-10-09). 4 and 28 hold no objects in the game.
+        private static readonly int[] OUTSIDE_IN_ROOM_LAYERS = { OUTSIDE_IN_INTERIOR_LAYER, 4, 28 };
+        private static readonly int OUTSIDE_IN_ROOM_LAYERS_MASK = (1 << 3) | (1 << 4) | (1 << 28);
+
+        // A pool layer no other held room uses; the shared layer 3 when all are taken.
+        private static int PickOutsideInRoomLayer(OutsideInBuilding building)
+        {
+            for (int l = 0; l < OUTSIDE_IN_ROOM_LAYERS.Length; l++)
+            {
+                bool taken = false;
+                for (int h = 0; h < s_OutsideInBuildings.Count && !taken; h++)
+                {
+                    var other = s_OutsideInBuildings[h];
+                    taken = other != building && other.Borrowed && other.Layer == OUTSIDE_IN_ROOM_LAYERS[l];
+                }
+                if (!taken) return OUTSIDE_IN_ROOM_LAYERS[l];
+            }
+            return OUTSIDE_IN_INTERIOR_LAYER;
+        }
+
         // ─── TWO LIFETIMES, BECAUSE THE PARTS DO NOT COST THE SAME ───
         //
         // THE PORTALS are expensive: an open clone, a relayered interior, an edited camera mask, a
@@ -414,6 +435,7 @@ namespace SeamlessInteriors
             public Vector3 RoomRight;
             public bool Paired;
             public bool Pretend;        // paired to a place in the room, not to a window of it
+            public float Toward;        // where this window's picture is drawn, m in front of the building glass (PicturePlaneFor)
             // Center, Width and Height as MEASURED. The three above are these with the window's
             // hand-set fit laid over them, where it has one. See WindowFit.cs.
             public Vector3 BaseCenter;
@@ -424,6 +446,7 @@ namespace SeamlessInteriors
             // and gets no camera of its own. See AssignOutsideInViews.
             public Vector3 ViewCenter, ViewDelta;
             public float ViewWidth, ViewHeight;
+            public Vector3[] Outline;   // the glass's own outline, world points, for a window that is not a rectangle; null for a rectangle
             public int ViewFollows;
             // The room window's own size over the view's, across and up: what the view has to be
             // scaled by for the room's opening to fill the building's. 1 where there is no room
@@ -601,7 +624,7 @@ namespace SeamlessInteriors
                             : $", ortam isigi {ambientMs:F1}, pencere citasi {capsMs:F1}";
                         if (s_OutsideInBorrowed && s_DebugBounds)
                             MelonLogger.Msg($"[DIS-ICE] {instance.Config.ResolvedInstanceId}: oda acildi ({building.ShellDistance:F0} m), " +
-                                            $"{s_OutsideInRelayered.Count} ic mekan renderer katman {OUTSIDE_IN_INTERIOR_LAYER}'e tasindi. " +
+                                            $"{s_OutsideInRelayered.Count} ic mekan renderer katman {s_OI.Layer}'e tasindi. " +
                                             $"Sure: {borrowTimer.Elapsed.TotalMilliseconds:F1} ms ({s_OutsideInLastBorrowLaps}). Acik tutulan oda: {CountOutsideInHeldRooms()}. " +
                                             $"Goz X {eye.x:F0}, Z {eye.z:F0}.",
                                             $"[OUTSIDE-IN] {instance.Config.ResolvedInstanceId}: room switched ON so it can be seen through the windows (building is {building.ShellDistance:F0} m away), " +
@@ -721,7 +744,7 @@ namespace SeamlessInteriors
 
             if (main != null && s_OutsideInMaskEdited)
             {
-                int wanted = s_OutsideInSavedMainMask & ~(1 << OUTSIDE_IN_INTERIOR_LAYER);
+                int wanted = s_OutsideInSavedMainMask & ~OUTSIDE_IN_ROOM_LAYERS_MASK;
                 if (main.cullingMask != wanted) main.cullingMask = wanted;
             }
         }
@@ -799,6 +822,16 @@ namespace SeamlessInteriors
             var shellToRoom = new int[spots.Length];
             for (int s = 0; s < shellToRoom.Length; s++) shellToRoom[s] = -1;
             if (fitted) for (int i = 0; i < roomToShell.Length; i++) if (roomToShell[i] >= 0) shellToRoom[roomToShell[i]] = i;
+            if (ApplyHandPairs(shellName, id, shellToRoom, interiorOpenings.Count))
+            {
+                // The pretend windows' eye follows the slide the pairs agree on, so it is taken again
+                // from the pairs as they now stand.
+                var handRoomToShell = new int[interiorOpenings.Count];
+                for (int i = 0; i < handRoomToShell.Length; i++) handRoomToShell[i] = -1;
+                for (int s = 0; s < shellToRoom.Length; s++) if (shellToRoom[s] >= 0) handRoomToShell[shellToRoom[s]] = s;
+                Vector3 handSlide;
+                if (MeanSlideOf(roomCenters, shellCenters, handRoomToShell, out handSlide)) { meanSlide = handSlide; fitted = true; }
+            }
 
             Quaternion shellTilt;
             float shellTiltDegrees;
@@ -832,8 +865,15 @@ namespace SeamlessInteriors
                 aperture.Width = spot.Width;
                 aperture.Height = spot.Height;
                 aperture.BaseCenter = center; aperture.BaseWidth = spot.Width; aperture.BaseHeight = spot.Height;
+                Vector3[] localOutline = ShellWindowOutline(shellName, s);
+                if (localOutline != null)
+                {
+                    aperture.Outline = new Vector3[localOutline.Length];
+                    for (int o = 0; o < localOutline.Length; o++) aperture.Outline[o] = shell.TransformPoint(localOutline[o]);
+                }
                 aperture.Delta = Vector3.zero;
                 aperture.Paired = false;
+                aperture.Toward = PicturePlaneFor(shellName, s);
 
                 int best = shellToRoom[s];
                 if (best >= 0 && HasNoView(shellName, s)) best = -1;
@@ -855,6 +895,12 @@ namespace SeamlessInteriors
                     // Tried live on Trailer E first; he: "It looks good; the windows are just missing
                     // the frosting." It has no room-side drift, bar or frame to fit, hence Pretend.
                     aperture.Delta = meanSlide + instance.Config.ParkOffset;
+                    // A pretend eye moved by hand (WindowFit RoomRightCm/RoomUpCm, ViewStartCm = toward
+                    // outdoors): Milton house A's window 7 looked from inside the shower wall (2026-10-10).
+                    WindowFit pretendFit;
+                    if (TryGetWindowFit(shellName, s, out pretendFit))
+                        aperture.Delta += levelRight * (pretendFit.RoomRightCm * 0.01f) + Vector3.up * (pretendFit.RoomUpCm * 0.01f)
+                                        + outward * ((pretendFit.HasViewStart ? pretendFit.ViewStartCm : 0f) * 0.01f);
                     aperture.Paired = true;
                     aperture.Pretend = true;
                 }
@@ -913,6 +959,7 @@ namespace SeamlessInteriors
             BuildOutsideInFrostOverlays(instance);
             double msFrost = stepTimer.Elapsed.TotalMilliseconds;
             BuildOutsideInRecessObjects(instance);
+            BuildCopiedShellDrifts(instance);
             double msRecess = stepTimer.Elapsed.TotalMilliseconds;
 
             int driftSlabs = 0;
@@ -994,6 +1041,7 @@ namespace SeamlessInteriors
             // COLLIDERS, which Interactivity.cs says outright, so the sweep below has to come after
             // it or the loot is left solid and reachable through a wall.
             ShowInteriorLootForOutsideIn(instance);
+            SwitchOnAllSectorsForOutsideIn(instance);
             double lootMs = lap.Elapsed.TotalMilliseconds - hydrateMs - activateMs;
 
             // The layer is the GameObject's, not the renderer's - Unity has no per-renderer layer -
@@ -1002,6 +1050,9 @@ namespace SeamlessInteriors
             // entirely; nothing is left on layer 3 for TLD's interaction raycasts to find.
             s_OutsideInRelayered.Clear();
             s_OutsideInSavedLayers.Clear();
+            s_OI.Layer = PickOutsideInRoomLayer(s_OI);
+            for (int c = 0; c < s_OutsideInBarCaps.Count; c++)
+                if (s_OutsideInBarCaps[c] != null) s_OutsideInBarCaps[c].layer = s_OI.Layer;
             RelayerInteriorForOutsideIn(interior);
             s_OutsideInNextRelayerSweep = Time.realtimeSinceStartup + OUTSIDE_IN_RELAYER_SWEEP_SECONDS;
             double relayerMs = lap.Elapsed.TotalMilliseconds - hydrateMs - activateMs - lootMs;
@@ -1022,7 +1073,7 @@ namespace SeamlessInteriors
                     s_OutsideInSavedMainMask = main.cullingMask;
                     s_OutsideInMaskEdited = true;
                 }
-                main.cullingMask = s_OutsideInSavedMainMask & ~(1 << OUTSIDE_IN_INTERIOR_LAYER);
+                main.cullingMask = s_OutsideInSavedMainMask & ~OUTSIDE_IN_ROOM_LAYERS_MASK;
             }
 
             return true;
@@ -1053,10 +1104,10 @@ namespace SeamlessInteriors
                 var renderer = renderers[i];
                 if (renderer == null) continue;
                 var go = renderer.gameObject;
-                if (go == null || go.layer == OUTSIDE_IN_INTERIOR_LAYER) continue;
+                if (go == null || go.layer == s_OI.Layer) continue;
                 s_OutsideInRelayered.Add(renderer);
                 s_OutsideInSavedLayers.Add(go.layer);
-                go.layer = OUTSIDE_IN_INTERIOR_LAYER;
+                go.layer = s_OI.Layer;
             }
         }
 
@@ -1111,6 +1162,31 @@ namespace SeamlessInteriors
         {
             if (instance == null) return;
             SetInteriorItemsVisible(instance, true);
+        }
+
+        // ─── A ROOM SEEN FROM OUTSIDE HAS LEFT ITS SECTORS ───
+        //
+        // Big interiors (the Pleasant Valley farmhouse: 19 sectors, Kitchen, WaterCloset,
+        // Bathroom...) carry the game's BoxSectorManager, which switches off the furniture of every
+        // room not visible from the one the player stands in. Leaving through the mod's door is a
+        // teleport, so the game never sees the player leave: the sectors stay as the last room left
+        // them, and the views in showed whatever that room could see. Found 2026-10-01 (1001-20):
+        // out through the porch door from KitchenSmall the downstairs toilet was missing from
+        // window 23, out from KitchenLeft it was there. The farmhouse is set to switch every sector
+        // on when the player leaves (m_ActivateAllOnExit), so this makes that call for it. Inside,
+        // the sector triggers take over again by themselves (read back the same day).
+        private static void SwitchOnAllSectorsForOutsideIn(SeamlessInteriorInstance instance)
+        {
+            if (instance == null || instance.MasterInterior == null) return;
+            foreach (var manager in instance.MasterInterior.GetComponentsInChildren<BoxSectorManager>(true))
+            {
+                if (manager == null) continue;
+                try { manager.ForceAllActive(); }
+                catch (System.Exception e)
+                {
+                    MelonLogger.Warning($"[OUTSIDE-IN] {instance.Config.ResolvedInstanceId}: could not switch on the room's sectors: {e.Message}");
+                }
+            }
         }
 
         // Visible, never solid. See the comment on s_OutsideInDisabledColliders: an active clone
@@ -1362,7 +1438,7 @@ namespace SeamlessInteriors
                 // `saved` and keeps the building's glass either way.
                 for (int k = 0; k < current.Length && k < saved.Length; k++)
                 {
-                    if (saved[k] == null || saved[k].name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) < 0) continue;
+                    if (saved[k] == null || !IsShellGlassMaterial(saved[k])) continue;
                     current[k] = show ? saved[k] : s_OutsideInHiddenPaneMaterial;
                 }
                 renderer.sharedMaterials = current;
@@ -1423,8 +1499,8 @@ namespace SeamlessInteriors
             pane.Center = pane.ViewCenter; pane.Delta = pane.ViewDelta;
             pane.Width = pane.ViewWidth; pane.Height = pane.ViewHeight;
             // Everything toward the viewer. See OutsideInViewTowardViewer.
-            pane.Center += pane.Outward * OutsideInViewTowardViewer;
-            pane.Delta -= pane.Outward * OutsideInViewTowardViewer + pane.RoomOutward * OutsideInViewTowardViewer;
+            pane.Center += pane.Outward * pane.Toward;
+            pane.Delta -= pane.Outward * pane.Toward + pane.RoomOutward * pane.Toward;
 
             Vector3 right = pane.Right;
             Vector3 up = pane.Up;
@@ -1508,10 +1584,8 @@ namespace SeamlessInteriors
             var quad = s_OutsideInQuads[slot];
             var filter = quad.GetComponent<MeshFilter>();
             if (filter != null && filter.sharedMesh != null)
-            {
-                filter.sharedMesh.vertices = new Vector3[] { qa, qc, qd, qb };
-                filter.sharedMesh.RecalculateBounds();
-            }
+                // A window that is not a rectangle shows the picture only inside its glass's outline.
+                WriteViewSurface(filter.sharedMesh, pa, right, up, u0, u1, v0, v1, s_OutsideInApertures[index].Outline);
 
             // Kooima off-axis frustum whose near plane IS the aperture plane, so nothing between
             // the player and the window is drawn and the view lines up with the hole exactly.
@@ -1573,6 +1647,7 @@ namespace SeamlessInteriors
             {
                 SwitchOffForViewIn(OutsideInBackdrops(s_OI), s_OutsideInWallSwitchedOff);
                 ApplyOutsideInAmbient();
+                cam.cullingMask = 1 << s_OI.Layer;
                 cam.Render();
             }
             finally { RenderSettings.ambientMode = savedMode; RenderSettings.ambientLight = savedLight; SwitchBackOn(s_OutsideInWallSwitchedOff); }
@@ -1840,6 +1915,20 @@ namespace SeamlessInteriors
         // so the room as a whole reads 2 cm nearer. The frost and the dark backing go with the
         // picture; the snow on the sill stays on the sill. See RenderOutsideInPane.
         internal static float OutsideInViewTowardViewer = 0.01f;
+
+        // The picture plane of one window: its own row value, else its building's, else the global above.
+        // Meters. Worked out when the windows are fitted and kept on the window (ShellAperture.Toward).
+        private static float PicturePlaneFor(string shellName, int window)
+        {
+            BuildingWindowOverride row;
+            if (!string.IsNullOrEmpty(shellName) && TryGetBuildingWindowOverride(shellName, out row))
+            {
+                if (row.PicturePlaneCmByWindow != null && window >= 0 && window < row.PicturePlaneCmByWindow.Length && !float.IsNaN(row.PicturePlaneCmByWindow[window]))
+                    return row.PicturePlaneCmByWindow[window] * 0.01f;
+                if (!float.IsNaN(row.PicturePlaneCm)) return row.PicturePlaneCm * 0.01f;
+            }
+            return OutsideInViewTowardViewer;
+        }
         internal static bool OutsideInCutBehindRoomFrame { get { return OutsideInCutMode == 2; } }
         private const float ROOM_FRAME_FACE_CLEARED_BY = 0.001f;
         private static bool s_OutsideInRebuildAsked;
@@ -2170,7 +2259,7 @@ namespace SeamlessInteriors
                 for (int k = 0; k < materials.Length && k < filter.sharedMesh.subMeshCount; k++)
                 {
                     if (materials[k] == null) continue;
-                    if (materials[k].name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) < 0) continue;
+                    if (!IsShellGlassMaterial(materials[k])) continue;
                     if (shellMesh != null && filter.sharedMesh.vertexCount <= shellMesh.vertexCount) continue;
                     shellMesh = filter.sharedMesh; shellTransform = renderer.transform; glassSubmesh = k;
                 }
@@ -2208,7 +2297,7 @@ namespace SeamlessInteriors
                 var pane = s_OutsideInApertures[a];
                 // A window left alone gets nothing of the mod's: its glass is never hidden in the first
                 // place. See SplitLeftAloneGlass.
-                if (!pane.Paired || HasNoView(instance.Config.ExteriorShellPrefabName, a)) continue;
+                if (!pane.Paired || IsLeftAloneAt(instance.Config.ExteriorShellPrefabName, a)) continue;
 
                 paneVertices.Clear();
                 paneUvs.Clear();
@@ -2443,7 +2532,7 @@ namespace SeamlessInteriors
                 Material[] materials = renderer.sharedMaterials;
                 for (int k = 0; k < materials.Length && k < filter.sharedMesh.subMeshCount; k++)
                 {
-                    if (materials[k] == null || materials[k].name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) < 0) continue;
+                    if (materials[k] == null || !IsShellGlassMaterial(materials[k])) continue;
                     int[] indices = filter.sharedMesh.GetTriangles(k);
                     if (indices == null || indices.Length == 0) continue;
                     rect = UvRectOf(uvs, indices);
@@ -2482,18 +2571,25 @@ namespace SeamlessInteriors
                 // EVERY window gets a backing, paired or not: it is what stands in for the hidden
                 // pane wherever no portal is drawing. Except a window left alone, which keeps the
                 // building's own pane and must not have a dark sheet standing in front of it.
-                if (s_OutsideInBackingMaterial != null && !HasNoView(instance.Config.ExteriorShellPrefabName, a))
+                if (s_OutsideInBackingMaterial != null && !IsLeftAloneAt(instance.Config.ExteriorShellPrefabName, a))
                 {
                     Vector3 halfRight = pane.Right * (pane.Width * 0.5f + 0.01f);
                     Vector3 halfUp = pane.Up * (pane.Height * 0.5f + 0.01f);
 
                     var mesh = new Mesh();
                     mesh.name = "SeamlessInteriors_WindowBackingMesh";
-                    mesh.vertices = new Vector3[] { pane.Center - halfRight - halfUp, pane.Center - halfRight + halfUp,
-                                                    pane.Center + halfRight + halfUp, pane.Center + halfRight - halfUp };
-                    mesh.uv = new Vector2[] { new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0f) };
-                    // Both windings, so the facing cannot be got wrong for any window normal.
-                    mesh.triangles = new int[] { 0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2 };
+                    if (pane.Outline != null)
+                        // A window that is not a rectangle: the backing in the glass's own outline, so no dark
+                        // rectangle stands out past its slanted edges. See ShapedViews.cs.
+                        BuildOutlineSheet(mesh, pane.Outline, pane.Center, pane.Right, pane.Up);
+                    else
+                    {
+                        mesh.vertices = new Vector3[] { pane.Center - halfRight - halfUp, pane.Center - halfRight + halfUp,
+                                                        pane.Center + halfRight + halfUp, pane.Center + halfRight - halfUp };
+                        mesh.uv = new Vector2[] { new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0f) };
+                        // Both windings, so the facing cannot be got wrong for any window normal.
+                        mesh.triangles = new int[] { 0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2 };
+                    }
                     mesh.RecalculateBounds();
 
                     var backing = new GameObject("SeamlessInteriors_WindowBacking_" + a);
@@ -2670,6 +2766,9 @@ namespace SeamlessInteriors
                     var colliders = copy.GetComponentsInChildren<Collider>(true);
                     for (int c = 0; c < colliders.Length; c++) if (colliders[c] != null) colliders[c].enabled = false;
 
+                    // Last, once it sits where it will be seen: the crop is by height in this window.
+                    if (IsDriftSillOnly(instance.Config.ExteriorShellPrefabName, a)) CropLedgeDriftToSill(copy, pane);
+
                     copy.SetActive(false);
                     copies.Add(copy);
                     bases.Add(copy.transform.position);
@@ -2708,7 +2807,7 @@ namespace SeamlessInteriors
                     bool carriesGlass = false;
                     Material[] candidateMaterials = candidateRenderer.sharedMaterials;
                     for (int k = 0; k < candidateMaterials.Length; k++)
-                        if (candidateMaterials[k] != null && candidateMaterials[k].name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) >= 0) { carriesGlass = true; break; }
+                        if (candidateMaterials[k] != null && IsShellGlassMaterial(candidateMaterials[k])) { carriesGlass = true; break; }
                     // While the building is dressed the panes wear the hidden-pane material instead.
                     for (int k = 0; k < candidateMaterials.Length && !carriesGlass; k++)
                         if (candidateMaterials[k] != null && candidateMaterials[k] == s_OutsideInHiddenPaneMaterial) carriesGlass = true;
@@ -2828,7 +2927,7 @@ namespace SeamlessInteriors
                 mesh.RecalculateBounds();
 
                 var cap = new GameObject("SeamlessInteriors_BarCap_" + a);
-                cap.layer = OUTSIDE_IN_INTERIOR_LAYER;
+                cap.layer = s_OI.Layer;
                 cap.AddComponent<MeshFilter>().sharedMesh = mesh;
                 var capRenderer = cap.AddComponent<MeshRenderer>();
                 capRenderer.sharedMaterial = frameRenderer.sharedMaterial;
@@ -3167,7 +3266,7 @@ namespace SeamlessInteriors
                 Material[] mats = r.sharedMaterials;
                 for (int k = 0; k < mats.Length && !carriesGlass; k++)
                     if (mats[k] != null && (mats[k] == s_OutsideInHiddenPaneMaterial
-                        || mats[k].name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) >= 0)) carriesGlass = true;
+                        || IsShellGlassMaterial(mats[k]))) carriesGlass = true;
                 if (!carriesGlass) continue;
                 best = f.sharedMesh; bestT = f.transform;
             }
@@ -3219,7 +3318,7 @@ namespace SeamlessInteriors
                 Material[] mats = r.sharedMaterials;
                 for (int k = 0; k < mats.Length && !carriesGlass; k++)
                     if (mats[k] != null && (mats[k] == s_OutsideInHiddenPaneMaterial
-                        || mats[k].name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) >= 0)) carriesGlass = true;
+                        || IsShellGlassMaterial(mats[k]))) carriesGlass = true;
                 if (!carriesGlass) continue;
                 best = f.sharedMesh; bestT = f.transform;
             }
@@ -3367,14 +3466,14 @@ namespace SeamlessInteriors
 
                 if (a < s_OutsideInBackings.Count && s_OutsideInBackings[a] != null)
                 {
-                    s_OutsideInBackings[a].transform.position = -outward * (recess - OutsideInViewTowardViewer + OUTSIDE_IN_BACKING_BEHIND_QUAD);
+                    s_OutsideInBackings[a].transform.position = -outward * (recess - s_OutsideInApertures[a].Toward + OUTSIDE_IN_BACKING_BEHIND_QUAD);
                     bool backingOn = s_OI.CamerasOn && s_OI.Level >= 1f;
                     if (s_OutsideInBackings[a].activeSelf != backingOn) s_OutsideInBackings[a].SetActive(backingOn);
                 }
 
                 // A FIXED gap in front of the portal. This is the constant the stack is built round.
                 if (a < s_OutsideInFrostOverlays.Count && s_OutsideInFrostOverlays[a] != null)
-                    s_OutsideInFrostOverlays[a].transform.position = -outward * (recess - OutsideInViewTowardViewer - OUTSIDE_IN_FROST_PROUD_OF_QUAD);
+                    s_OutsideInFrostOverlays[a].transform.position = -outward * (recess - s_OutsideInApertures[a].Toward - OUTSIDE_IN_FROST_PROUD_OF_QUAD);
 
                 if (a < s_OutsideInLedgeDrifts.Count && s_OutsideInLedgeDrifts[a] != null)
                     for (int k = 0; k < s_OutsideInLedgeDrifts[a].Count; k++)
@@ -3398,7 +3497,7 @@ namespace SeamlessInteriors
 
             string shellName = instance.Config != null ? instance.Config.ExteriorShellPrefabName : null;
             bool anyLeftAlone = false;
-            for (int a = 0; a < s_OutsideInApertures.Count && !anyLeftAlone; a++) anyLeftAlone = HasNoView(shellName, a);
+            for (int a = 0; a < s_OutsideInApertures.Count && !anyLeftAlone; a++) anyLeftAlone = IsLeftAloneAt(shellName, a);
 
             var shellRenderers = instance.ExteriorShell.GetComponentsInChildren<MeshRenderer>(true);
             for (int i = 0; i < shellRenderers.Length; i++)
@@ -3412,7 +3511,7 @@ namespace SeamlessInteriors
                 for (int k = 0; k < current.Length; k++)
                 {
                     if (current[k] == null) continue;
-                    if (current[k].name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) < 0) continue;
+                    if (!IsShellGlassMaterial(current[k])) continue;
                     if (swapped == null) swapped = (Material[])current.Clone();
                     swapped[k] = s_OutsideInHiddenPaneMaterial;
 
@@ -3475,7 +3574,7 @@ namespace SeamlessInteriors
                 bool left = false;
                 for (int a = 0; a < s_OutsideInApertures.Count && !left; a++)
                 {
-                    if (!HasNoView(shellName, a)) continue;
+                    if (!IsLeftAloneAt(shellName, a)) continue;
                     var pane = s_OutsideInApertures[a];
                     Vector3 fromCenter = middle - pane.BaseCenter;
                     left = Mathf.Abs(Vector3.Dot(fromCenter, pane.Right)) <= pane.BaseWidth * 0.5f + OUTSIDE_IN_FROST_PANE_MARGIN
@@ -3546,7 +3645,15 @@ namespace SeamlessInteriors
             for (int i = 0; i < s_OutsideInLedgeDrifts.Count; i++)
                 if (s_OutsideInLedgeDrifts[i] != null)
                     for (int k = 0; k < s_OutsideInLedgeDrifts[i].Count; k++)
-                        if (s_OutsideInLedgeDrifts[i][k] != null) Object.Destroy(s_OutsideInLedgeDrifts[i][k]);
+                    {
+                        var drift = s_OutsideInLedgeDrifts[i][k];
+                        if (drift == null) continue;
+                        // A cropped copy owns its mesh; an uncropped one shares the room's.
+                        var filter = drift.GetComponentInChildren<MeshFilter>(true);
+                        if (filter != null && filter.sharedMesh != null && filter.sharedMesh.name.EndsWith(LEDGE_DRIFT_SILL_ONLY_SUFFIX, System.StringComparison.Ordinal))
+                            Object.Destroy(filter.sharedMesh);
+                        Object.Destroy(drift);
+                    }
             s_OutsideInLedgeDrifts.Clear();
             s_OutsideInLedgeDriftBase.Clear();
 
@@ -3554,6 +3661,173 @@ namespace SeamlessInteriors
             s_OutsideInBackingMaterial = null;
             if (s_OutsideInBackingTexture != null) Object.Destroy(s_OutsideInBackingTexture);
             s_OutsideInBackingTexture = null;
+        }
+
+        // ─── SNOW BY HAND: A ROOM COPY CUT TO ITS SILL, AND THE GAME'S OWN DRIFT COPIED ───
+        //
+        // Both are asked for building by building in s_BuildingWindowOverrides, and both were settled
+        // live by the owner's eye before they were written here (LOG-2026-09-30).
+
+        private const string LEDGE_DRIFT_SILL_ONLY_SUFFIX = "_SillOnly";
+
+        // The building's row may pair windows by hand (BuildingWindowOverride.PairedRoomWindows). A room
+        // window given to one building window is taken from any other the automatic pairing gave it to.
+        private static bool ApplyHandPairs(string shellName, string id, int[] shellToRoom, int roomWindows)
+        {
+            BuildingWindowOverride row;
+            if (!TryGetBuildingWindowOverride(shellName, out row) || row.PairedRoomWindows == null) return false;
+            int n = Mathf.Min(row.PairedRoomWindows.Length, shellToRoom.Length);
+            for (int s = 0; s < n; s++)
+            {
+                int room = row.PairedRoomWindows[s];
+                if (room >= roomWindows)
+                {
+                    MelonLogger.Warning($"[OUTSIDE-IN] {id}: the hand pairing gives window {s} room window {room}, but the room has {roomWindows}; left as the automatic pairing had it.");
+                    continue;
+                }
+                if (room >= 0) for (int other = 0; other < shellToRoom.Length; other++) if (shellToRoom[other] == room) shellToRoom[other] = -1;
+                shellToRoom[s] = room;
+            }
+            return true;
+        }
+
+        private static bool IsDriftSillOnly(string shellName, int window)
+        {
+            BuildingWindowOverride row;
+            if (!TryGetBuildingWindowOverride(shellName, out row) || row.DriftSillOnly == null) return false;
+            return System.Array.IndexOf(row.DriftSillOnly, window) >= 0;
+        }
+
+        // Keeps the triangles in the lower quarter of the window and drops the rest, which is the
+        // snow on a bar the building's window does not have. Measured on the Camp Office's window 0
+        // (55 cm): the sill snow's triangles sit 18 to 26 cm below the window's middle, the bar's
+        // within 2 cm of it, nothing between. The room's mesh is shared, so the copy gets its own.
+        private static void CropLedgeDriftToSill(GameObject copy, ShellAperture pane)
+        {
+            var filter = copy.GetComponentInChildren<MeshFilter>(true);
+            if (filter == null || filter.sharedMesh == null) return;
+            var source = filter.sharedMesh;
+            if (!source.isReadable)
+            {
+                MelonLogger.Warning($"[OUTSIDE-IN] {copy.name}: the room's snow mesh '{source.name}' cannot be read, so its bar snow is left on.");
+                return;
+            }
+
+            float keepBelow = -pane.Height * 0.25f;
+            var vertices = source.vertices;
+            var triangles = source.triangles;
+            var kept = new List<int>(triangles.Length);
+            for (int i = 0; i + 2 < triangles.Length; i += 3)
+            {
+                Vector3 middle = (vertices[triangles[i]] + vertices[triangles[i + 1]] + vertices[triangles[i + 2]]) / 3f;
+                if (Vector3.Dot(filter.transform.TransformPoint(middle) - pane.Center, pane.Up) < keepBelow)
+                {
+                    kept.Add(triangles[i]); kept.Add(triangles[i + 1]); kept.Add(triangles[i + 2]);
+                }
+            }
+            if (kept.Count == 0 || kept.Count == triangles.Length) return;
+
+            var cropped = Object.Instantiate(source);
+            cropped.name = source.name + LEDGE_DRIFT_SILL_ONLY_SUFFIX;
+            cropped.subMeshCount = 1;
+            cropped.triangles = kept.ToArray();
+            cropped.RecalculateBounds();
+            filter.sharedMesh = cropped;
+        }
+
+        // Made once per scene: a copy already on the shell is left where it is. Named SI_ so the
+        // hide pass and the watchdog leave it alone (IsOwnPortalObject), like the mod's other objects.
+        private static void BuildCopiedShellDrifts(SeamlessInteriorInstance instance)
+        {
+            BuildingWindowOverride row;
+            if (instance == null || instance.ExteriorShell == null) return;
+            if (!TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out row) || row.CopiedDrifts == null) return;
+
+            var shell = instance.ExteriorShell.transform;
+            var parts = shell.GetComponentsInChildren<Transform>(true);
+            for (int d = 0; d < row.CopiedDrifts.Length; d++)
+            {
+                var want = row.CopiedDrifts[d];
+                if (want == null || string.IsNullOrEmpty(want.SourceObject)) continue;
+                if (want.FromWindow < 0 || want.FromWindow >= s_OutsideInApertures.Count || want.ToWindow < 0 || want.ToWindow >= s_OutsideInApertures.Count) continue;
+
+                string name = "SI_ShellDriftCopy_" + want.SourceObject + "_w" + want.FromWindow + "_to_w" + want.ToWindow;
+                bool made = false;
+                for (int i = 0; i < parts.Length && !made; i++) if (parts[i] != null && parts[i].name == name) made = true;
+                if (made) continue;
+
+                var from = s_OutsideInApertures[want.FromWindow];
+                var to = s_OutsideInApertures[want.ToWindow];
+                Vector3 overFrom = from.BaseCenter + from.Up * (from.BaseHeight * 0.5f);
+                Transform source = null; float best = 1f;
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    var t = parts[i];
+                    if (t == null || !t.name.StartsWith(want.SourceObject, System.StringComparison.Ordinal)) continue;
+                    float distance = (t.position - overFrom).magnitude;
+                    if (distance < best) { best = distance; source = t; }
+                }
+                if (source == null)
+                {
+                    MelonLogger.Warning($"[OUTSIDE-IN] {instance.Config.ResolvedInstanceId}: no '{want.SourceObject}' within 1 m of window {want.FromWindow}'s top, so window {want.ToWindow} gets no copy of it.");
+                    continue;
+                }
+
+                // Turned as the one window faces from the other; straight opposite walls turn about up.
+                Quaternion turn = Vector3.Dot(from.Outward, to.Outward) < -0.99f
+                    ? Quaternion.AngleAxis(180f, Vector3.up)
+                    : Quaternion.FromToRotation(from.Outward, to.Outward);
+                var copy = Object.Instantiate(source.gameObject, source.parent);
+                copy.name = name;
+                copy.transform.rotation = turn * source.rotation;
+                copy.transform.localScale = source.localScale;
+                copy.transform.position = to.BaseCenter + to.Right * (want.AcrossCm / 100f) + to.Up * (want.UpCm / 100f) + to.Outward * (want.OutCm / 100f);
+                MatchCopiedDriftFade(copy, parts, want.SourceObject);
+                if (s_DebugBounds)
+                    MelonLogger.Msg($"[DIS-ICE] {instance.Config.ResolvedInstanceId}: oyunun '{source.name}' kari {want.FromWindow}. pencerenin ustunden {want.ToWindow}. pencerenin ustune kopyalandi.",
+                                    $"[OUTSIDE-IN] {instance.Config.ResolvedInstanceId}: the game's '{source.name}' over window {want.FromWindow} copied over window {want.ToWindow}.");
+            }
+        }
+
+        // THE COPY FADES WITH THE BUILDING'S OTHER DRIFTS, not with the one it was copied from. The
+        // game placed its drifts at different scales, so each fades at its own distance: the one over
+        // the Camp Office's window 5 goes about 34 m before the rest, and its copy on window 7, which
+        // faces the approach, went with it while its neighbors stayed (owner, 2026-09-30: "I just want
+        // it to look the same as the rest of the snowdrifts on the building"). Its LOD heights are
+        // scaled so it is culled where the longest-lasting drift of the same kind on the shell is.
+        // The LODs are rebuilt, not edited: an element read from the interop array is a copy.
+        private static void MatchCopiedDriftFade(GameObject copy, Transform[] shellParts, string kindPrefix)
+        {
+            var group = copy.GetComponent<LODGroup>();
+            float fade = LodFadeSize(group);
+            if (fade <= 0f) return;
+
+            string kind = kindPrefix.Length >= 8 ? kindPrefix.Substring(0, 8) : kindPrefix;   // "TRN_Snow"
+            float furthest = 0f;
+            for (int i = 0; i < shellParts.Length; i++)
+            {
+                var t = shellParts[i];
+                if (t == null || !t.name.StartsWith(kind, System.StringComparison.Ordinal)) continue;
+                furthest = Mathf.Max(furthest, LodFadeSize(t.GetComponent<LODGroup>()));
+            }
+            if (furthest <= fade) return;
+
+            float factor = fade / furthest;
+            var lods = group.GetLODs();
+            var scaled = new LOD[lods.Length];
+            for (int i = 0; i < lods.Length; i++) scaled[i] = new LOD(lods[i].screenRelativeTransitionHeight * factor, lods[i].renderers);
+            group.SetLODs(scaled);
+        }
+
+        // Proportional to the distance at which the group is culled: its world size over its last LOD's height.
+        private static float LodFadeSize(LODGroup group)
+        {
+            if (group == null || group.lodCount == 0) return 0f;
+            var lods = group.GetLODs();
+            float last = lods[lods.Length - 1].screenRelativeTransitionHeight;
+            if (last <= 0f) return 0f;
+            Vector3 s = group.transform.lossyScale;
+            return group.size * Mathf.Max(Mathf.Abs(s.x), Mathf.Max(Mathf.Abs(s.y), Mathf.Abs(s.z))) / last;
         }
 
         private static void DestroyOutsideInFrostOverlays()
@@ -3769,7 +4043,7 @@ namespace SeamlessInteriors
             // room is also switched off here, in the door's own frame, when the player is known to
             // be standing in a DIFFERENT open room. Known, not assumed: if they are in no room's
             // volume this stays as cautious as before and the watchdog still has the last word.
-            bool playerIsElsewhere = !s_IsPlayerInsideClone;
+            bool playerIsElsewhere = !s_IsPlayerInsideClone || PlayerIsInAnotherParkedBuilding(s_OutsideInInstance);
             if (!playerIsElsewhere && s_OutsideInActivatedClone && s_OutsideInInstance != null)
             {
                 var playerT = GameManager.GetPlayerTransform();

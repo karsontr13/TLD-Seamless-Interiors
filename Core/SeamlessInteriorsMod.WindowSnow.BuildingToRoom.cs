@@ -37,6 +37,11 @@ namespace SeamlessInteriors
         //
         // Built once per room, one window per frame from a queue, and removed with the views.
         // Windows with nothing against the glass cost one quick check.
+        //
+        // ONLY FOR A BUILDING WHOSE ROW ASKS FOR IT (BuildingWindowOverride.GlassSnow), since 2026-10-02:
+        // the Quonset gas station, the one building found with the ground piled against a window. Owner:
+        // "it should only be working at the Quonset garage", the rest kept for another building like it.
+        // This switch stays the master: off, no building gets it.
         public static bool GlassSnow = true;
 
         private const float GLASS_SNOW_GAP = 0.0005f;
@@ -75,11 +80,17 @@ namespace SeamlessInteriors
         private static void QueueGlassSnow(SeamlessInteriorInstance instance, string id)
         {
             TeardownGlassSnow();
-            if (!GlassSnow || instance == null || instance.ExteriorShell == null) return;
+            if (!GlassSnow || instance == null || instance.ExteriorShell == null || instance.Config == null) return;
+            BuildingWindowOverride glassSnowRow;
+            if (!TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out glassSnowRow) || !glassSnowRow.GlassSnow) return;
 
             s_GlassSnowSources = new List<GlassSnowSource>();
             Bounds area = new Bounds(instance.ExteriorShell.transform.position, Vector3.zero);
-            foreach (var r in instance.ExteriorShell.GetComponentsInChildren<Renderer>(true)) area.Encapsulate(r.bounds);
+            // Mesh renderers only. The Community Hall's shell carries eight particle effects (smoke, snow
+            // sheets) whose bounds stand at the world origin while idle, which stretched this box to
+            // 2.4 x 2.3 km, half of Pleasant Valley: 712 snow meshes read in one frame, a 738 ms freeze on
+            // every entry (2026-10-02). Its meshes alone give 22 x 21 m.
+            foreach (var r in instance.ExteriorShell.GetComponentsInChildren<MeshRenderer>(true)) area.Encapsulate(r.bounds);
             area.Expand(8f);
             Transform room = instance.MasterInterior != null ? instance.MasterInterior.transform : null;
 

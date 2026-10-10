@@ -468,6 +468,26 @@ namespace SeamlessInteriors
             return volume.Contains(localPos);
         }
 
+        // The room's true volume as a world box (its trigger without the padding), for telling whether
+        // two parked rooms overlap. Works with the room switched off: only transforms are read.
+        public bool TryGetRoomWorldBox(out Bounds box)
+        {
+            box = default(Bounds);
+            if (MasterInterior == null || InteriorTrigger == null) return false;
+            Vector3 size = InteriorTrigger.size - TRIGGER_EXPANSION;
+            Vector3 half = new Vector3(Mathf.Max(0.05f, size.x), Mathf.Max(0.05f, size.y), Mathf.Max(0.05f, size.z)) * 0.5f;
+            Transform t = InteriorTrigger.transform;
+            Vector3 min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue), max = -min;
+            for (int k = 0; k < 8; k++)
+            {
+                Vector3 corner = InteriorTrigger.center + new Vector3((k & 1) == 0 ? half.x : -half.x, (k & 2) == 0 ? half.y : -half.y, (k & 4) == 0 ? half.z : -half.z);
+                Vector3 world = t.TransformPoint(corner);
+                min = Vector3.Min(min, world); max = Vector3.Max(max, world);
+            }
+            box.SetMinMax(min, max);
+            return true;
+        }
+
         private const float RAY_EARLY_REJECT_PADDING = 12f;
 
         // ─── THE ONE QUESTION, FOR A PARKED BUILDING: IS THIS POSITION IN THE ROOM? ───

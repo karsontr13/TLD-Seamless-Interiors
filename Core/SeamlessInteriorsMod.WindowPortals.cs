@@ -750,10 +750,8 @@ namespace SeamlessInteriors
             // the UVs stay 0..1 and only the corners move.
             var filter = quad.GetComponent<MeshFilter>();
             if (filter != null && filter.sharedMesh != null)
-            {
-                filter.sharedMesh.vertices = new Vector3[] { qa, qc, qd, qb };
-                filter.sharedMesh.RecalculateBounds();
-            }
+                // A window that is not a rectangle shows the picture only inside its glass's outline.
+                WriteViewSurface(filter.sharedMesh, pa, right, up, u0, u1, v0, v1, opening.Outline);
 
             // The virtual eye is placed so that the player stands in the same relation to the
             // EXTERIOR pane as they do to the interior one they are looking through. That is what
@@ -942,6 +940,22 @@ namespace SeamlessInteriors
         // Pairs each interior opening with the exterior pane it represents, and stores the
         // translation from one to the other. Falls back to the building-wide delta for any opening
         // that cannot be paired, which is still better than not drawing it.
+        // A room window's view out moved by hand from the spot the pairs agree on (BuildingWindowOverride.ViewOutOffsets),
+        // paired or not.
+        private static Vector3 ViewOutOffset(string shellName, int roomWindow, Vector3 outward)
+        {
+            BuildingWindowOverride row;
+            if (!TryGetBuildingWindowOverride(shellName, out row) || row.ViewOutOffsets == null) return Vector3.zero;
+            outward.y = 0f;
+            if (outward.sqrMagnitude < 1e-6f) return Vector3.zero;
+            outward.Normalize();
+            Vector3 right = Vector3.Cross(Vector3.up, outward).normalized;   // the right hand of someone inside looking out
+            foreach (var v in row.ViewOutOffsets)
+                if (v != null && v.RoomWindow == roomWindow)
+                    return right * (v.RightCm / 100f) + Vector3.up * (v.UpCm / 100f) + outward * (v.OutCm / 100f);
+            return Vector3.zero;
+        }
+
         private static void PairWindowOpeningsToShell(SeamlessInteriorInstance instance, Vector3 buildingDelta)
         {
             s_WindowPortalDelta.Clear();
@@ -988,6 +1002,20 @@ namespace SeamlessInteriors
             int[] roomToShell; Vector3 fitSlide;
             bool fitted = FitWindowPattern(fitRoomCenters, fitRoomOutward, fitShellCenters, fitShellOutward, out roomToShell, out fitSlide);
 
+            // The building's hand pairing, when it has one, so the views out pair as the views in do
+            // (BuildingWindowOverride.PairedRoomWindows). Barn A's reached only the views in at first.
+            var handShellToRoom = new int[spots.Length];
+            for (int s = 0; s < handShellToRoom.Length; s++) handShellToRoom[s] = -1;
+            if (fitted) for (int i = 0; i < roomToShell.Length; i++) if (roomToShell[i] >= 0) handShellToRoom[roomToShell[i]] = i;
+            if (ApplyHandPairs(shellName, instance.Config.ResolvedInstanceId, handShellToRoom, s_WindowPortalOpenings.Count))
+            {
+                if (roomToShell == null || roomToShell.Length != s_WindowPortalOpenings.Count) roomToShell = new int[s_WindowPortalOpenings.Count];
+                for (int i = 0; i < roomToShell.Length; i++) roomToShell[i] = -1;
+                for (int s = 0; s < handShellToRoom.Length; s++) if (handShellToRoom[s] >= 0) roomToShell[handShellToRoom[s]] = s;
+                Vector3 handSlide;
+                if (MeanSlideOf(fitRoomCenters, fitShellCenters, roomToShell, out handSlide)) { fitSlide = handSlide; fitted = true; }
+            }
+
             for (int i = 0; i < s_WindowPortalOpenings.Count; i++)
             {
                 var opening = s_WindowPortalOpenings[i];
@@ -1003,7 +1031,7 @@ namespace SeamlessInteriors
                     // we're good." So it takes the slide the paired windows agree on, which is what a
                     // building pane with no room window already does in the view from outside.
                     // fitSlide runs from the building's window to the room's, hence the minus.
-                    if (fitted) s_WindowPortalDelta[i] = buildingDelta - fitSlide;
+                    if (fitted) s_WindowPortalDelta[i] = buildingDelta - fitSlide + ViewOutOffset(shellName, i, opening.Outward);
                     continue;
                 }
 
@@ -1042,7 +1070,8 @@ namespace SeamlessInteriors
                         taken[partner] = true;
                     }
                 }
-                s_WindowPortalDelta[i] = viewWorld - opening.PortalCenter;
+                // A hand move applies to a paired window as well (2026-10-02); no row moved one before.
+                s_WindowPortalDelta[i] = viewWorld - opening.PortalCenter + ViewOutOffset(shellName, i, opening.Outward);
                 s_WindowPortalSpot[i] = best;
                 s_WindowPortalPairedCount++;
 
@@ -1139,7 +1168,9 @@ namespace SeamlessInteriors
             // Through the shared state when this opening has a shell window, so the outside of the
             // same window follows. SetWindowCleaned comes back here through ApplyWindowPane.
             int window = openingIndex < s_WindowPortalSpot.Count ? s_WindowPortalSpot[openingIndex] : -1;
+            // Without one, through the room window's own record, so it is still there next entry.
             if (window >= 0 && s_WindowPortalInstanceId != null) SetWindowCleaned(s_WindowPortalInstanceId, window, cleared);
+            else if (s_WindowPortalInstanceId != null) SetRoomWindowCleaned(s_WindowPortalInstanceId, openingIndex, cleared);
             else ApplyWindowPane(openingIndex, cleared);
 
             if (s_DebugBounds)
@@ -1157,10 +1188,51 @@ namespace SeamlessInteriors
             if (openingIndex >= s_WindowPaneCleared.Count) return;
 
             var opening = s_WindowPortalOpenings[openingIndex];
-            SetRenderersEnabled(opening.Glass, !cleared);
+            SetGlassShown(opening.Glass, !cleared);
             SetRenderersEnabled(opening.Frost, !cleared && InsideOutShowSnowSlab);
             if (!cleared) GiveGlassTheFrostMaterial(opening.Glass);
             s_WindowPaneCleared[openingIndex] = cleared;
+        }
+
+        // A renderer holding frame and glass (the post office door) stays on when cleared: only its
+        // glass slots go clear, so the frame stays. Glass-only renderers are switched off as before.
+        private static Material s_WindowPortalClearGlassMaterial;
+
+        private static void SetGlassShown(List<Renderer> glass, bool shown)
+        {
+            if (glass == null) return;
+            for (int i = 0; i < glass.Count; i++)
+            {
+                var renderer = glass[i];
+                if (renderer == null) continue;
+                Material[] current = renderer.sharedMaterials;
+                if (current == null || current.Length < 2 || !HasFrameSlot(current)) { renderer.enabled = shown; continue; }
+                renderer.enabled = true;
+                if (shown) continue;            // GiveGlassTheFrostMaterial frosts the glass slots again
+                if (s_WindowPortalClearGlassMaterial == null)
+                {
+                    Shader shader = Shader.Find("Legacy Shaders/Transparent/Diffuse");
+                    if (shader == null) { renderer.enabled = false; continue; }
+                    s_WindowPortalClearGlassMaterial = new Material(shader);
+                    s_WindowPortalClearGlassMaterial.name = "SeamlessInteriors_ClearGlass";
+                    s_WindowPortalClearGlassMaterial.color = new Color(1f, 1f, 1f, 0f);
+                }
+                for (int k = 0; k < current.Length; k++) if (IsGlassSlot(current[k])) current[k] = s_WindowPortalClearGlassMaterial;
+                renderer.sharedMaterials = current;
+            }
+        }
+
+        private static bool IsGlassSlot(Material material)
+        {
+            if (material == null) return false;
+            if (material == s_WindowPortalFrostMaterial || material == s_WindowPortalClearGlassMaterial) return true;
+            return material.name.StartsWith(GLASS_MATERIAL_PREFIX) || material.name.StartsWith(MANY_PANE_GLASS_MATERIAL_PREFIX);
+        }
+
+        private static bool HasFrameSlot(Material[] slots)
+        {
+            for (int k = 0; k < slots.Length; k++) if (slots[k] != null && !IsGlassSlot(slots[k])) return true;
+            return false;
         }
 
         private static void SetRenderersEnabled(List<Renderer> renderers, bool enabled)
@@ -1315,27 +1387,40 @@ namespace SeamlessInteriors
             for (int i = 0; i < glass.Count; i++)
             {
                 var renderer = glass[i];
-                if (renderer == null || s_WindowPortalFrostedGlass.Contains(renderer)) continue;
+                if (renderer == null) continue;
+                bool mixed = renderer.sharedMaterials != null && renderer.sharedMaterials.Length > 1 && HasFrameSlot(renderer.sharedMaterials);
+                if (s_WindowPortalFrostedGlass.Contains(renderer))
+                {
+                    // Back from cleared: its glass slots wear the frost again.
+                    if (!mixed || s_WindowPortalFrostMaterial == null) continue;
+                    Material[] again = renderer.sharedMaterials;
+                    for (int k = 0; k < again.Length; k++) if (IsGlassSlot(again[k])) again[k] = s_WindowPortalFrostMaterial;
+                    renderer.sharedMaterials = again;
+                    continue;
+                }
 
                 Material[] current = renderer.sharedMaterials;
                 if (current == null || current.Length == 0 || current[0] == null) continue;
+                int source = 0;
+                if (mixed) for (int k = 0; k < current.Length; k++) if (IsGlassSlot(current[k])) { source = k; break; }
 
                 if (s_WindowPortalFrostMaterial == null)
                 {
                     Shader shader = Shader.Find("Legacy Shaders/Transparent/Diffuse");
-                    if (shader == null || current[0].mainTexture == null) return;
+                    if (shader == null || current[source].mainTexture == null) return;
 
                     s_WindowPortalFrostMaterial = new Material(shader);
                     s_WindowPortalFrostMaterial.name = "SeamlessInteriors_FrostedGlassInside";
-                    s_WindowPortalFrostMaterial.mainTexture = current[0].mainTexture;
-                    s_WindowPortalFrostMaterial.mainTextureScale = current[0].mainTextureScale;
-                    s_WindowPortalFrostMaterial.mainTextureOffset = current[0].mainTextureOffset;
+                    s_WindowPortalFrostMaterial.mainTexture = current[source].mainTexture;
+                    s_WindowPortalFrostMaterial.mainTextureScale = current[source].mainTextureScale;
+                    s_WindowPortalFrostMaterial.mainTextureOffset = current[source].mainTextureOffset;
                     s_WindowPortalFrostMaterial.renderQueue = WINDOW_VIEW_OUT_FROST_QUEUE;   // after the view
                     s_WindowPortalFrostMaterial.color = new Color(1f, 1f, 1f, Mathf.Clamp01(InsideOutFrostStrength));
                 }
 
+                // Frame and glass in one renderer: only the glass slots wear the frost.
                 var frosted = new Material[current.Length];
-                for (int k = 0; k < frosted.Length; k++) frosted[k] = s_WindowPortalFrostMaterial;
+                for (int k = 0; k < frosted.Length; k++) frosted[k] = !mixed || IsGlassSlot(current[k]) ? s_WindowPortalFrostMaterial : current[k];
 
                 s_WindowPortalFrostedGlass.Add(renderer);
                 s_WindowPortalFrostedGlassSaved.Add(current);
@@ -1431,6 +1516,7 @@ namespace SeamlessInteriors
                 }
             }
             if (instance.Config.ParkOffset != Vector3.zero) ShowPaintedPanesInParkedRoom(instance, openings);
+            HideRoomObjectsByRow(instance);
 
             // Pair each opening with the exterior pane it stands for, so every window renders
             // from where that window actually is rather than from one offset for the whole
@@ -1443,10 +1529,11 @@ namespace SeamlessInteriors
             // building starts with its panes wiped. It goes through the same per-pane call the
             // hover trigger will use, so the two can never drift apart.
             // Each pane starts in the state its window has on record, which is what makes it match
-            // the outside. A window nobody has touched falls back to the preference.
+            // the outside. A window nobody has touched falls back to the preference. One with no
+            // window outside starts in its own recorded state (WindowFrostState.cs).
             s_WindowPortalSnowSlabApplied = InsideOutShowSnowSlab;
             for (int i = 0; i < s_WindowPortalOpenings.Count; i++)
-                ApplyWindowPane(i, IsWindowCleaned(id, s_WindowPortalSpot[i]));
+                ApplyWindowPane(i, IsRoomPaneCleaned(id, i));
 
             s_WindowPortalInstanceId = id;
             BeginHidingParkedRoomShadow(instance);
@@ -1675,6 +1762,45 @@ namespace SeamlessInteriors
             return true;
         }
 
+        // Room objects the building's row switches off for as long as the room is set up
+        // (BuildingWindowOverride.RoomObjectsHidden), on the same list as the backdrops hidden above,
+        // so the teardown puts them back. The Small Barn's painted outside lit the gaps round a
+        // shuttered window and the door crack like daylight at midnight (owner, 2026-10-01).
+        // Something later in the room's set-up switches them on again (seen 2026-10-01: hidden by the
+        // set-up, on the backdrop list, and back on when the owner looked). Rather than chase it, they
+        // are held off every frame by KeepRowHiddenRoomObjectsOff; a handful of renderers at most.
+        private static readonly List<Renderer> s_RowHiddenRoomObjects = new List<Renderer>();
+
+        internal static void KeepRowHiddenRoomObjectsOff()
+        {
+            for (int i = s_RowHiddenRoomObjects.Count - 1; i >= 0; i--)
+            {
+                var renderer = s_RowHiddenRoomObjects[i];
+                if (renderer == null) { s_RowHiddenRoomObjects.RemoveAt(i); continue; }
+                if (renderer.enabled) renderer.enabled = false;
+            }
+        }
+
+        private static void HideRoomObjectsByRow(SeamlessInteriorInstance instance)
+        {
+            s_RowHiddenRoomObjects.Clear();
+            BuildingWindowOverride row;
+            if (instance == null || instance.Config == null || instance.MasterInterior == null
+                || !TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out row) || row.RoomObjectsHidden == null) return;
+            int hidden = 0;
+            foreach (var renderer in instance.MasterInterior.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer == null || !renderer.enabled || System.Array.IndexOf(row.RoomObjectsHidden, renderer.gameObject.name) < 0) continue;
+                renderer.enabled = false;
+                s_WindowPortalHiddenBackdrops.Add(renderer);
+                s_RowHiddenRoomObjects.Add(renderer);
+                hidden++;
+            }
+            if (s_DebugBounds)
+                MelonLogger.Msg($"[WINPORTAL] {instance.Config.InstanceId}: binanin satiriyla {hidden} oda nesnesi gizlendi.",
+                                $"[WINPORTAL] {instance.Config.InstanceId}: {hidden} room objects hidden by the building's row.");
+        }
+
         // ─── A WINDOW WITH NO VIEW SHOWS THE GAME'S PAINTED PANE ───
         //
         // A parked room stands ParkOffset above its building, so a window that has no camera this
@@ -1812,6 +1938,7 @@ namespace SeamlessInteriors
             try { TeardownWallCameras(); } catch { }
             try { TeardownGlassSnow(); } catch { }
 
+            s_RowHiddenRoomObjects.Clear();   // before the list below switches them back on
             for (int i = 0; i < s_WindowPortalHiddenBackdrops.Count; i++)
             {
                 var backdrop = s_WindowPortalHiddenBackdrops[i];

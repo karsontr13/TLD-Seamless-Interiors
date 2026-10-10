@@ -6,6 +6,8 @@ using UnityEngine;
 
 [assembly: MelonInfo(typeof(SeamlessInteriors.SeamlessInteriorsMod), "SeamlessInteriors", "2.1.1", "Hamsi Buglama")]
 [assembly: MelonGame("Hinterland", "TheLongDark")]
+// The in-game settings page needs ModSettings; without it the mod runs on its preferences file alone.
+[assembly: MelonOptionalDependencies("ModSettings")]
 
 namespace SeamlessInteriors
 {
@@ -100,6 +102,7 @@ namespace SeamlessInteriors
         private static MelonPreferences_Entry<int> s_PrefWindowPortalLimit;
         private static MelonPreferences_Entry<float> s_PrefWindowPortalResolutionScale;
         private static MelonPreferences_Entry<bool> s_PrefClearWindowPanes;
+        private static MelonPreferences_Entry<bool> s_PrefCleanWindowsByHand;
 
         public static bool IsChimneySmokeEnabled => s_PrefEnableChimneySmoke?.Value ?? true;
         public static bool IsWindowGlowEnabled => s_PrefEnableWindowGlow?.Value ?? true;
@@ -132,6 +135,8 @@ namespace SeamlessInteriors
         private static MelonPreferences_Entry<bool> s_PrefFastInteriorToggle;
 
         public static bool IsFastInteriorToggleEnabled => s_PrefFastInteriorToggle?.Value ?? true;
+        private static MelonPreferences_Entry<bool> s_PrefDoorFade;
+        public static bool IsDoorFadeEnabled => s_PrefDoorFade?.Value ?? true;
 
         // PERFORMANCE REPORT. Writes a summary to the log every 5 seconds: frame time, what
         // the mod spends it on, and which object searches cost what against how full each
@@ -330,6 +335,14 @@ namespace SeamlessInteriors
                 "Off, the default: windows are frosted over and carry a snow drift, as in the base game, until they are cleaned. On: every window nobody has touched starts clean, from both sides."
             );
 
+            // The player's own way to clean one window (WindowClearing.cs). New key, 2026-10-01.
+            s_PrefCleanWindowsByHand = s_PrefCategory.CreateEntry<bool>(
+                "CleanWindowsByHand",
+                true,
+                "Clean Windows By Hand",
+                "Look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window stays clean, from inside and outside, and is kept with the save."
+            );
+
             // ─── Window tuning. These started life as live dials and are kept as preferences so the
             // values chosen by eye are not lost at exit. New keys, so no existing file holds a stale
             // value for any of them (MelonPreferences applies a default only when the key is absent).
@@ -399,6 +412,13 @@ namespace SeamlessInteriors
                 "Lets deactivating the building hide its contents, instead of switching every item's renderers and colliders off and on again one by one. On a base with thousands of items this is the difference between a door taking most of a second and taking a few milliseconds. Turn off only if items go missing or become impossible to pick up after walking through a door."
             );
 
+            s_PrefDoorFade = s_PrefCategory.CreateEntry<bool>(
+                "DoorFade",
+                true,
+                "Fade Doors Through Black",
+                "A building's door fades the screen to black and back (a quarter of a second each way, a quarter held black) instead of cutting straight to the other side, so the last things to switch on at the door are not seen appearing. Turn off for an instant cut."
+            );
+
             s_PrefEnablePerfProbe = s_PrefCategory.CreateEntry<bool>(
                 "EnablePerformanceReport",
                 false,
@@ -409,6 +429,10 @@ namespace SeamlessInteriors
             // The scene stats the probe writes on start need a loaded region, so the state is
             // applied without them here; the first report follows five seconds into the game.
             PerfProbe.On = s_PrefEnablePerfProbe.Value;
+
+            // The in-game settings page, when ModSettings is installed (ModSettingsPage.cs). It has to be
+            // added before the game builds its custom-mode menu, which is why it is here and not later.
+            TryRegisterSettingsPage();
 
             // The timestamped fire dumps earlier versions left behind, one per save and one
             // per load, go in one pass here.
@@ -436,6 +460,7 @@ namespace SeamlessInteriors
             MelonLogger.Msg($"[SETTINGS] Silence Outdoor Wind Indoors: {(IsOutdoorWindSilencedIndoors ? "ON" : "OFF")}");
             MelonLogger.Msg($"[SETTINGS] Verbose Logging: {(s_DebugBounds ? "ON" : "OFF")} (F7)");
             MelonLogger.Msg($"[SETTINGS] Fast Door Transitions: {(IsFastInteriorToggleEnabled ? "ON" : "OFF")}");
+            MelonLogger.Msg($"[SETTINGS] Fade Doors Through Black: {(IsDoorFadeEnabled ? "ON" : "OFF")}");
             MelonLogger.Msg($"[SETTINGS] Performance Report: {(PerfProbe.On ? "ON" : "OFF")} (Shift+F6)");
         }
 
@@ -491,6 +516,12 @@ namespace SeamlessInteriors
             // flag has to answer for that clone. (see SeamlessInteriorsMod.Junk.cs)
             TickJunkFlagView();
 
+            // The player cleaning one window by hand. (see SeamlessInteriorsMod.WindowClearing.cs)
+            TickWindowClearing();
+
+            // Room objects a building's row hides stay hidden. (see HideRoomObjectsByRow)
+            KeepRowHiddenRoomObjectsOff();
+
             PerfProbe.End(PerfProbe.Section.FrameTicks, perf);
 
             // Every built clone follows the lighting mode the moment it changes (F8 or settings).
@@ -509,6 +540,7 @@ namespace SeamlessInteriors
                 s_LightingModeMessageTimer = 4f;
 
                 MelonLogger.Msg($"[SETTINGS] Interior Lighting Mode changed to: {modeName}");
+                RefreshSettingsPage();
             }
 
             // ─── F7: TOGGLE VERBOSE LOGGING ───
@@ -526,6 +558,7 @@ namespace SeamlessInteriors
                 s_LightingModeMessage = $"Verbose Logging: {(s_DebugBounds ? "ON" : "OFF")}";
                 s_LightingModeMessageTimer = 3f;
                 MelonLogger.Msg($"[SETTINGS] Verbose Logging: {(s_DebugBounds ? "ON" : "OFF")}");
+                RefreshSettingsPage();
             }
 
             // ─── F6: PRE-MOD SAVE DIAGNOSTICS ───
@@ -926,6 +959,7 @@ namespace SeamlessInteriors
         // of here is broken and this is only catching it.
         public static bool ResolvePlayerInside(SeamlessInteriorInstance instance, Vector3 pos)
         {
+            if (PlayerIsInAnotherParkedBuilding(instance)) return false;
             bool recorded = ResolvePlayerInsideAsRecorded(instance, pos);
             if (recorded) return true;
 

@@ -152,8 +152,12 @@ namespace SeamlessInteriors
         private static List<CommandBuffer>[] s_SharedHeld = new List<CommandBuffer>[0];
         private static List<CameraEvent>[] s_SharedHeldEvents = new List<CameraEvent>[0];
 
+        // NOT the patch height maps: that buffer renders the snow patches' persistent height textures,
+        // and run from a window camera it wrote them from the parked room's view; the patches stayed
+        // dark squares round the player outdoors, until they were rebuilt (owner, 2026-10-10).
         private static bool IsSharedPlayerBuffer(string name)
         {
+            if (name == "SnowPatchHeightMapCommandBuffer") return false;
             return name == "Snow_Blowing" || name == "Distance Field Shadows" || name == "Deferred Ambient Occlusion"
                 || name.StartsWith("SnowPatch") || name.StartsWith("ScreenSpaceDecal");
         }

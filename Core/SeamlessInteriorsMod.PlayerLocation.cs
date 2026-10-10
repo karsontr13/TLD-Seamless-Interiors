@@ -85,6 +85,26 @@ namespace SeamlessInteriors
             get { return s_IsPlayerInsideClone ? s_PlayerInteriorId : null; }
         }
 
+        // The door put the player in ANOTHER parked building, not linked to this one. Neighbors' rooms
+        // overlap at park height (Milton H2/F3, 2026-10-09), so this one's box must not count then.
+        internal static bool PlayerIsInAnotherParkedBuilding(SeamlessInteriorInstance instance)
+        {
+            string inRoom = PlayerInteriorId;
+            if (instance == null || instance.Config == null || !instance.Config.IsParked || string.IsNullOrEmpty(inRoom)) return false;
+            string own = instance.Config.ResolvedInstanceId;
+            if (inRoom == own || IsSubInteriorLinked(instance, inRoom)) return false;
+            SeamlessInteriorInstance other;
+            return ActiveInteriors.TryGetValue(inRoom, out other) && other != null && !IsSubInteriorLinked(other, own);
+        }
+
+        private static bool IsSubInteriorLinked(SeamlessInteriorInstance instance, string targetId)
+        {
+            var links = instance.Config.SubInteriorLinks;
+            if (links == null) return false;
+            for (int i = 0; i < links.Count; i++) if (links[i] != null && links[i].TargetInstanceId == targetId) return true;
+            return false;
+        }
+
         public static void MarkPlayerInside(SeamlessInteriorInstance instance, string reason)
         {
             if (instance == null) return;

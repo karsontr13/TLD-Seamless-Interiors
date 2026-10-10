@@ -202,6 +202,7 @@ namespace SeamlessInteriors
             {
                 SwitchOffForViewIn(OutsideInBackdrops(b), s_OutsideInWallSwitchedOff);
                 ApplyOutsideInAmbient();
+                cam.cullingMask = 1 << b.Layer;
                 cam.Render();
             }
             finally
@@ -259,8 +260,8 @@ namespace SeamlessInteriors
         {
             pane.Center = pane.ViewCenter; pane.Delta = pane.ViewDelta;
             pane.Width = pane.ViewWidth; pane.Height = pane.ViewHeight;
-            pane.Center += pane.Outward * OutsideInViewTowardViewer;
-            pane.Delta -= pane.Outward * OutsideInViewTowardViewer + pane.RoomOutward * OutsideInViewTowardViewer;
+            pane.Center += pane.Outward * pane.Toward;
+            pane.Delta -= pane.Outward * pane.Toward + pane.RoomOutward * pane.Toward;
             return pane;
         }
 
@@ -305,7 +306,9 @@ namespace SeamlessInteriors
             {
                 b.ApertureWallGroup[i] = -1;
                 var pane = b.Apertures[i];
-                if (!pane.Paired || pane.ViewFollows >= 0) continue;
+                // A window that is not a rectangle keeps its own camera: a wall camera draws one flat
+                // rectangle over the whole group, with no outline to cut it to (ShapedViews.cs).
+                if (!pane.Paired || pane.ViewFollows >= 0 || pane.Outline != null) continue;
                 valid[i] = true;
                 views[i] = OutsideInViewOf(pane);
                 float fa0, fu0;
@@ -857,6 +860,7 @@ namespace SeamlessInteriors
                 SwitchOffForViewIn(OutsideInBackdrops(b), s_OutsideInWallSwitchedOff);
                 clearedFrom = ClearNearestCopy(b, group);
                 ApplyOutsideInAmbient();
+                cam.cullingMask = 1 << b.Layer;
                 cam.Render();
             }
             finally

@@ -121,6 +121,8 @@ namespace SeamlessInteriors
             public List<UnityEngine.Rendering.ShadowCastingMode> HiddenModes;
             public List<bool> HiddenOff;           // hidden by switching off (casts nothing anyway)
             public bool Hand;                      // made from the building's row (ViewOutGroups); its members are fixed
+            public float SidewaysCm;               // the row's ViewOutGroupSidewaysCm for a hand group: + right looking out
+            public int HandIndex = -1;             // which of the row's ViewOutGroups this is; -1 for a group made by the rules
         }
 
         // Groups made by hand from the building's row (BuildingWindowOverride.ViewOutGroups) come first;
@@ -296,8 +298,9 @@ namespace SeamlessInteriors
             if (WindowHandGroups && id != null && ActiveInteriors.TryGetValue(id, out rowInstance) && rowInstance != null && rowInstance.Config != null
                 && TryGetBuildingWindowOverride(rowInstance.Config.ExteriorShellPrefabName, out row) && row.ViewOutGroups != null)
             {
-                foreach (var hand in row.ViewOutGroups)
+                for (int h = 0; h < row.ViewOutGroups.Length; h++)
                 {
+                    var hand = row.ViewOutGroups[h];
                     if (hand == null) continue;
                     WallGroup group = null;
                     foreach (int w in hand)
@@ -309,6 +312,8 @@ namespace SeamlessInteriors
                         taken[w] = true;
                     }
                     if (group == null) continue;
+                    group.HandIndex = h;
+                    if (row.ViewOutGroupSidewaysCm != null && h < row.ViewOutGroupSidewaysCm.Length) group.SidewaysCm = row.ViewOutGroupSidewaysCm[h];
                     s_WallGroups.Add(group);
                     handMade++;
                 }
@@ -320,10 +325,12 @@ namespace SeamlessInteriors
             {
                 var opening = s_WindowPortalOpenings[i];
                 WallGroup home = null;
-                for (int g = 0; g < s_WallGroups.Count && home == null; g++)
+                // A window that is not a rectangle stays alone, on its own camera (ShapedViews.cs).
+                for (int g = 0; g < s_WallGroups.Count && home == null && opening.Outline == null; g++)
                 {
                     var group = s_WallGroups[g];
                     if (group.Hand) continue;
+                    if (s_WindowPortalOpenings[group.Members[0]].Outline != null) continue;
                     if (Vector3.Dot(group.Outward, opening.Outward) < WALL_SAME_FACING) continue;
                     bool agrees = true;
                     for (int m = 0; m < group.Members.Count && agrees; m++)
@@ -374,9 +381,13 @@ namespace SeamlessInteriors
                 Vector3 mean = Vector3.zero;
                 foreach (int m in group.Members) mean += offsets[m];
                 group.Offset = mean / group.Members.Count;
+                // Slid along the wall by hand; the report still says how far the members stand from
+                // their own mean, and the slide beside it.
+                Vector3 meanOffset = group.Offset;
+                if (group.SidewaysCm != 0f) group.Offset += Vector3.Cross(Vector3.up, group.Outward).normalized * (group.SidewaysCm / 100f);
                 float spread = 0f;
-                foreach (int m in group.Members) spread = Mathf.Max(spread, (offsets[m] - group.Offset).magnitude);
-                report.Append(g + 1).Append(": ").Append(string.Join(",", group.Members)).Append($" ({spread * 100f:F1}{(group.Hand ? ", by hand" : "")}); ");
+                foreach (int m in group.Members) spread = Mathf.Max(spread, (offsets[m] - meanOffset).magnitude);
+                report.Append(g + 1).Append(": ").Append(string.Join(",", group.Members)).Append($" ({spread * 100f:F1}{(group.Hand ? ", by hand" : "")}{(group.SidewaysCm != 0f ? $", slid {group.SidewaysCm:F0} cm" : "")}); ");
             }
             int alone = 0; foreach (var group in s_WallGroups) if (group.Members.Count == 1) alone++;
             MelonLogger.Msg($"[DUVAR-KAMERA] {id}: {s_WindowPortalOpenings.Count} pencere, {s_WallGroups.Count - alone} duvar kamerasi, {alone} tek pencere kendi kamerasiyla. Grup: pencereler (ortalamadan en buyuk fark, cm): {report}",
@@ -434,6 +445,49 @@ namespace SeamlessInteriors
                 // Shadows only keeps its shadow on the ground outside. A piece that casts none is
                 // switched off instead: ShadowsOnly would give it one.
                 group.HiddenOff.Add(mode == UnityEngine.Rendering.ShadowCastingMode.Off);
+            }
+
+            AddViewOutHides(group, instance);
+        }
+
+        // The building row's ViewOutHides: world objects by name prefix, near this group's glass, hidden
+        // from this camera like the shell pieces above. Searched once, on first draw, and only for a row
+        // that asks, so no other building pays for the search.
+        private static void AddViewOutHides(WallGroup group, SeamlessInteriorInstance instance)
+        {
+            if (instance.Config == null) return;
+            BuildingWindowOverride row;
+            if (!TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out row) || row.ViewOutHides == null) return;
+
+            Renderer[] all = null;
+            foreach (var hide in row.ViewOutHides)
+            {
+                if (hide == null || hide.RoomWindows == null || hide.NamePrefixes == null) continue;
+                bool ours = false;
+                foreach (int w in hide.RoomWindows) if (group.Members.Contains(w)) { ours = true; break; }
+                if (!ours) continue;
+
+                if (all == null) all = Resources.FindObjectsOfTypeAll<Renderer>();
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var renderer = all[i];
+                    if (renderer == null || !renderer.gameObject.activeInHierarchy || group.Hidden.Contains(renderer)) continue;
+                    string name = renderer.gameObject.name;
+                    bool named = false;
+                    foreach (var prefix in hide.NamePrefixes) if (!string.IsNullOrEmpty(prefix) && name.StartsWith(prefix, System.StringComparison.Ordinal)) { named = true; break; }
+                    if (!named) continue;
+                    bool near = false;
+                    foreach (int m in group.Members)
+                    {
+                        Vector3 glass = s_WindowPortalOpenings[m].GlassCenter + group.Offset;
+                        if ((renderer.bounds.ClosestPoint(glass) - glass).magnitude <= hide.WithinMeters) { near = true; break; }
+                    }
+                    if (!near) continue;
+                    var mode = renderer.shadowCastingMode;
+                    group.Hidden.Add(renderer);
+                    group.HiddenModes.Add(mode);
+                    group.HiddenOff.Add(mode == UnityEngine.Rendering.ShadowCastingMode.Off);
+                }
             }
         }
 
@@ -593,6 +647,24 @@ namespace SeamlessInteriors
             return h / Mathf.Max(cos, FOG_FROM_WALL_MIN_COS);
         }
 
+        // The view depth of the nearest corner of any on-screen member's glass; 0 when none is in front.
+        private static float NearestOnScreenGlass(WallGroup group, Matrix4x4 vp)
+        {
+            float nearest = float.MaxValue;
+            foreach (int i in group.Members)
+            {
+                if (!s_WallMemberOnScreen[i]) continue;
+                var o = s_WindowPortalOpenings[i];
+                for (int c = 0; c < 4; c++)
+                {
+                    Vector3 q = o.PortalCenter + o.Right * (o.Width * ((c & 1) == 0 ? -0.5f : 0.5f)) + o.Up * (o.Height * ((c & 2) == 0 ? -0.5f : 0.5f));
+                    float w = (vp * new Vector4(q.x, q.y, q.z, 1f)).w;
+                    if (w > 1e-5f && w < nearest) nearest = w;
+                }
+            }
+            return nearest == float.MaxValue ? 0f : nearest;
+        }
+
         private static int WallTargetSize(int need, int current)
         {
             if (current >= need && current - need < WALL_TARGET_SLACK) return current;
@@ -625,10 +697,14 @@ namespace SeamlessInteriors
             // ORDER MATTERS: these reset an explicit projection matrix, so they go first.
             cam.fieldOfView = s_LateFieldOfView;
             cam.aspect = main.aspect;
-            cam.nearClipPlane = main.nearClipPlane;
+            // Nothing nearer than the glass: the terrain inside the store's walls rose into its front
+            // windows' views as the player stepped back from them (Orca store, 2026-10-10).
+            float nearCut = Mathf.Max(NearestOnScreenGlass(group, vp) - 0.005f, main.nearClipPlane);
+            if (nearCut >= main.farClipPlane * 0.5f) nearCut = main.nearClipPlane;
+            cam.nearClipPlane = nearCut;      // the fog pass reads depth through the camera's own planes
             cam.farClipPlane = main.farClipPlane;
             cam.worldToCameraMatrix = view * Matrix4x4.Translate(-offset);
-            cam.projectionMatrix = narrow * proj;
+            cam.projectionMatrix = narrow * WithNearDistance(proj, nearCut, main.nearClipPlane);
             float fogStartsAt = ParkedCullEyeInForce ? FogFromTheGlass(group, main, eye) : 0f;
             UseWindowViewFogPass(cam, slot, main, fogStartsAt);   // see WindowViewFog.cs
             SharePlayerBuffersWith(cam, slot, main);   // see WindowViewFog.cs

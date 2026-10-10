@@ -48,6 +48,7 @@ namespace SeamlessInteriors
         public bool ClampedOut;         // pushed outwards off the default
         public bool HadFrame;
         public bool HadSnow;
+        public Vector3[] Outline;       // the glass's own outline, world points, when it is not a rectangle; null for a rectangle
 
         // Windows cut from ONE band of glass in the room (see BuildingWindowOverride.RoomBands) carry
         // the same number here, from 1 up, and their Outward, Right and Up are the band's own, copied
@@ -535,6 +536,7 @@ namespace SeamlessInteriors
         private static int AddOpeningsFromGlassPieces(List<GlassPiece> list, bool joinStacked, MeshRenderer[] all, List<InteriorWindowOpening> result, string label)
         {
             for (int i = 0; i < list.Count; i++) list[i].Group = i;
+            var joinedByRow = JoinNamedPieces(list);
             var sources = new HashSet<Renderer>();
             for (int i = 0; i < list.Count; i++) if (list[i].Source != null) sources.Add(list[i].Source);
 
@@ -571,6 +573,42 @@ namespace SeamlessInteriors
                     }
             }
 
+            // The row's wider joining (RoomManyPaneJoinWithinCm), on whole windows as joined above: side
+            // by side on one wall, the gap at most the row's, sharing half the shorter one's height. The
+            // group keeps the lower index, so the windows after it move down and nothing before it moves.
+            if (s_ScanManyPaneJoinWithin >= 0f)
+            {
+                joined = true;
+                while (joined)
+                {
+                    joined = false;
+                    for (int a = 0; a < list.Count && !joined; a++)
+                        for (int b = 0; b < list.Count && !joined; b++)
+                        {
+                            GlassPiece A = list[a], B = list[b];
+                            if (A.Group == B.Group || A.Group > B.Group) continue;
+                            if (Vector3.Dot(A.Normal, B.Normal) < BENT_GLASS_SAME_FACING_COSINE) continue;
+                            float aLo = float.MaxValue, aHi = float.MinValue, aBottom = float.MaxValue, aTop = float.MinValue, aDepth = 0f;
+                            float bLo = float.MaxValue, bHi = float.MinValue, bBottom = float.MaxValue, bTop = float.MinValue, bDepth = 0f;
+                            for (int k = 0; k < list.Count; k++)
+                            {
+                                if (list[k].Group != A.Group && list[k].Group != B.Group) continue;
+                                float lo, hi, depth;
+                                list[k].MeasureIn(A, out lo, out hi, out depth);
+                                if (list[k].Group == A.Group) { aLo = Mathf.Min(aLo, lo); aHi = Mathf.Max(aHi, hi); aBottom = Mathf.Min(aBottom, list[k].Bottom); aTop = Mathf.Max(aTop, list[k].Top); aDepth = depth; }
+                                else { bLo = Mathf.Min(bLo, lo); bHi = Mathf.Max(bHi, hi); bBottom = Mathf.Min(bBottom, list[k].Bottom); bTop = Mathf.Max(bTop, list[k].Top); bDepth = depth; }
+                            }
+                            if (Mathf.Abs(aDepth - bDepth) > MANY_PANE_SAME_DEPTH) continue;
+                            float gap = Mathf.Max(aLo, bLo) - Mathf.Min(aHi, bHi);
+                            float sharedHeight = Mathf.Min(aTop, bTop) - Mathf.Max(aBottom, bBottom);
+                            if (gap > s_ScanManyPaneJoinWithin || sharedHeight < 0.5f * Mathf.Min(aTop - aBottom, bTop - bBottom)) continue;
+                            int from = B.Group, into = A.Group;
+                            for (int k = 0; k < list.Count; k++) if (list[k].Group == from) list[k].Group = into;
+                            joined = true;
+                        }
+                }
+            }
+
             // Every backdrop's corners, once.
             var backdrops = new List<Renderer>();
             var backdropCorners = new List<Vector3[]>();
@@ -597,6 +635,7 @@ namespace SeamlessInteriors
             }
 
             int added = 0, notWindows = 0;
+            var withoutBackdrop = new List<PendingWindow>();
             var done = new HashSet<int>();
             for (int g = 0; g < list.Count; g++)
             {
@@ -632,9 +671,87 @@ namespace SeamlessInteriors
                     }
                     if (count > near) { near = count; side = sum / count; backdrop = backdrops[b]; }
                 }
-                if (backdrop == null || Mathf.Abs(side) < 0.005f) { notWindows++; continue; }
+                if (joinedByRow.Contains(lead.Group))
+                {
+                    withoutBackdrop.Add(new PendingWindow { Lead = lead, Lo = lo, Hi = hi, Bottom = bottom, Top = top, Depth = depth });
+                    continue;
+                }
+                if (backdrop == null || Mathf.Abs(side) < 0.005f)
+                {
+                    // Named by the building's row: a window all the same, built after the others.
+                    if (GroupNamedWithoutBackdrop(list, lead.Group)) { withoutBackdrop.Add(new PendingWindow { Lead = lead, Lo = lo, Hi = hi, Bottom = bottom, Top = top, Depth = depth }); continue; }
+                    notWindows++;
+                    NoteGlassWithoutBackdrop(list, lead.Group);
+                    continue;
+                }
 
-                Vector3 outward = side > 0f ? lead.Normal : -lead.Normal;
+                AddGlassPieceOpening(list, lead, lo, hi, bottom, top, depth, side > 0f ? lead.Normal : -lead.Normal, backdrop, result);
+                added++;
+            }
+
+            // THE ROW'S WINDOWS WITH NO BACKDROP, LAST, so the room windows found by the rule keep the
+            // numbers they had before the row named any (the owner had already passed them by number).
+            // With nothing painted behind the glass to say which side is outside, the side is taken
+            // from the window already found nearest in the same wall: parallel glass, the nearest plane,
+            // within a meter. With none, the side facing away from the middle of the room's glass: the
+            // Radio Control Hut's middle end-wall pane (2026-10-01) stands between two triangles, which are
+            // left out, so no window shares its wall. All the glass in one wall leaves the middle on that
+            // wall, which cannot say, and the window is left out and said so.
+            int beforeNamed = result.Count;
+            Vector3 glassMiddle = Vector3.zero; int glassCount = 0;
+            for (int k = 0; k < list.Count; k++) { glassMiddle += list[k].Corners[0]; glassCount++; }
+            if (glassCount > 0) glassMiddle /= glassCount;
+            for (int w = 0; w < withoutBackdrop.Count; w++)
+            {
+                var p = withoutBackdrop[w];
+                Vector3 center = p.Lead.Corners[0] + p.Lead.Along * ((p.Lo + p.Hi) * 0.5f) + p.Lead.Normal * p.Depth;
+                center.y = (p.Bottom + p.Top) * 0.5f;
+                int nearest = -1; float nearestPlane = 1f;
+                for (int o = 0; o < beforeNamed; o++)
+                {
+                    if (Mathf.Abs(Vector3.Dot(result[o].Outward, p.Lead.Normal)) < 0.95f) continue;
+                    float plane = Mathf.Abs(Vector3.Dot(center - result[o].GlassCenter, p.Lead.Normal));
+                    if (plane <= nearestPlane) { nearestPlane = plane; nearest = o; }
+                }
+                string name = p.Lead.Source != null ? p.Lead.Source.gameObject.name : "?";
+                float fromMiddle = glassCount > 0 ? Vector3.Dot(center - glassMiddle, p.Lead.Normal) : 0f;
+                if (nearest < 0 && Mathf.Abs(fromMiddle) >= 0.5f)
+                {
+                    Vector3 away = fromMiddle > 0f ? p.Lead.Normal : -p.Lead.Normal;
+                    AddGlassPieceOpening(list, p.Lead, p.Lo, p.Hi, p.Bottom, p.Top, p.Depth, away, null, result);
+                    added++;
+                    MelonLogger.Msg($"[WINDOW] {s_ScanBuildingId}: '{name}' arkasinda manzara olmadan pencere sayildi (oda penceresi {result.Count - 1}), yonu odanin ortasindan disari.",
+                                    $"[WINDOW] {s_ScanBuildingId}: '{name}' taken as a window with no backdrop, by the building's row (room window {result.Count - 1}); its outside is the side facing away from the middle of the room's glass ({fromMiddle:F1} m).");
+                    continue;
+                }
+                if (nearest < 0)
+                {
+                    MelonLogger.Warning($"[WINDOW] {s_ScanBuildingId}: '{name}' arkasinda manzara yok ve ayni duvarda yonunu verecek pencere yok; atlandi.",
+                                        $"[WINDOW] {s_ScanBuildingId}: '{name}' is named as a window with no backdrop, but no window in the same wall says which side is outside; left out.");
+                    continue;
+                }
+                Vector3 outward = Vector3.Dot(result[nearest].Outward, p.Lead.Normal) > 0f ? p.Lead.Normal : -p.Lead.Normal;
+                AddGlassPieceOpening(list, p.Lead, p.Lo, p.Hi, p.Bottom, p.Top, p.Depth, outward, null, result);
+                added++;
+                MelonLogger.Msg($"[WINDOW] {s_ScanBuildingId}: '{name}' arkasinda manzara olmadan pencere sayildi (oda penceresi {result.Count - 1}), yonu oda penceresi {nearest}'den.",
+                                $"[WINDOW] {s_ScanBuildingId}: '{name}' taken as a window with no backdrop, by the building's row (room window {result.Count - 1}); its outside is the side room window {nearest}'s faces.");
+            }
+
+            if (s_DebugBounds)
+                MelonLogger.Msg(joinStacked
+                                    ? $"[WINDOW] {label}: tek ebeveyn altinda {list.Count} ayri cam, {added} pencere ({notWindows} tanesinin arkasinda manzara yok, atlandi)."
+                                    : $"[WINDOW] {label}: tek cam nesnesinde {list.Count} parca, {added} pencere ({notWindows} tanesinin arkasinda manzara yok, atlandi).",
+                                joinStacked
+                                    ? $"[WINDOW] {label}: {list.Count} separate panes of glass under one parent, measured as {added} windows ({notWindows} more with no painted outside behind them were left alone as not windows)."
+                                    : $"[WINDOW] {label}: one glass object holding {list.Count} pieces of glass, measured as {added} windows ({notWindows} more with no painted outside behind them were left alone as not windows).");
+            return added;
+        }
+
+        private struct PendingWindow { public GlassPiece Lead; public float Lo, Hi, Bottom, Top, Depth; }
+
+        private static void AddGlassPieceOpening(List<GlassPiece> list, GlassPiece lead, float lo, float hi, float bottom, float top, float depth, Vector3 outward, Renderer backdrop, List<InteriorWindowOpening> result)
+        {
+            {
                 Vector3 up = Vector3.up;
                 Vector3 right = Vector3.Cross(up, outward).normalized;
                 Vector3 glassCenter = lead.Corners[0] + lead.Along * ((lo + hi) * 0.5f) + lead.Normal * depth;
@@ -660,17 +777,65 @@ namespace SeamlessInteriors
                 opening.Height = (top - bottom) + 2f * BENT_GLASS_VIEW_PAST_EDGE;
                 opening.GlassWidth = hi - lo; opening.GlassHeight = top - bottom;
                 result.Add(opening);
-                added++;
             }
+        }
 
-            if (s_DebugBounds)
-                MelonLogger.Msg(joinStacked
-                                    ? $"[WINDOW] {label}: tek ebeveyn altinda {list.Count} ayri cam, {added} pencere ({notWindows} tanesinin arkasinda manzara yok, atlandi)."
-                                    : $"[WINDOW] {label}: tek cam nesnesinde {list.Count} parca, {added} pencere ({notWindows} tanesinin arkasinda manzara yok, atlandi).",
-                                joinStacked
-                                    ? $"[WINDOW] {label}: {list.Count} separate panes of glass under one parent, measured as {added} windows ({notWindows} more with no painted outside behind them were left alone as not windows)."
-                                    : $"[WINDOW] {label}: one glass object holding {list.Count} pieces of glass, measured as {added} windows ({notWindows} more with no painted outside behind them were left alone as not windows).");
-            return added;
+        // ─── WINDOW GLASS WITH NO BACKDROP ───
+        //
+        // A room pane counts as a window only with one of the game's painted outsides behind it, which
+        // keeps glass that is not a window out. The Small Barn (2026-10-01) is the first building where
+        // Hinterland left a real window without one, so a row can name such panes. Every building also
+        // says, once a session, which window glass it left out for this reason, so how common it is gets
+        // counted building by building before the rule itself is touched (owner's call, same day).
+        private static string[] s_ScanWindowsWithoutBackdrop;
+        private static string[][] s_ScanWindowJoins;
+        private static float s_ScanManyPaneJoinWithin = -1f;   // meters; < 0 = the ordinary joining only (BuildingWindowOverride.RoomManyPaneJoinWithinCm)
+
+        // Every piece named in one of the row's sets goes into one group before the joining starts, so
+        // the set is one window however far apart its pieces stand. Returns the groups so made.
+        private static HashSet<int> JoinNamedPieces(List<GlassPiece> list)
+        {
+            var made = new HashSet<int>();
+            if (s_ScanWindowJoins == null) return made;
+            foreach (var set in s_ScanWindowJoins)
+            {
+                if (set == null) continue;
+                int group = -1;
+                for (int k = 0; k < list.Count; k++)
+                {
+                    if (list[k].Source == null || System.Array.IndexOf(set, list[k].Source.gameObject.name) < 0) continue;
+                    if (group < 0) group = list[k].Group;
+                    else { int from = list[k].Group; for (int j = 0; j < list.Count; j++) if (list[j].Group == from) list[j].Group = group; }
+                }
+                if (group >= 0) made.Add(group);
+            }
+            return made;
+        }
+        private static string s_ScanBuildingId;
+        private static readonly HashSet<string> s_NotedGlassWithoutBackdrop = new HashSet<string>();
+
+        private static bool GroupNamedWithoutBackdrop(List<GlassPiece> list, int group)
+        {
+            if (s_ScanWindowsWithoutBackdrop == null) return false;
+            for (int k = 0; k < list.Count; k++)
+            {
+                if (list[k].Group != group || list[k].Source == null) continue;
+                string name = list[k].Source.gameObject.name;
+                for (int n = 0; n < s_ScanWindowsWithoutBackdrop.Length; n++)
+                    if (name == s_ScanWindowsWithoutBackdrop[n]) return true;
+            }
+            return false;
+        }
+
+        private static void NoteGlassWithoutBackdrop(List<GlassPiece> list, int group)
+        {
+            var names = new List<string>();
+            for (int k = 0; k < list.Count; k++)
+                if (list[k].Group == group && list[k].Source != null && !names.Contains(list[k].Source.gameObject.name)) names.Add(list[k].Source.gameObject.name);
+            string joined = string.Join(" + ", names);
+            if (!s_NotedGlassWithoutBackdrop.Add((s_ScanBuildingId ?? "?") + "|" + joined)) return;
+            MelonLogger.Msg($"[WINDOW-NO-BACKDROP] {s_ScanBuildingId}: '{joined}' pencere cami ama arkasinda manzara yok; pencere sayilmadi.",
+                            $"[WINDOW-NO-BACKDROP] {s_ScanBuildingId}: window glass '{joined}' has no painted outside behind it, so it is not taken as a window. A building row can name it (RoomWindowsWithoutBackdrop).");
         }
 
         private static int RootOf(int[] parent, int i)
@@ -694,6 +859,42 @@ namespace SeamlessInteriors
         }
         private static readonly Dictionary<int, WindowOpeningsFound> s_WindowOpeningsFound = new Dictionary<int, WindowOpeningsFound>();
 
+        // A room window whose glass is not a rectangle gets its outline, so its view is cut to the glass
+        // (ShapedViews.cs). Measured from the glass's own mesh, in the window's plane, against the
+        // rectangle the window was given; the same 80% test as the building's windows.
+        private static void MeasureRoomWindowOutlines(List<InteriorWindowOpening> openings, string id)
+        {
+            string odd = "";
+            for (int i = 0; i < openings.Count; i++)
+            {
+                var o = openings[i];
+                if (o.Glass == null || o.Glass.Count == 0) continue;
+                float boxWidth = o.GlassWidth > 0.01f ? o.GlassWidth : o.Width, boxHeight = o.GlassHeight > 0.01f ? o.GlassHeight : o.Height;
+                if (boxWidth < 0.01f || boxHeight < 0.01f) continue;
+                var corners = new List<Vector2>();
+                foreach (var r in o.Glass)
+                {
+                    var filter = r != null ? r.GetComponent<MeshFilter>() : null;
+                    Vector3[] vertices; int[] triangles;
+                    if (filter == null || !TryReadMesh(filter.sharedMesh, out vertices, out triangles)) continue;
+                    for (int v = 0; v < vertices.Length; v++)
+                    {
+                        Vector3 d = r.transform.TransformPoint(vertices[v]) - o.GlassCenter;
+                        corners.Add(new Vector2(Vector3.Dot(d, o.Right), Vector3.Dot(d, o.Up)));
+                    }
+                }
+                var hull = OutlineOf(corners);
+                if (hull.Count < 3 || AreaOf(hull) / (boxWidth * boxHeight) >= SHELL_WINDOW_RECTANGLE_SHARE) continue;
+                o.Outline = new Vector3[hull.Count];
+                for (int h = 0; h < hull.Count; h++) o.Outline[h] = o.GlassCenter + o.Right * hull[h].x + o.Up * hull[h].y;
+                openings[i] = o;
+                odd += (odd.Length > 0 ? ", " : "") + i + " (" + (AreaOf(hull) / (boxWidth * boxHeight) * 100f).ToString("F0") + "%)";
+            }
+            if (odd.Length > 0)
+                MelonLogger.Msg($"[WINDOW] {id}: dikdortgen olmayan oda pencereleri, goruntu camin kendi seklinde: {odd}.",
+                                $"[WINDOW] {id}: room windows that are not rectangles, their views cut to the glass's own outline (share of their rectangle): {odd}.");
+        }
+
         public static List<InteriorWindowOpening> FindInteriorWindowOpenings(SeamlessInteriorInstance instance)
         {
             if (instance == null || instance.MasterInterior == null) return new List<InteriorWindowOpening>();
@@ -704,7 +905,19 @@ namespace SeamlessInteriors
             WindowOpeningsFound found;
             if (!s_WindowOpeningsFound.TryGetValue(key, out found) || found.Room != room || found.Placed != placed)
             {
-                found = new WindowOpeningsFound { Room = room, Placed = placed, Openings = ScanInteriorWindowOpenings(instance) };
+                // Room panes the building's row accepts with no backdrop behind them (see
+                // BuildingWindowOverride.RoomWindowsWithoutBackdrop), held for this one scan.
+                BuildingWindowOverride byHand;
+                s_ScanWindowsWithoutBackdrop = instance.Config != null && TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out byHand)
+                    ? byHand.RoomWindowsWithoutBackdrop : null;
+                s_ScanWindowJoins = instance.Config != null && TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out byHand)
+                    ? byHand.RoomWindowJoins : null;
+                s_ScanManyPaneJoinWithin = instance.Config != null && TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out byHand)
+                    && !float.IsNaN(byHand.RoomManyPaneJoinWithinCm) ? byHand.RoomManyPaneJoinWithinCm / 100f : -1f;
+                s_ScanBuildingId = instance.Config != null ? instance.Config.InstanceId : null;
+                try { found = new WindowOpeningsFound { Room = room, Placed = placed, Openings = ScanInteriorWindowOpenings(instance) }; }
+                finally { s_ScanWindowsWithoutBackdrop = null; s_ScanWindowJoins = null; s_ScanManyPaneJoinWithin = -1f; s_ScanBuildingId = null; }
+                MeasureRoomWindowOutlines(found.Openings, instance.Config != null ? instance.Config.InstanceId : "?");
                 s_WindowOpeningsFound[key] = found;
             }
 
@@ -746,6 +959,9 @@ namespace SeamlessInteriors
                 {
                     if (candidate == null || candidate.sharedMaterial == null) continue;
                     if (!candidate.sharedMaterial.name.StartsWith(GLASS_MATERIAL_PREFIX)) continue;
+                    if (!candidate.gameObject.activeSelf) continue;   // switched off by the game; see the loop below
+                    // A row's many-pane sheet is cut by its own geometry below, not read as one piece.
+                    if (IsRoomManyPaneObject(instance, candidate.gameObject.name)) continue;
                     Transform root = FindWindowRoot(candidate.transform, rootT);
                     if (root == null) continue;
                     List<MeshRenderer> under;
@@ -775,6 +991,9 @@ namespace SeamlessInteriors
             {
                 if (glassRenderer == null) continue;
                 if (loosePanes.Contains(glassRenderer.GetInstanceID())) continue;
+                // Glass the game itself keeps switched off is no window: Milton house A's sheet copies
+                // every pane in one 13 m mesh and was read as an 11 m window mid-room (2026-10-10).
+                if (!glassRenderer.gameObject.activeSelf) continue;
                 // A SHEET NAMED BY A ROW: read it whether or not the mesh is readable, and cut it
                 // into windows by its own geometry. Named per building so no building already
                 // looked at gains or loses a window: the hangar's side sheets wear the ordinary
@@ -969,6 +1188,10 @@ namespace SeamlessInteriors
             BuildingWindowOverride byHand;
             if (TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out byHand) && byHand.OpeningsWithNoGlass)
                 TryAddOpeningsWithNoGlass(instance, renderers, result);
+            if (byHand != null && byHand.RoomGlassSlotObjects != null)
+                AddRoomGlassSlotOpenings(byHand.RoomGlassSlotObjects, renderers, rootT, result, instance.Config.InstanceId);
+            if (byHand != null && byHand.RoomOpeningsByHand != null)
+                AddRoomOpeningsByHand(byHand.RoomOpeningsByHand, result, instance.Config.InstanceId);
 
             if (s_DebugBounds)
             {
@@ -981,6 +1204,231 @@ namespace SeamlessInteriors
             }
 
             return result;
+        }
+
+        // Windows a row names (RoomGlassSlotObjects) whose glass the rule misses: measured from the submesh
+        // whose material says Glass alone; added after the rule's windows so those keep their numbers.
+        private static void AddRoomGlassSlotOpenings(string[] names, MeshRenderer[] all, Transform rootT, List<InteriorWindowOpening> result, string id)
+        {
+            Vector3 middle = Vector3.zero; int counted = 0;
+            for (int i = 0; i < all.Length; i++)
+                if (all[i] != null && all[i].gameObject.activeInHierarchy) { middle += all[i].bounds.center; counted++; }
+            if (counted == 0) return;
+            middle /= counted;
+
+            int added = 0;
+            for (int i = 0; i < all.Length; i++)
+            {
+                var r = all[i];
+                if (r == null || !r.gameObject.activeInHierarchy) continue;
+                bool named = false;
+                for (int n = 0; n < names.Length && !named; n++) named = r.gameObject.name.StartsWith(names[n], System.StringComparison.Ordinal);
+                if (!named) continue;
+
+                var filter = r.GetComponent<MeshFilter>();
+                Mesh mesh = filter != null ? filter.sharedMesh : null;
+                if (mesh == null || !mesh.isReadable) continue;
+                Material[] mats = r.sharedMaterials;
+                int slot = -1;
+                for (int k = 0; k < mats.Length && k < mesh.subMeshCount && slot < 0; k++)
+                    if (mats[k] != null && mats[k].name.IndexOf("Glass", System.StringComparison.Ordinal) >= 0) slot = k;
+                if (slot < 0) continue;
+
+                foreach (var corners in SplitSlotGlassIntoWindows(mesh.vertices, mesh.GetTriangles(slot), r.transform))
+                {
+                    AddSlotGlassOpening(r, corners, middle, result);
+                    added++;
+                }
+            }
+            if (added > 0)
+                MelonLogger.Msg($"[WINDOW] {id}: satirdaki {added} pencere cami, cercevesiyle ayni nesnenin alt-mesh'inden olculdu.",
+                                $"[WINDOW] {id}: {added} window(s) the row names measured from the glass slot they share with their frame.");
+        }
+
+        // A glass submesh can hold several windows and roof lights (the maintenance shed: two garage-door
+        // strips of five panes, and skylights). Upright triangles only; pieces joined on one wall across bars
+        // and across the shed's cardboarded panes (0.76 m), its two doors standing 7.6 m apart.
+        private const float SLOT_GLASS_BAR_GAP = 1.0f;
+        // The frame's opening stands past the glass: the view is drawn this much wider and taller in all
+        // (the room's frame hides the rest). Set by eye on the shed's garage strips, 2026-10-10.
+        private const float SLOT_GLASS_VIEW_EXTRA_WIDTH = 0.20f;
+        private const float SLOT_GLASS_VIEW_EXTRA_HEIGHT = 0.08f;
+
+        private static List<List<Vector3>> SplitSlotGlassIntoWindows(Vector3[] vertices, int[] triangles, Transform t)
+        {
+            var tris = new List<Vector3[]>();
+            var levels = new List<Vector3>();
+            var parent = new List<int>();
+            var byCorner = new Dictionary<Vector3Int, int>();
+            for (int k = 0; k + 2 < triangles.Length; k += 3)
+            {
+                Vector3 p0 = t.TransformPoint(vertices[triangles[k]]), p1 = t.TransformPoint(vertices[triangles[k + 1]]), p2 = t.TransformPoint(vertices[triangles[k + 2]]);
+                Vector3 cross = Vector3.Cross(p1 - p0, p2 - p0);
+                if (cross.sqrMagnitude < 1e-12f || Mathf.Abs(cross.normalized.y) > 0.3f) continue;
+                int me = tris.Count;
+                tris.Add(new[] { p0, p1, p2 });
+                levels.Add(new Vector3(cross.x, 0f, cross.z).normalized);
+                parent.Add(me);
+                foreach (var p in tris[me])
+                {
+                    var key = new Vector3Int(Mathf.RoundToInt(p.x * 1000f), Mathf.RoundToInt(p.y * 1000f), Mathf.RoundToInt(p.z * 1000f));
+                    int other;
+                    if (byCorner.TryGetValue(key, out other)) parent[FindPiece(parent, me)] = FindPiece(parent, other);
+                    else byCorner[key] = me;
+                }
+            }
+
+            // Pieces, each with its facing, then joined where they share a wall and stand a bar apart.
+            var pieces = new Dictionary<int, List<int>>();
+            for (int i = 0; i < tris.Count; i++)
+            {
+                int root = FindPiece(parent, i);
+                List<int> members;
+                if (!pieces.TryGetValue(root, out members)) { members = new List<int>(); pieces[root] = members; }
+                members.Add(i);
+            }
+            var groups = new List<List<Vector3>>();
+            var normals = new List<Vector3>();
+            foreach (var members in pieces.Values)
+            {
+                var corners = new List<Vector3>();
+                Vector3 n = Vector3.zero;
+                foreach (int i in members)
+                {
+                    Vector3 level = levels[i];
+                    if (n.sqrMagnitude > 0f && Vector3.Dot(level, n) < 0f) level = -level;
+                    n += level;
+                    corners.AddRange(tris[i]);
+                }
+                groups.Add(corners);
+                normals.Add(n.normalized);
+            }
+            for (bool joined = true; joined;)
+            {
+                joined = false;
+                for (int a = 0; a < groups.Count && !joined; a++)
+                    for (int b = a + 1; b < groups.Count && !joined; b++)
+                    {
+                        if (Mathf.Abs(Vector3.Dot(normals[a], normals[b])) < BENT_GLASS_SAME_FACING_COSINE) continue;
+                        Vector3 n = normals[a], right = Vector3.Cross(Vector3.up, n).normalized;
+                        float aLo, aHi, aBottom, aTop, aPlane, bLo, bHi, bBottom, bTop, bPlane;
+                        SpanOf(groups[a], right, n, out aLo, out aHi, out aBottom, out aTop, out aPlane);
+                        SpanOf(groups[b], right, n, out bLo, out bHi, out bBottom, out bTop, out bPlane);
+                        if (Mathf.Abs(aPlane - bPlane) > 0.1f) continue;
+                        if (Mathf.Min(aTop, bTop) - Mathf.Max(aBottom, bBottom) < 0.5f * Mathf.Min(aTop - aBottom, bTop - bBottom)) continue;
+                        if (Mathf.Max(bLo - aHi, aLo - bHi) > SLOT_GLASS_BAR_GAP) continue;
+                        groups[a].AddRange(groups[b]);
+                        groups.RemoveAt(b); normals.RemoveAt(b);
+                        joined = true;
+                    }
+            }
+            return groups;
+        }
+
+        private static int FindPiece(List<int> parent, int i)
+        {
+            while (parent[i] != i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+            return i;
+        }
+
+        private static void SpanOf(List<Vector3> corners, Vector3 right, Vector3 n, out float lo, out float hi, out float bottom, out float top, out float plane)
+        {
+            lo = bottom = float.MaxValue; hi = top = float.MinValue; plane = 0f;
+            foreach (var p in corners)
+            {
+                float u = Vector3.Dot(p, right), v = p.y;
+                if (u < lo) lo = u; if (u > hi) hi = u;
+                if (v < bottom) bottom = v; if (v > top) top = v;
+                plane += Vector3.Dot(p, n);
+            }
+            plane /= corners.Count;
+        }
+
+        private static void AddSlotGlassOpening(MeshRenderer r, List<Vector3> corners, Vector3 middle, List<InteriorWindowOpening> result)
+        {
+            {
+                Vector3 normal = Vector3.zero, sum = Vector3.zero;
+                for (int k = 0; k + 2 < corners.Count; k += 3)
+                {
+                    Vector3 cross = Vector3.Cross(corners[k + 1] - corners[k], corners[k + 2] - corners[k]);
+                    Vector3 level = new Vector3(cross.x, 0f, cross.z);
+                    if (normal.sqrMagnitude > 0f && Vector3.Dot(level, normal) < 0f) level = -level;
+                    normal += level;
+                    sum += corners[k] + corners[k + 1] + corners[k + 2];
+                }
+                Vector3 glassMiddle = sum / corners.Count;
+                Vector3 outward = normal.normalized;
+                if (Vector3.Dot(glassMiddle - middle, outward) < 0f) outward = -outward;
+
+                Vector3 up = Vector3.up;
+                Vector3 right = Vector3.Cross(up, outward).normalized;
+                float uLo = float.MaxValue, uHi = float.MinValue, vLo = float.MaxValue, vHi = float.MinValue, plane = 0f;
+                foreach (var p in corners)
+                {
+                    float u = Vector3.Dot(p, right), v = Vector3.Dot(p, up);
+                    if (u < uLo) uLo = u; if (u > uHi) uHi = u;
+                    if (v < vLo) vLo = v; if (v > vHi) vHi = v;
+                    plane += Vector3.Dot(p, outward);
+                }
+                plane /= corners.Count;
+
+                var opening = new InteriorWindowOpening();
+                opening.PaneRoot = r.transform;
+                opening.Glass = new List<Renderer> { r };
+                opening.Frost = new List<Renderer>();
+                opening.Companions = new List<Renderer>();
+                opening.PortalOffsetLocal = BENT_GLASS_VIEW_OUTSIDE_GLASS;
+                opening.Outward = outward;
+                opening.Up = up;
+                opening.Right = Vector3.Cross(up, outward).normalized;
+                opening.GlassCenter = right * ((uLo + uHi) * 0.5f) + up * ((vLo + vHi) * 0.5f) + outward * plane;
+                opening.PortalCenter = opening.GlassCenter + outward * BENT_GLASS_VIEW_OUTSIDE_GLASS;
+                opening.GlassWidth = uHi - uLo;
+                opening.GlassHeight = vHi - vLo;
+                opening.Width = opening.GlassWidth + SLOT_GLASS_VIEW_EXTRA_WIDTH;
+                opening.Height = opening.GlassHeight + SLOT_GLASS_VIEW_EXTRA_HEIGHT;
+                result.Add(opening);
+            }
+        }
+
+        // Openings set by hand beside a found room window: its wall, width and facing, their own height.
+        // Added last, with no glass, so the found windows keep their numbers. See RoomHandOpening.
+        private static void AddRoomOpeningsByHand(RoomHandOpening[] rows, List<InteriorWindowOpening> result, string id)
+        {
+            int found = result.Count;
+            for (int i = 0; i < rows.Length; i++)
+            {
+                var row = rows[i];
+                if (row == null || row.LikeRoomWindow < 0 || row.LikeRoomWindow >= found || row.TopCm <= row.BottomCm)
+                {
+                    MelonLogger.Warning($"[WINDOW] {id}: elle acilan pencere {i} gecersiz, atlandi.", $"[WINDOW] {id}: hand-set room opening {i} is not valid, skipped.");
+                    continue;
+                }
+                var like = result[row.LikeRoomWindow];
+                var opening = like;
+                opening.Backdrop = null;
+                opening.Glass = new List<Renderer>();
+                opening.Frost = new List<Renderer>();
+                opening.Companions = new List<Renderer>();
+                opening.Outline = null;
+                opening.WallGroup = 0;
+                float middle = (row.BottomCm + row.TopCm) * 0.005f;
+                Vector3 slide = like.Up * middle + like.Right * (row.AcrossCm * 0.01f);
+                opening.GlassCenter = like.GlassCenter + slide;
+                opening.PortalCenter = float.IsNaN(row.PictureOutCm)
+                    ? like.PortalCenter + slide
+                    : opening.GlassCenter + like.Outward * (row.PictureOutCm * 0.01f);
+                if (!float.IsNaN(row.WidthCm))
+                {
+                    float glassWidth = row.WidthCm * 0.01f;
+                    opening.Width = glassWidth + (like.Width - (like.GlassWidth > 0.01f ? like.GlassWidth : like.Width));
+                    opening.GlassWidth = like.GlassWidth > 0.01f ? glassWidth : 0f;
+                }
+                float glassHeight = (row.TopCm - row.BottomCm) * 0.01f;
+                opening.Height = glassHeight + (like.Height - (like.GlassHeight > 0.01f ? like.GlassHeight : like.Height));
+                opening.GlassHeight = like.GlassHeight > 0.01f ? glassHeight : 0f;
+                result.Add(opening);
+            }
         }
 
         // ─── AN OPENING WITH NO GLASS IN IT ───

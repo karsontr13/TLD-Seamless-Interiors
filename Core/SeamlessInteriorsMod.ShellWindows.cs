@@ -41,6 +41,28 @@ namespace SeamlessInteriors
         // A pane within 10 degrees of the shell's axis is a window in a square wall.
         private const float SHELL_WINDOW_SQUARE_TO_WALL_COSINE = 0.985f;
 
+        // Shell glass: an STR_WindowGlassMix material, or a building's own-named one painted with that
+        // sheet (Coastal House C: STR_HouseExteriorWindows_C01_Blend). The mod's own materials never count.
+        private static readonly Dictionary<int, bool> s_ShellGlassMaterial = new Dictionary<int, bool>();
+
+        internal static bool IsShellGlassMaterial(Material material)
+        {
+            if (material == null) return false;
+            int id = material.GetInstanceID();
+            bool glass;
+            if (s_ShellGlassMaterial.TryGetValue(id, out glass)) return glass;
+
+            string name = material.name;
+            glass = name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) >= 0;
+            if (!glass && !name.StartsWith("SeamlessInteriors", System.StringComparison.Ordinal))
+            {
+                Texture texture = material.mainTexture;
+                glass = texture != null && texture.name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) >= 0;
+            }
+            s_ShellGlassMaterial[id] = glass;
+            return glass;
+        }
+
         internal static bool TryGetShellWindows(SeamlessInteriorInstance instance, out WindowSpot[] spots)
         {
             spots = null;
@@ -57,8 +79,30 @@ namespace SeamlessInteriors
             if (s_MeasuredShellWindows.TryGetValue(shellName, out spots)) return spots != null && spots.Length > 0;
 
             spots = MeasureShellWindows(instance, shellName);
+            spots = AddExtraShellGlass(instance, shellName, spots);
             s_MeasuredShellWindows[shellName] = spots;      // a failure is remembered too
             return spots != null && spots.Length > 0;
+        }
+
+        // The row's ExtraShellGlassObjects, one window each, after the mesh's own windows so those keep
+        // their numbers. The by-object measure caches its own result under the shell's name; the caller
+        // overwrites that with the whole list straight after.
+        private static WindowSpot[] AddExtraShellGlass(SeamlessInteriorInstance instance, string shellName, WindowSpot[] spots)
+        {
+            BuildingWindowOverride byHand;
+            if (spots == null || spots.Length == 0) return spots;
+            if (!TryGetBuildingWindowOverride(shellName, out byHand) || byHand.ExtraShellGlassObjects == null || byHand.ExtraShellGlassObjects.Length == 0) return spots;
+
+            s_MeasuredShellWindows[shellName] = spots;
+            WindowSpot[] extra = MeasureShellWindowsByObject(instance, shellName, byHand.ExtraShellGlassObjects);
+            if (extra == null || extra.Length == 0) return spots;
+
+            var all = new WindowSpot[spots.Length + extra.Length];
+            System.Array.Copy(spots, all, spots.Length);
+            System.Array.Copy(extra, 0, all, spots.Length, extra.Length);
+            MelonLogger.Msg($"[PENCERE-OLCUM] {shellName}: tablodaki ek bina camindan {extra.Length} pencere eklendi, numaralari {spots.Length} ve sonrasi; toplam {all.Length}.",
+                            $"[WINDOW-MEASURE] {shellName}: {extra.Length} window(s) added from the row's extra building glass, numbered from {spots.Length}; {all.Length} in all.");
+            return all;
         }
 
         private class ShellWindowCluster
@@ -66,6 +110,69 @@ namespace SeamlessInteriors
             public Vector3 Normal;
             public float Plane, ULo, UHi, VLo, VHi;
             public int Triangles;
+            public List<Vector2> Corners = new List<Vector2>();   // the glass's corners across and up, for its outline
+        }
+
+        // ─── WINDOWS THAT ARE NOT RECTANGLES ───
+        //
+        // A view is drawn on a rectangle, so a triangular or other odd-shaped building window got a
+        // rectangle over its slanted edges (the Radio Control Hut's end-wall triangles, 2026-10-01,
+        // owner: "number four and five are also incorrectly rectangular"). A window whose OUTLINE (the
+        // convex hull round all its glass corners) covers less than this share of its rectangle keeps
+        // that outline, and its view and dark backing are cut to it (ShapedViews.cs); with no room
+        // window to show it is left alone, its own pane as the game made it. The outline, not the
+        // glass's area, so the bars between the panes of a many-pane window cannot make a rectangular
+        // window look odd. A triangle covers half. Checked in the console: rectangle 100%, triangle
+        // 50%, four panes with bars 100%.
+        private const float SHELL_WINDOW_RECTANGLE_SHARE = 0.8f;
+        private static readonly Dictionary<string, HashSet<int>> s_NotRectangularShellWindows = new Dictionary<string, HashSet<int>>();
+
+        // The convex hull round the points (monotone chain), counter-clockwise.
+        internal static List<Vector2> OutlineOf(List<Vector2> points)
+        {
+            var hull = new List<Vector2>();
+            if (points == null || points.Count < 3) return hull;
+            var p = new List<Vector2>(points);
+            p.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
+            for (int pass = 0; pass < 2; pass++)
+            {
+                int start = hull.Count;
+                for (int i = 0; i < p.Count; i++)
+                {
+                    Vector2 q = pass == 0 ? p[i] : p[p.Count - 1 - i];
+                    while (hull.Count >= start + 2)
+                    {
+                        Vector2 a = hull[hull.Count - 2], b = hull[hull.Count - 1];
+                        if ((b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x) > 1e-9f) break;
+                        hull.RemoveAt(hull.Count - 1);
+                    }
+                    hull.Add(q);
+                }
+                hull.RemoveAt(hull.Count - 1);
+            }
+            return hull;
+        }
+
+        internal static float AreaOf(List<Vector2> polygon)
+        {
+            float area = 0f;
+            for (int i = 0; i < polygon.Count; i++) { Vector2 a = polygon[i], b = polygon[(i + 1) % polygon.Count]; area += a.x * b.y - b.x * a.y; }
+            return Mathf.Abs(area) * 0.5f;
+        }
+
+        // The outline of each window that is not a rectangle, in the shell root's space, by window index.
+        private static readonly Dictionary<string, Dictionary<int, Vector3[]>> s_ShellWindowOutlines = new Dictionary<string, Dictionary<int, Vector3[]>>();
+
+        internal static Vector3[] ShellWindowOutline(string shellName, int window)
+        {
+            Dictionary<int, Vector3[]> byWindow; Vector3[] outline;
+            return !string.IsNullOrEmpty(shellName) && s_ShellWindowOutlines.TryGetValue(shellName, out byWindow) && byWindow.TryGetValue(window, out outline) ? outline : null;
+        }
+
+        internal static bool IsShellWindowNotRectangular(string shellName, int window)
+        {
+            HashSet<int> set;
+            return !string.IsNullOrEmpty(shellName) && s_NotRectangularShellWindows.TryGetValue(shellName, out set) && set.Contains(window);
         }
 
         private static WindowSpot[] MeasureShellWindows(SeamlessInteriorInstance instance, string shellName)
@@ -92,7 +199,7 @@ namespace SeamlessInteriors
                     // By NAME for the hidden pane: each dressed building owns its own copy of that
                     // material, and the shell being measured may be dressed by any of them.
                     bool glass = materials[k].name.IndexOf("SeamlessInteriors_HiddenPane", System.StringComparison.Ordinal) >= 0
-                              || materials[k].name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) >= 0;
+                              || IsShellGlassMaterial(materials[k]);
                     if (!glass) continue;
                     if (!filter.sharedMesh.isReadable) { unreadable++; continue; }
 
@@ -168,6 +275,11 @@ namespace SeamlessInteriors
                     hit.VLo = Mathf.Min(hit.VLo, vLo); hit.VHi = Mathf.Max(hit.VHi, vHi);
                 }
                 hit.Triangles++;
+                for (int c = 0; c < 3; c++)
+                {
+                    Vector3 p = c == 0 ? p0 : c == 1 ? p1 : p2;
+                    hit.Corners.Add(new Vector2(Vector3.Dot(p, right), p.y));
+                }
             }
 
             // Clusters that grew into each other.
@@ -179,13 +291,29 @@ namespace SeamlessInteriors
                     a.ULo = Mathf.Min(a.ULo, b.ULo); a.UHi = Mathf.Max(a.UHi, b.UHi);
                     a.VLo = Mathf.Min(a.VLo, b.VLo); a.VHi = Mathf.Max(a.VHi, b.VHi);
                     a.Triangles += b.Triangles;
+                    a.Corners.AddRange(b.Corners);
                     clusters.RemoveAt(j);
                 }
 
             var result = new WindowSpot[clusters.Count];
+            var notRectangular = new HashSet<int>();
+            var outlines = new Dictionary<int, Vector3[]>();
+            string odd = "";
             for (int w = 0; w < clusters.Count; w++)
             {
                 var c = clusters[w];
+                float box = (c.UHi - c.ULo) * (c.VHi - c.VLo);
+                var hull = OutlineOf(c.Corners);
+                float outline = AreaOf(hull);
+                if (box > 1e-4f && outline / box < SHELL_WINDOW_RECTANGLE_SHARE)
+                {
+                    notRectangular.Add(w);
+                    Vector3 hullRight = Vector3.Cross(Vector3.up, c.Normal);
+                    var corners = new Vector3[hull.Count];
+                    for (int h = 0; h < hull.Count; h++) corners[h] = c.Normal * c.Plane + hullRight * hull[h].x + Vector3.up * hull[h].y;
+                    outlines[w] = corners;
+                    odd += (odd.Length > 0 ? ", " : "") + w + " (" + (outline / box * 100f).ToString("F0") + "%)";
+                }
                 Vector3 right = Vector3.Cross(Vector3.up, c.Normal);
                 Vector3 center = c.Normal * c.Plane + right * ((c.ULo + c.UHi) * 0.5f) + Vector3.up * ((c.VLo + c.VHi) * 0.5f);
                 result[w] = new WindowSpot(center.x, center.y, center.z, c.Normal.x, c.Normal.z, c.UHi - c.ULo, c.VHi - c.VLo);
@@ -193,6 +321,11 @@ namespace SeamlessInteriors
 
             // THE SELF-CHECK, once per shell. Compare with the room's windows, found independently.
             s_MeasuredShellWindows[shellName] = result;       // see MeasureShellWindowsByObject
+            s_NotRectangularShellWindows[shellName] = notRectangular;
+            s_ShellWindowOutlines[shellName] = outlines;
+            if (odd.Length > 0)
+                MelonLogger.Msg($"[PENCERE-OLCUM] {shellName}: dikdortgen olmayan pencereler, goruntu camin kendi seklinde: {odd}.",
+                                $"[WINDOW-MEASURE] {shellName}: windows that are not rectangles, their views cut to the glass's own outline (share of their rectangle the outline covers): {odd}.");
             int roomWindows = -1;
             try { roomWindows = FindInteriorWindowOpenings(instance).Count; } catch { }
             string verdict = result.Length == 0 ? "HIC PENCERE BULUNAMADI"
@@ -266,7 +399,7 @@ namespace SeamlessInteriors
                 {
                     if (materials[k] == null) continue;
                     bool glass = materials[k].name.IndexOf("SeamlessInteriors_HiddenPane", System.StringComparison.Ordinal) >= 0
-                              || materials[k].name.IndexOf("WindowGlassMix", System.StringComparison.Ordinal) >= 0;
+                              || IsShellGlassMaterial(materials[k]);
                     if (!glass) continue;
                     if (!filter.sharedMesh.isReadable) { unreadable++; continue; }
 

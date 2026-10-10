@@ -84,6 +84,8 @@ namespace SeamlessInteriors
             public bool WantHeld;
             public bool CamerasOn;
             public float ShellDistance = float.MaxValue;
+            // This room's layer while held (PickOutsideInRoomLayer); its cameras draw only this.
+            public int Layer = 3;
 
             // Everything below was a static of the same name, s_OutsideIn + the name, when this
             // system served one building, and is documented where that static is still declared.
@@ -319,15 +321,40 @@ namespace SeamlessInteriors
             }
 
             int allowed = OutsideInMaxHeldRooms;
+            s_OutsideInChosen.Clear();
             for (int taken = 0; taken < allowed && s_OutsideInHeldOrder.Count > 0; taken++)
             {
                 int best = 0;
                 for (int i = 1; i < s_OutsideInHeldOrder.Count; i++)
                     if (HeldRoomRank(s_OutsideInHeldOrder[i]) < HeldRoomRank(s_OutsideInHeldOrder[best])) best = i;
 
-                s_OutsideInHeldOrder[best].WantHeld = true;
+                var pick = s_OutsideInHeldOrder[best];
                 s_OutsideInHeldOrder.RemoveAt(best);
+                // ROOMS THAT OVERLAP AT PARK HEIGHT ARE NEVER HELD TOGETHER: each camera would draw the
+                // other's walls, and the open one's colliders stand in the other's rooms (Milton H2/F3,
+                // 2026-10-09). The better-ranked one is held, the other keeps its dressing.
+                if (OverlapsChosenRoom(pick)) { taken--; continue; }
+                pick.WantHeld = true;
+                s_OutsideInChosen.Add(pick);
             }
+        }
+
+        private static readonly List<OutsideInBuilding> s_OutsideInChosen = new List<OutsideInBuilding>();
+        // Rooms closer than this to touching still count as apart (neighbors share no space).
+        private const float OUTSIDE_IN_ROOM_OVERLAP_SLACK = 0.3f;
+
+        private static bool OverlapsChosenRoom(OutsideInBuilding candidate)
+        {
+            Bounds mine;
+            if (candidate.Instance == null || !candidate.Instance.TryGetRoomWorldBox(out mine)) return false;
+            mine.Expand(-2f * OUTSIDE_IN_ROOM_OVERLAP_SLACK);
+            for (int i = 0; i < s_OutsideInChosen.Count; i++)
+            {
+                Bounds other;
+                if (s_OutsideInChosen[i].Instance != null && s_OutsideInChosen[i].Instance.TryGetRoomWorldBox(out other) && mine.Intersects(other))
+                    return true;
+            }
+            return false;
         }
 
         // ─── WHAT IT COSTS, IN THE LOG ───

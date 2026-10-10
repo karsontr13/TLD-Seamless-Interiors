@@ -69,6 +69,18 @@ namespace SeamlessInteriors
             if (instance.Config == null || !instance.Config.IsParked) return;
             if (instance.MasterInterior == null || instance.ExteriorShell == null) return;
 
+            // A turn set by hand for this building wins over the rule. See BuildingWindowOverride.RoomTurnDegrees.
+            BuildingWindowOverride byHand;
+            if (TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out byHand) && !float.IsNaN(byHand.RoomTurnDegrees))
+            {
+                instance.MasterInterior.transform.rotation = Quaternion.AngleAxis(byHand.RoomTurnDegrees, Vector3.up) * instance.MasterInterior.transform.rotation;
+                instance.ParkedYawCorrection = byHand.RoomTurnDegrees;
+                if (s_DebugBounds)
+                    MelonLogger.Msg($"[ODA-DONUS] {instance.Config.ResolvedInstanceId}: oda kabuga elle verilen {byHand.RoomTurnDegrees:F1} derece donduruldu.",
+                                    $"[ROOM-TURN] {instance.Config.ResolvedInstanceId}: room turned {byHand.RoomTurnDegrees:F1} degrees to match its building, as set by hand for this building.");
+                return;
+            }
+
             WindowSpot[] spots;
             if (!TryGetShellWindows(instance, out spots)) return;
 

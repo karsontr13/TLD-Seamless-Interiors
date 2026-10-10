@@ -63,6 +63,35 @@ namespace SeamlessInteriors
         // on two tiers, measured from the GPU on 2026-09-22 against the building's own 34.
         public string[] RoomManyPaneObjects;
 
+        // Pieces of a many-pane sheet standing side by side on one wall joined into ONE window when the
+        // gap between them is at most this, in centimeters, and they share at least half the shorter
+        // one's height. NaN = the ordinary joining (a bar's width, edges level). Joining renumbers the
+        // room windows after the joined ones. The Community Hall's front door (three panes, gaps of
+        // 16 and 46 cm) and its back window (two halves), 2026-10-02; the next nearest panes there are
+        // more than 2 m apart.
+        public float RoomManyPaneJoinWithinCm = float.NaN;
+
+        // BUILDING glass objects, by name, measured one window each and ADDED after the windows the
+        // building's own mesh gives, so those keep their numbers. ShellGlassObjects replaces the
+        // measure; this adds to it. The Community Hall's front door glass is its own object beside the
+        // one mesh that holds the seven windows, 2026-10-02.
+        public string[] ExtraShellGlassObjects;
+
+        // Room panes, by object name, that are windows although the game put no painted outside behind
+        // them; without a row such glass is left out (WindowOpenings.cs, "WINDOW GLASS WITH NO
+        // BACKDROP"). They are added after the windows found by the rule, so those keep their numbers,
+        // and each takes its outside from the nearest window in the same wall. The Small Barn, 2026-10-01.
+        public string[] RoomWindowsWithoutBackdrop;
+
+        // Room window objects (by name prefix) the rule misses: glass in a slot beside the frame, or not
+        // STR_WindowGlassMix. Read from the glass submesh, facing away from the room's middle (2026-10-10).
+        public string[] RoomGlassSlotObjects;
+        // Room glass, by object name, joined into ONE window per set however far apart the pieces stand
+        // (posts wider than the joining allows). A set takes its outside from the nearest window in the
+        // same wall, not from a backdrop, and is added after the windows found by the rule, like
+        // RoomWindowsWithoutBackdrop. The Small Barn's loft row, 2026-10-01.
+        public string[][] RoomWindowJoins;
+
         // The room behind the glass drawn this much of its fitted size, seen from outside, in percent
         // (97 draws it about 3 percent larger). NaN = 100. The farmhouse's 97 was tuned by eye on that
         // building to pull its room's frames onto its own and line them up (2026-09-19); it was then
@@ -94,6 +123,116 @@ namespace SeamlessInteriors
         // times, and the owner saw no difference at all (2026-09-26, LOG 0926-38). The furthest
         // window stands 5.7 cm from the shared eye.
         public int[][] ViewOutGroups;
+
+        // Each ViewOutGroups group's camera slid along its wall from the members' mean, in centimeters,
+        // + to the right as seen from inside looking out. Same order as ViewOutGroups; missing = 0.
+        // Set by the owner's eye with markers outside each window where one camera serves panes whose
+        // room spacing differs from the building's (the Community Hall, 2026-10-02).
+        public float[] ViewOutGroupSidewaysCm;
+
+        // Where a view from outside is drawn, cm in front of the building's glass (- behind it), for the
+        // whole building and, by building window number, for single windows (NaN = the building's value).
+        // Unset, the global OutsideInViewTowardViewer (1 cm). The picture, the room point behind it, the
+        // backing and the frost all move with it. Asked for on 2026-10-02 at the Community Hall, whose
+        // window bars run from 6.7 cm in front of the glass to 2.4 cm behind it: a picture drawn 1 cm in
+        // front left the bars' back ends behind it, and from an angle the room showed where a bar should
+        // go on. Owner: "make SURE I can adjust that value ... per window, per building".
+        public float PicturePlaneCm = float.NaN;
+        public float[] PicturePlaneCmByWindow;
+
+        // Outdoor snow touching a window drawn on the glass for the views out (WindowSnow.BuildingToRoom.cs).
+        // Off unless asked for: only the Quonset gas station has the ground piled against a window, and the
+        // search costs a scan of the snow round the building on every entry (owner, 2026-10-02).
+        public bool GlassSnow;
+
+        // Windows whose snow copied from the ROOM keeps only its sill piece: the room's window has a
+        // bar whose snow the copy carries, and the building's window has no bar under it. The Camp
+        // Office's short window 0 (owner, 2026-09-30: "an extra snowdrift in the center bar where
+        // there shouldn't be one because there's no center bar"). See CropLedgeDriftToSill.
+        public int[] DriftSillOnly;
+
+        // Snow the game placed over one window of the BUILDING, copied onto another that has none.
+        // See CopiedShellDrift.
+        public CopiedShellDrift[] CopiedDrifts;
+
+        // The turn that brings the parked room square to its building, in degrees about up, where the
+        // automatic rule refuses. NaN = the rule (TurnParkedRoomToShell). Barn A's room is far larger
+        // than its barn and has 13 windows to its 10, so at the right turn only 8 room windows land
+        // within the rule's 6 m and it wants 9: it found -109.1 and refused by one. -109.1 is the
+        // turn, and it is also exactly the barn's own rotation (room 325.0 turned to 215.9): every
+        // wall's windows then match the barn's, ground and upper floors, middle-high rows included.
+        // Read live 2026-09-30, after a wrong first try at -19.1 (the smallest turn that makes the
+        // windows FACE along the walls, which cannot tell a quarter turn apart; _dev LOG-2026-09-30).
+        public float RoomTurnDegrees = float.NaN;
+
+        // Which room window stands behind each building window, by hand: index = the building's window,
+        // value = the room's (FindInteriorWindowOpenings order), -1 = none. Replaces the automatic
+        // pairing for every window it lists. Barn A: after the turn the automatic pairing matched nine
+        // windows exactly and left window 9, by the side door, with nothing, while room window 1
+        // stands 30 cm along from it on the same wall and floor. The owner had found it from inside:
+        // window 9 "sits to the left of the entry door from outside" (2026-09-30).
+        public int[] PairedRoomWindows;
+
+        // Where a ROOM window with no window on the building looks out from, moved by hand. Such a
+        // window looks out from where the paired windows agree the room stands (WindowPortals.cs, the
+        // gas station's rule), which for a room far larger than its building is nowhere near the spot
+        // its own wall would be. See RoomWindowViewOut.
+        public RoomWindowViewOut[] ViewOutOffsets;
+
+        // World objects a room window's view out does not draw: named by prefix, within WithinMeters of
+        // the glass, hidden from that window's camera only (everyone else still sees them). For things
+        // the game hangs on the building's outside that the view out cannot show sensibly. The Small
+        // Barn's end-wall windows, 2026-10-01: their camera has to hide the whole barn (one mesh, porch
+        // included), which left the porch's icicles hanging from nothing.
+        public RoomWindowViewOutHide[] ViewOutHides;
+
+        // Room objects, by exact name, switched off while the room is set up and back on at teardown.
+        // Trade: a parked room keeps its painted outsides on so a window whose view is not drawn in a
+        // frame shows the painting, not the parked room's surroundings (ShowPaintedPanesInParkedRoom);
+        // hiding one gives that up for every window it stood behind. The Small Barn, 2026-10-01.
+        public string[] RoomObjectsHidden;
+
+        // Room openings with no glass at all, placed by hand beside a found room window. See RoomHandOpening.
+        public RoomHandOpening[] RoomOpeningsByHand;
+    }
+
+    // A hole in the room's wall with no glass (boards only), on LikeRoomWindow's wall, width and facing;
+    // its bottom and top in cm from that window's glass middle. Numbered after every found window.
+    internal sealed class RoomHandOpening
+    {
+        public int LikeRoomWindow;
+        public float BottomCm, TopCm;
+        // Its middle slid along the wall (+ = the room window's Right), and its width; NaN = as LikeRoomWindow's.
+        public float AcrossCm, WidthCm = float.NaN;
+        // The picture's plane, cm out from the glass plane (past boards nailed outside it); NaN = as LikeRoomWindow's.
+        public float PictureOutCm = float.NaN;
+    }
+
+    // One room window's view out moved from the agreed spot: right as seen from inside looking out,
+    // up, and out through the glass, in centimeters. By the room's window numbers (the cyan tags).
+    internal sealed class RoomWindowViewOut
+    {
+        public int RoomWindow;
+        public float RightCm, UpCm, OutCm;
+    }
+
+    internal sealed class RoomWindowViewOutHide
+    {
+        public int[] RoomWindows;
+        public string[] NamePrefixes;
+        public float WithinMeters = 8f;
+    }
+
+    // A copy of one of the game's own snow objects on the building, set down over another window at
+    // the same place in that window's own frame. Made once per scene, when the building's windows are
+    // first set up, and left on the building like the original: it is scenery, not a window dressing,
+    // so it does not come and go with the dressing range. See BuildCopiedShellDrifts.
+    internal sealed class CopiedShellDrift
+    {
+        public string SourceObject;     // the game's snow object on the shell, by name ("TRN_SnowA_Prefab")
+        public int FromWindow;          // the window it stands over; the nearest such object to that window's top is copied
+        public int ToWindow;
+        public float AcrossCm, UpCm, OutCm;  // where it goes, from ToWindow's measured center along its right, up and outward
     }
 
     // One hand-made camera group for the views in. See BuildingWindowOverride.ViewInGroups.
@@ -157,6 +296,112 @@ namespace SeamlessInteriors
                     },
                 }
             },
+            // Barn A (Pleasant Valley, the author's, added upstream 2026-09-29). The room is turned by hand
+            // and its windows paired by hand; see RoomTurnDegrees and PairedRoomWindows. Pairs read live
+            // on the turned room, 2026-09-30: the front's ground floor 0, 1, 2 to room 2, 3, 4; the two
+            // upper side rows 3, 4, 5 to 10, 8, 9 and 6, 7, 8 to 5, 6, 7, middle windows high on both;
+            // window 9 by the side door to room 1.
+            {
+                "STRSPAWN_BarnHouseA_Prefab", new BuildingWindowOverride
+                {
+                    RoomTurnDegrees = -109.1f,
+                    PairedRoomWindows = new[] { 2, 3, 4, 10, 8, 9, 5, 6, 7, 1 },
+                    // Room windows 11 and 12, ground floor beside the side wall's upper row, have no barn
+                    // window. Set by his eye from inside, 2026-09-30, on one shared camera, so each was judged
+                    // on its own: first both at 275 right ("11 and 12 are good"), then, with a snow pile
+                    // showing in 11 from far off, moved to window 1's own offset and set apart: "320 is the
+                    // correct ... setting for window 12. And 0 is the correct setting for Window 11." Window 11
+                    // then raised 17 cm, to 112, to look over a snow bank against the barn wall at its spot
+                    // (terrain 43 cm under the window's bottom edge half a meter out, against 102 at window 1);
+                    // "the distant terrain seemed to only move a degree or so". Window 12 not rechecked at 112.
+                    ViewOutOffsets = new[]
+                    {
+                        new RoomWindowViewOut { RoomWindow = 11, RightCm = 0f, UpCm = 112f, OutCm = -150f },
+                        new RoomWindowViewOut { RoomWindow = 12, RightCm = 320f, UpCm = 94.8f, OutCm = -150f },
+                    },
+                }
+            },
+
+            // The Small Barn (Pleasant Valley, the author's; the game's scene BarnHouseB). Read live 2026-10-01
+            // (_dev LOG-2026-10-01, 1001-08 and 1001-09).
+            // - The ground-floor window beside Mesh007, on the same wall, had no view: its glass Mesh012 has no
+            //   painted outside behind it (the barn's one backdrop object, STR_Barn_B_GlassGlow, stops short
+            //   of it), so the rule left it out. Named here.
+            // - The loft row is six pieces of glass in pairs with posts between: the rule made two windows of
+            //   it, both facing INTO the room (the nearest backdrop corners stand on the room side), and left
+            //   the third pair (Mesh003, Mesh004, no backdrop) to the 80 m view of the parked room. Owner: "we
+            //   need to build the entire three-window set as one single wall camera". One window, its outside
+            //   taken from the ground-floor windows of the same wall.
+            // - Barn window 4 is the high window in the end wall; the rule had paired it with the low side
+            //   window Mesh010, which set that view 4 m too high and, through the average, every view of a
+            //   room window with no barn window 1 m too high. Unpaired, then paired with its own window, Mesh013 (below).
+            // Room windows after this row: 0 to 4 = Mesh007, 008, 009, 010, 011 as the rule finds them (the
+            // owner passed them as 2 to 6 before the row), 5 = the loft row, 6 = Mesh012, 7 = Mesh013. Barn 0
+            // to 3 keep the same room windows as before. The room is not turned (the rule's -5.3 was refused,
+            // and the passed windows were judged unturned).
+            {
+                "STR_BarnSmallA_Exterior_Prefab", new BuildingWindowOverride
+                {
+                    // Mesh013, the high window in the end wall above room windows 3 and 4, made a window
+                    // too (owner, 2026-10-01: "the window directly above 4 and 3 is the one we need to also
+                    // turn into a portal window"): room window 7, paired with barn window 4, its own window.
+                    RoomWindowsWithoutBackdrop = new[] { "Mesh012", "Mesh013" },
+                    RoomWindowJoins = new[] { new[] { "Mesh001", "Mesh002", "Mesh003", "Mesh004", "Mesh005", "Mesh006" } },
+                    PairedRoomWindows = new[] { 6, 0, 1, 2, 7 },
+                    // Room windows 3 and 4, low in the end wall, have no barn window, so they look out from
+                    // where the paired windows agree the room stands, which put their shared camera's glass
+                    // 3.80 m outside the barn's end wall, out in the hay stacked against it: the bales slid
+                    // like a magnifier and against the strafe. Moved in onto the wall plane (measured from barn
+                    // window 4's glass in the same wall), live on their wall camera; owner: "That was it. It
+                    // looks perfect now." (2026-10-01, _dev LOG 1001-10). That look was luckier than it seemed:
+                    // the wall camera lists the barn pieces to hide on its FIRST draw (FindWallShellPieces: from
+                    // 5 cm outside its glass inward), and its first draw had been with the glass 3.8 m out, so
+                    // the whole end wall was hidden. On the next build, pairing Mesh013 moved the windows' start
+                    // by 3 m (it joined the average), the glass began 0.75 m inside the wall, the wall was never
+                    // listed, and its outer boards showed and slid past (1001-11). The offset is now measured from
+                    // that build's start and puts the glass 30 cm OUTSIDE the wall line, so the boards are behind
+                    // it and listed whatever the first draw sees. Nothing stands that close outside.
+                    ViewOutOffsets = new[]
+                    {
+                        new RoomWindowViewOut { RoomWindow = 3, RightCm = 0f, UpCm = 0f, OutCm = -275f },
+                        new RoomWindowViewOut { RoomWindow = 4, RightCm = 0f, UpCm = 0f, OutCm = -275f },
+                    },
+                    // Their camera hides the whole barn, porch included (one mesh); seeing the porch was
+                    // tried live with the barn mesh cut around these windows, and the porch "basically made
+                    // the windows useless for looking outside" (owner, 2026-10-01). So no porch roof, and its
+                    // icicles (TRN_IcicleA/B, separate region art) hidden too, live-passed the same day. So is
+                    // the loose plank leaning on that wall outside (OBJ_SchoolHousePlank5): with the wall gone
+                    // from these views it stood against the glass and filled both windows from the side of the
+                    // room. Owner, after all three were hidden: "I can't find a place where it looks bad."
+                    ViewOutHides = new[]
+                    {
+                        new RoomWindowViewOutHide { RoomWindows = new[] { 3, 4 }, NamePrefixes = new[] { "TRN_Icicle", "OBJ_SchoolHousePlank" }, WithinMeters = 8f },
+                    },
+                    // The barn's one painted outside (GLB_GlowExt_A01, not self-lit but lit by the room's
+                    // ambient at double strength) shone through the gaps round the shuttered window and the
+                    // door crack as bright as day at midnight in heavy snow (screenshot 1001-15). Hidden
+                    // live: "That worked. It seems like the door crack was also fixed." Its windows all have
+                    // views, so it only ever showed through those gaps.
+                    RoomObjectsHidden = new[] { "STR_Barn_B_GlassGlow" },
+                    // Views in from outside: each starts just behind its room window's frame, so the room's
+                    // frame is not in the picture and only the barn's shows ("the interior frames shown
+                    // through the outside-in portal do not line up with the exterior frames"; the room
+                    // stands about 5 degrees off the barn, so its frames lay twisted in the holes). The cut
+                    // mode's own measurement found nothing here, because these panes carry no frame of their
+                    // own: the frames are in the room's wall mesh, STR_Barn_B_interior_Prefab, read back from
+                    // the card live at 6.9, 3.8, 5.2 cm into the room behind barn windows 0 to 3 (room
+                    // windows 6, 0, 1, 2); window 4's (room window 7) read was spoiled by roof beams and set
+                    // at 9. Each plus 0.3 cm. Owner, live: "Whatever you did now looks great." (2026-10-01.)
+                    Fits = new[]
+                    {
+                        new WindowFit(0, 0f, 0f, 75.95f, 130.33f, -0.01f, -0f, 75.95f, 130.33f, -1, -7.2f),
+                        new WindowFit(1, 0f, 0f, 75.95f, 130.33f, -0.01f, -0f, 75.95f, 130.33f, -1, -7.2f),
+                        new WindowFit(2, 0f, 0f, 75.94f, 130.33f, 0f, 0f, 75.94f, 130.33f, -1, -4.1f),
+                        new WindowFit(3, 0f, 0f, 75.94f, 130.33f, 0f, 0f, 75.94f, 130.33f, -1, -5.5f),
+                        new WindowFit(4, 0f, 0f, 109.25f, 163.5f, 0f, 0f, 109.25f, 163.5f, -1, -9f),
+                    },
+                }
+            },
 
             // The Camp Office, Mystery Lake. The two front windows' views from outside showed a sliver
             // down one side and along the bottom, only noticeable with the windows cleaned (owner,
@@ -168,15 +413,23 @@ namespace SeamlessInteriors
             // the room's 105 x 113, so the plain fit squeezed the whole room window into half the height
             // (2.0, the limit) and no size of the hole fitted both frames. Its hole stays as measured; the
             // room behind it is stretched 79% taller, slid 25.6 cm up and 2.3 left, the view starting
-            // 2.5 cm out. Set by his eye, 2026-09-28 night. The same night window 6 was narrowed to 96.9 cm and its room made 2% wider. Window 4 likewise: 96.9 x 107 cm, 1 cm left, view from 9.5 cm, room 2% wider. Windows 1 and 5: holes as measured, room 1% wider, window 5's room 1.6 cm left. Every view in starts 9.5 cm out (his, the same night), except window 0's, which keeps its own 2.5.
+            // 2.5 cm out. Set by his eye, 2026-09-28 night. The same night window 6 was narrowed to 96.9 cm and its room made 2% wider. Window 4 likewise: 96.9 x 107 cm, 1 cm left, view from 9.5 cm, room 2% wider. Windows 1 and 5: holes as measured, room 1% wider, window 5's room 1.6 cm left. Every view in starts 9.5 cm out (his, the same night), except window 0's, which keeps its own 2.5. On 2026-09-30, after the upstream merge, window 1's room was made 3% taller by his eye.
             {
                 "STRSPAWN_CampOffice_Prefab", new BuildingWindowOverride
                 {
                     ViewFromOutsideStartsCm = 9.5f,
+                    // Window 0 is short and has no bar; its room window has one. Owner, 2026-09-30.
+                    DriftSillOnly = new[] { 0 },
+                    // The game put a drift over window 5 and none over window 7, the same size on the
+                    // opposite wall. Measured on window 5 and passed as is: "Looks perfect" (2026-09-30).
+                    CopiedDrifts = new[]
+                    {
+                        new CopiedShellDrift { SourceObject = "TRN_SnowA_Prefab", FromWindow = 5, ToWindow = 7, AcrossCm = -3.9f, UpCm = 62.3f, OutCm = -0.9f },
+                    },
                     Fits = new[]
                     {
                         new WindowFit(0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, 2.5f, -2.3f, 25.6f, roomTallerPercent: 79f),
-                        new WindowFit(1, 0f, 0f, 97f, 104f, -0.01f, -0.01f, 96.84f, 103.72f, -1, roomWiderPercent: 1f),
+                        new WindowFit(1, 0f, 0f, 97f, 104f, -0.01f, -0.01f, 96.84f, 103.72f, -1, roomTallerPercent: 3f, roomWiderPercent: 1f),
                         new WindowFit(4, -1f, 0f, 96.9f, 107f, -0.04f, 0.05f, 96.84f, 103.72f, -1, roomWiderPercent: 2f),
                         new WindowFit(5, 0f, 0f, 97f, 104f, -0.04f, -0.01f, 96.84f, 103.72f, -1, float.NaN, -1.6f, 0f, roomWiderPercent: 1f),
                         new WindowFit(6, 0f, 0f, 96.9f, 104.5f, 0f, -0.03f, 96.83f, 103.72f, -1, float.NaN, -1.6f, 0.4f, roomWiderPercent: 2f),
@@ -340,6 +593,28 @@ namespace SeamlessInteriors
                 }
             },
 
+            // THE RADIO CONTROL HUT (Pleasant Valley, 2026-10-01). Its end wall has three panes with no
+            // painted outside behind them, all named here: two triangles (STR_RadioControlHutInteriorGlassA_04
+            // and _06), whose views are cut to the glass's own outline (ShapedViews.cs; owner: "I really
+            // wish there was a quick win for triangular windows"), and the rectangle between them, _05
+            // (three panes, 3.78 x 0.47 m; owner: "There's still one rectangular window in this room").
+            // A pane whose wall has no other window takes its outside from the middle of the room's glass.
+            // The room's frames show in the views from outside as the default leaves them; he liked them.
+            {
+                "STRSPAWN_RadioControlHut_Prefab", new BuildingWindowOverride
+                {
+                    RoomWindowsWithoutBackdrop = new[] { "STR_RadioControlHutInteriorGlassA_05_Prefab", "STR_RadioControlHutInteriorGlassA_04_Prefab", "STR_RadioControlHutInteriorGlassA_06_Prefab" },
+                    // Window 2: its outer frame lines up with the room's, but the room's center board does
+                    // not match the building's divider, and the room's frames are one mesh, so no slide or
+                    // stretch fixes one board (owner: "the outside frame is lined up perfectly. It's just
+                    // the center vertical board"). By his frame rule, the view starts 3 cm into the room,
+                    // past that board, which still leaves "a little bit of the outer frame" (his slider).
+                    Fits = new[]
+                    {
+                        new WindowFit(2, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, -3f),
+                    },
+                }
+            },
             // The Coastal Highway gas station, set by the owner's eye on 2026-09-20 at windows 3, 4
             // and 7 and then looked at on all eight. Its room's window is 114 x 106 cm behind a
             // building pane of 106 x 103, so the room's cross-frame cannot lie on the building's:
@@ -352,14 +627,213 @@ namespace SeamlessInteriors
             // pieces 134 to 148 cm across and 252 tall), so it is named here and cut, not switched off. Hidden
             // indoors as well, the frames' casing no longer covers the rim of the hole in the wall
             // and the views out look far too small; he saw that on the prototype.
+            // The Community Hall (karsontr13's, Pleasant Valley). The room's glass is ONE object, read
+            // without a row as two windows ten meters wide, which hung a view panel in the middle of the
+            // room and gave the building's windows the wrong views (2026-10-02). Read as panes, with the
+            // front door's three panes and the back window's two halves joined, it is eight windows:
+            // long wall 0, 1, 5; back 2, 6; door side 3, 4 and the door 7. The building's front door
+            // glass is its own object and becomes building window 7. The room is about a third deeper
+            // than the building, so one camera per wall sees from the wrong spot at the ends; the owner
+            // set each wall's camera along the wall with markers outside every window: long wall
+            // "as good as it's gonna get", door side "as good as it's going to get", back "lined up".
+            // Those were set before the joins, which move the door side's and the back's mean.
+            {
+                "STR_CommunityHallA_Exterior_Prefab (1)", new BuildingWindowOverride
+                {
+                    // Every view from outside starts 10 cm into the room, past the room's frames (owner,
+                    // 2026-10-02). Its window frames are one-sided, faces into the room only, so from
+                    // outside their backs cannot be drawn and no fit closed the gap at the bars.
+                    ViewFromOutsideStartsCm = -10f,
+                    RoomManyPaneObjects = new[] { "STR_CommunityHallA_GlassWin" },
+                    RoomManyPaneJoinWithinCm = 50f,
+                    ExtraShellGlassObjects = new[] { "STR_CommunityHallDoorsA_Glass" },
+                    ViewOutGroups = new[] { new[] { 3, 4, 7 }, new[] { 2, 6 }, new[] { 0, 1, 5 } },
+                    ViewOutGroupSidewaysCm = new[] { -5f, 31f, -12f },
+                }
+            },
+            // Milton bank. Pane5 holds the doors and three transoms, so it is cut by its own pieces;
+            // Pane4's two halves (34 cm post) are one window. Pane3 has no backdrop. 4 is a 1 cm sliver (2026-10-09).
+            {
+                "STR_BankA_Prefab (1)", new BuildingWindowOverride
+                {
+                    RoomManyPaneObjects = new[] { "STR_BankAGlassPane" },
+                    RoomManyPaneJoinWithinCm = 40f,
+                    RoomWindowsWithoutBackdrop = new[] { "STR_BankAGlassPane3_Prefab" },
+                    WindowsLeftAlone = new[] { 4 },
+                    // Under Pane3 (room window 5) the bay is boards with no glass; seen from inside the
+                    // gaps showed the room's white painted glow. A view behind the boards (2-9 cm out), down to the doors' sill.
+                    RoomOpeningsByHand = new[] { new RoomHandOpening { LikeRoomWindow = 5, BottomCm = -212f, TopCm = -22f, PictureOutCm = 10f } },
+                }
+            },
+            // Milton post office. Its room glass is two sheets (A: five windows); read whole, the room was
+            // turned 90 degrees on two windows. Unturned, A pairs with the side row; the transom (1) stays out.
+            {
+                "STR_PostOfficeA_Prefab", new BuildingWindowOverride
+                {
+                    RoomManyPaneObjects = new[] { "STR_PostOfficeMainRoomWindowsAGlass_Prefab", "STR_PostOfficeMainRoomWindowsBGlass_Prefab" },
+                    RoomTurnDegrees = 0f,
+                    PairedRoomWindows = new[] { 6, -1, 3, 4, 1, 2, 0, 5, -1, -1, -1, -1, -1, -1 },
+                    // No room behind these: their pretend views met void or the inside of a wall (2026-10-10).
+                    WindowsLeftAlone = new[] { 1, 8, 9, 10, 11, 12, 13 },
+                }
+            },
+            // FarmHouseB (Mountain Town). The rule found -46.9 degrees but counted 5 of 7 windows (it does not
+            // allow for the room sitting 5 m off its building) and refused, so nothing paired. Turned, all
+            // seven pair within 0.6 m and the doors meet (2026-10-10).
+            {
+                "STR_FarmHouseB_Prefab", new BuildingWindowOverride
+                {
+                    RoomTurnDegrees = -46.9f,
+                }
+            },
+            // Orca gas station store. The room's window frames (-5 to +5 cm) showed off-line behind the
+            // building's bars, so views start behind them; the door's frame reaches 19 cm in (2026-10-10).
+            {
+                "STR_ConvenienceStoreA_Prefab", new BuildingWindowOverride
+                {
+                    ViewFromOutsideStartsCm = -6f,
+                    Fits = new[]
+                    {
+                        new WindowFit(0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, -20f),
+                    },
+                    // Room window 0 (Pane6) glazes only 225 of its 325 cm strip; the bare third showed
+                    // the white painted outside from inside. A view there, beside it.
+                    // And the door's glass (room window 7) stops 1.5 cm under its frame: from below, the
+                    // painted outside showed as a white strip over it. A view up behind the frame head.
+                    RoomOpeningsByHand = new[]
+                    {
+                        new RoomHandOpening { LikeRoomWindow = 0, BottomCm = -22f, TopCm = 22f, AcrossCm = -161.5f, WidthCm = 107f, PictureOutCm = 1f },
+                        // From the glass's top, 1 cm behind the door's own view, so the two never z-fight.
+                        new RoomHandOpening { LikeRoomWindow = 7, BottomCm = 117f, TopCm = 130f, PictureOutCm = 1f },
+                    },
+                    // The door's view out starts 15 cm further out: the building's 95 cm door frame showed
+                    // inside the room's 110 cm one on both sides, and the near plane now cuts it (2026-10-10).
+                    ViewOutOffsets = new[] { new RoomWindowViewOut { RoomWindow = 7, OutCm = 15f } },
+                }
+            },
+            // Milton house A. Window 7 has no room window; its pretend eye stood in the shower's wall, so
+            // it is slid 40 cm right into the bathroom by the owner's eye (2026-10-10).
+            {
+                "STRSPAWN_HouseExteriorAMilton_Prefab", new BuildingWindowOverride
+                {
+                    Fits = new[]
+                    {
+                        new WindowFit(7, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, float.NaN, 40f, 0f),
+                    },
+                }
+            },
+            // Milton house F, all three variants. See MiltonHouseFRow.
+            { "STRSPAWN_HouseExteriorFMilton_Prefab_1", MiltonHouseFRow() },
+            { "STRSPAWN_HouseExteriorFMilton_Prefab_2", MiltonHouseFRow() },
+            { "STRSPAWN_HouseExteriorFMilton_Prefab_3", MiltonHouseFRow() },
+            // Milton house D. Windows 3 (tall) and 6 (wide, above it) took each other's room window; and
+            // the room's 56 x 105 panes were squeezed 1.19x into the 57 x 88 holes. Owner passed both (2026-10-10).
+            {
+                "STRSPAWN_HouseExteriorDMilton_Prefab", new BuildingWindowOverride
+                {
+                    PairedRoomWindows = new[] { 3, 2, 1, 4, 5, 0, 6 },
+                    Fits = new[]
+                    {
+                        new WindowFit(0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 19f),
+                        new WindowFit(1, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 19f),
+                        new WindowFit(2, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 19f),
+                        new WindowFit(3, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 19f),
+                        new WindowFit(4, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 19f),
+                        new WindowFit(5, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 19f),
+                        new WindowFit(6, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomWiderPercent: 19f),
+                    },
+                }
+            },
+            // Milton house H. Room windows 66 x 137 behind 45 x 111; the room's frames (-5 to +6 cm)
+            // showed off-line, so views from outside start behind them (owner, 2026-10-09).
+            {
+                "STRSPAWN_HouseExteriorHMilton_Prefab (3)", new BuildingWindowOverride
+                {
+                    ViewFromOutsideStartsCm = -6f,
+                }
+            },
+            // Coastal house C. Its north-wall window has no glass object in the room (frame + glow only):
+            // a hand opening 699 cm left of room window 4, paired with building window 3 (owner, 2026-10-10).
+            {
+                "STRSPAWN_HouseExteriorC_Prefab", new BuildingWindowOverride
+                {
+                    RoomOpeningsByHand = new[] { new RoomHandOpening { LikeRoomWindow = 4, BottomCm = -52.1f, TopCm = 62f, AcrossCm = -699f, WidthCm = 58f } },
+                    PairedRoomWindows = new[] { 2, 1, 0, 6, 4, 3, 5 },
+                }
+            },
+            // Coastal house D. The rule paired building window 2 with the upstairs room window and 6 with a
+            // ground-floor one; swapped back by hand (owner, 2026-10-10).
+            {
+                "STRSPAWN_HouseExteriorD_Prefab", new BuildingWindowOverride
+                {
+                    PairedRoomWindows = new[] { 1, 0, 4, 3, 2, 5, 6 },
+                }
+            },
+            // Lighthouse. Only the lantern glass was measured; the tower (6) and ground (2) windows are prefabs
+            // of their own. With them the room turns +10.65 (the rule found -11.2 from the lantern), 2026-10-10.
+            {
+                "STRSPAWN_LighthouseExt_Prefab", new BuildingWindowOverride
+                {
+                    ExtraShellGlassObjects = new[] { "STR_LighthouseWindowExtA_Prefab", "STR_LighthouseWindowExtB_Prefab" },
+                    RoomTurnDegrees = 10.65f,
+                    // The two ground-floor room windows carry their glass in slot 1 beside the frame.
+                    RoomGlassSlotObjects = new[] { "STR_LighthouseWindowInteriorA_Prefab" },
+                }
+            },
+            // Whaling warehouse. Room glass wears STR_DamControlRoomGlass, so the rule found no window. Panes
+            // 13 and 14 sit in the office's inner walls and are left out (owner, 2026-10-10).
+            {
+                "STR_WarehouseA_Prefab", new BuildingWindowOverride
+                {
+                    RoomGlassSlotObjects = new[]
+                    {
+                        "STR_WarehouseWindowPane1_Prefab", "STR_WarehouseWindowPane2_Prefab", "STR_WarehouseWindowPane3_Prefab",
+                        "STR_WarehouseWindowPane4_Prefab", "STR_WarehouseWindowPane5_Prefab", "STR_WarehouseWindowPane6_Prefab",
+                        "STR_WarehouseWindowPane7_Prefab", "STR_WarehouseWindowPane8_Prefab", "STR_WarehouseWindowPane9_Prefab",
+                        "STR_WarehouseWindowPane10_Prefab", "STR_WarehouseWindowPane11_Prefab", "STR_WarehouseWindowPane12_Prefab",
+                    },
+                }
+            },
+            // Broken Railroad maintenance shed. The building's two windows are the garage doors' pane strips,
+            // glass in the room's one big mesh beside its roof lights (2026-10-10).
+            {
+                "STR_MaintenanceShedA_Prefab", new BuildingWindowOverride
+                {
+                    RoomGlassSlotObjects = new[] { "STR_MaintenanceShedAMetal_Prefab" },
+                    // Door 2's end pane has no glass in the room: a hole beside room window 1.
+                    RoomOpeningsByHand = new[] { new RoomHandOpening { LikeRoomWindow = 1, BottomCm = -30f, TopCm = 30f, AcrossCm = -184f, WidthCm = 84f } },
+                }
+            },
             {
                 "STRSPAWN_QuonsetGasStation_Prefab", new BuildingWindowOverride
                 {
                     ViewFromOutsideStartsCm = 1.0f,
                     RoomFramesHiddenFromOutside = "STR_GarageWindowsDoors_Prefab",
+                    // The ground drift against its windows, the reason glass snow exists (2026-09-28).
+                    GlassSnow = true,
                 }
             },
         };
+
+        // Milton house F: the room does not match its building. The rule turned it 180 degrees on two
+        // windows, its door 12 m from the building's; unturned the doors meet (0.6 m). The two windows
+        // beside the door then have no room window, and the rest were squeezed (owner, 2026-10-10).
+        private static BuildingWindowOverride MiltonHouseFRow()
+        {
+            return new BuildingWindowOverride
+            {
+                RoomTurnDegrees = 0f,
+                WindowsLeftAlone = new[] { 1, 2 },
+                Fits = new[]
+                {
+                    new WindowFit(0, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 7f, roomWiderPercent: 12f),
+                    new WindowFit(3, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 28f, roomWiderPercent: 21f),
+                    new WindowFit(4, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 26f, roomWiderPercent: 2f),
+                    new WindowFit(5, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 26f, roomWiderPercent: 2f),
+                    new WindowFit(6, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, roomTallerPercent: 23f, roomWiderPercent: 13f),
+                },
+            };
+        }
 
         // One neutral fit per window in [first, last] that only sets where its view from outside starts:
         // sizes 0 (as measured), frost 0 (as built), FrostSource -1 (the mod decides), no room slide.

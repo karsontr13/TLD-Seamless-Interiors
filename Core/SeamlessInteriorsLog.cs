@@ -46,14 +46,19 @@ namespace SeamlessInteriors
         // that opened its room did not. A named instance carries the name with it.
         private static readonly MelonLoader.MelonLogger.Instance s_Log = new MelonLoader.MelonLogger.Instance("SeamlessInteriors");
 
-        public static void Msg(string txt) { s_Log.Msg(SeamlessInteriorsLog.Translate(txt)); }
-        public static void Msg(object obj) { s_Log.Msg(SeamlessInteriorsLog.Translate(obj != null ? obj.ToString() : "null")); }
+        // Above zero, informational lines are not written; warnings and errors always are. Raised only
+        // around a window being refitted while a lever is dragged, which otherwise logs its setup lines
+        // at every step of the slider. Nothing in the mod raises it.
+        internal static int Quiet;
+
+        public static void Msg(string txt) { if (Quiet > 0) return; s_Log.Msg(SeamlessInteriorsLog.Translate(txt)); }
+        public static void Msg(object obj) { if (Quiet > 0) return; s_Log.Msg(SeamlessInteriorsLog.Translate(obj != null ? obj.ToString() : "null")); }
         public static void Warning(string txt) { s_Log.Warning(SeamlessInteriorsLog.Translate(txt)); }
         public static void Error(string txt) { s_Log.Error(SeamlessInteriorsLog.Translate(txt)); }
         public static void Error(string txt, Exception ex) { s_Log.Error(SeamlessInteriorsLog.Translate(txt), ex); }
 
         // Both languages given where the line is written. No table, no pattern.
-        public static void Msg(string turkish, string english) { s_Log.Msg(SeamlessInteriorsLog.English ? english : turkish); }
+        public static void Msg(string turkish, string english) { if (Quiet > 0) return; s_Log.Msg(SeamlessInteriorsLog.English ? english : turkish); }
         public static void Warning(string turkish, string english) { s_Log.Warning(SeamlessInteriorsLog.English ? english : turkish); }
 
         // For the table's own failure report, which must not come back through Translate.

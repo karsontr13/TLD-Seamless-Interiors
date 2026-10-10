@@ -52,6 +52,14 @@ namespace SeamlessInteriors
         // The rows themselves, the hand fits and the windows left alone, live with every other
         // per-building exception in s_BuildingWindowOverrides (BuildingWindowOverrides.cs). What
         // is here reads them.
+        // Left alone by the row, or a window that is not a rectangle and has nothing to show: its view
+        // is cut to its outline when it has one (ShapedViews.cs), but alone it gets no dark sheet.
+        internal static bool IsLeftAloneAt(string shellName, int window)
+        {
+            if (HasNoView(shellName, window)) return true;
+            return window >= 0 && window < s_OutsideInApertures.Count && !s_OutsideInApertures[window].Paired && IsShellWindowNotRectangular(shellName, window);
+        }
+
         internal static bool HasNoView(string shellName, int window)
         {
             BuildingWindowOverride row;
@@ -81,6 +89,7 @@ namespace SeamlessInteriors
             {
                 var pane = s_OutsideInApertures[a];
                 pane.Center = pane.BaseCenter; pane.Width = pane.BaseWidth; pane.Height = pane.BaseHeight;
+                pane.Toward = PicturePlaneFor(shellName, a);
 
                 WindowFit fit;
                 if (TryGetWindowFit(shellName, a, out fit))
