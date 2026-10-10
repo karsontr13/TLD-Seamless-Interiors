@@ -804,6 +804,14 @@ namespace SeamlessInteriors
                     RoomOpeningsByHand = new[] { new RoomHandOpening { LikeRoomWindow = 1, BottomCm = -30f, TopCm = 30f, AcrossCm = -184f, WidthCm = 84f } },
                 }
             },
+            // Hunting Lodge: every room window is in one glass object, read as 2 windows of 16 m and the room
+            // left unturned. Cut by its own geometry it gives the building's 16 (2026-10-10).
+            {
+                "STR_HuntingLodgeA_Prefab", new BuildingWindowOverride
+                {
+                    RoomManyPaneObjects = new[] { "STR_HuntingLodgeAIntGlass_Prefab" },
+                }
+            },
             {
                 "STRSPAWN_QuonsetGasStation_Prefab", new BuildingWindowOverride
                 {
