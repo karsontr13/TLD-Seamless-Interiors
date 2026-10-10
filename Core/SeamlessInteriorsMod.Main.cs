@@ -369,8 +369,13 @@ namespace SeamlessInteriors
                 "WindowFrostOutside", true, "Painted Frost Outside",
                 "Draw the game's painted window frost over the view into the room.");
             s_PrefOutsideInFrostStrength = s_PrefCategory.CreateEntry<float>(
-                "WindowFrostStrengthOutside", 0.5f, "Frost Strength Outside",
-                "0 to 1. The frost texture is heavy on its own, so about half reads right from outside.");
+                // NEW KEY on purpose, for the reason given at WindowPortalLimit: this was
+                // "WindowFrostStrengthOutside" at 0.5, for the room's sheet drawn as painted. The frost
+                // is now the building's own sheet, darkened and with its contrast raised, and was tuned
+                // by eye at full strength (owner, 2026-10-10); a file holding the old 0.5 would show
+                // half of that.
+                "WindowFrostStrengthFromOutside", 1f, "Frost Strength Outside",
+                "0 to 1. How solid the frosted pane is drawn over the view into a room. 1 is the building's own pane as tuned.");
             // NEW KEY on purpose, for the reason given above: raised from 50 to 100 m (owner, 2026-09-26,
             // at the hangar, where the views switched off while he could still see into it), and an
             // existing file would have kept 50 under the old name "WindowInteriorRange".

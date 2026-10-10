@@ -87,6 +87,11 @@ DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ pencere\ cami\ slotu\ bulunamadi$	[EXT-FX]   no w
 DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ zemin\ isigi\ (.*?):\ konum=\((.*?),\ (.*?),\ (.*?)\)\ agirlik=(.*?)$	[EXT-FX]   ground light ${1}: position=(${2}, ${3}, ${4}) weight=${5}
 DIS-EFEKT	^\[DIS\-EFEKT\]\ \ \ bu\ kabuk\ icin\ pencere\ konumu\ yok,\ zemin\ isigi\ eklenmedi$	[EXT-FX]   no window position for this shell, no ground light added
 DIS-EFEKT	^\[DIS\-EFEKT\]\ Onizleme\ hatasi:\ (.*?)$	[EXT-FX] Preview error: ${1}
+DONUS	^\[DONUS\]\ (.*?):\ oyuncu\ klonda\ '(.*?)'\ noktasina\ yerlestiriliyor\.$	[RETURN] ${1}: placing the player at point '${2}' in the room.
+DONUS	^\[DONUS\]\ (.*?):\ klonda\ '(.*?)'\ bulunamadi\.$	[RETURN] ${1}: point '${2}' was not found in the room.
+DONUS	^\[DONUS\]\ (.*?):\ oyuncu\ dusuyordu,\ tekrar\ yerlestirildi\.$	[RETURN] ${1}: the player was falling and was placed again.
+DONUS	^\[DONUS\]\ klona\ varis\ sirasindaki\ dusus\ hasari\ engellendi\.$	[RETURN] Fall damage on arriving in the room was blocked.
+DONUS	^\[DONUS\]\ '(.*?)'\ \->\ '(.*?)'\ kapisi\ (.*?)\ bolgesine\ yonlendirildi,\ varis:\ (.*?)\ /\ (.*?),\ bolge\ noktasi\ (.*?)$	[RETURN] The door '${1}' -> '${2}' was pointed at region ${3}, arriving at: ${4} / ${5}, region point ${6}
 DUNYA-GORUNUMU	^\[DUNYA\-GORUNUMU\]\ Kuruldu:\ modlar\ FireManager\ listelerinde\ yalnizca\ bulunduklari\ yerin\ ateslerini\ goruyor\.$	[WORLD-VIEW] Installed: in FireManager's fire lists, mods see only the fires of the place the player is in, as in the vanilla game.
 DUNYA-GORUNUMU	^\[DUNYA\-GORUNUMU\]\ Kurulamadi:\ (.*?)$	[WORLD-VIEW] Could not be installed: ${1}
 DUNYA-GORUNUMU	^\[DUNYA\-GORUNUMU\]\ Kapatildi,\ modlar\ tam\ listeyi\ goruyor:\ (.*?)$	[WORLD-VIEW] Switched off, mods now see the full list: ${1}
@@ -169,6 +174,8 @@ HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 5/7\ konteyner\ icerikleri$	[HYDRATE-ST
 HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 6/7\ kirik/hasat\ edilmis\ objeler\ ve\ cop\ durumu$	[HYDRATE-STEP] ${1}: 6/7 broken or harvested objects and junk state
 HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ 7/7\ gorunurluk\ ve\ colliderlar$	[HYDRATE-STEP] ${1}: 7/7 visibility and colliders
 HYDRATE-ADIM	^\[HYDRATE\-ADIM\]\ (.*?):\ (.*?)$	[HYDRATE-STEP] ${1}: ${2}
+IC-HAREKET	^\[IC\-HAREKET\]\ Oyuncu\ kapsulu\ ic\ mekan\ degerlerinde:\ yaricap\ (.*?),\ egim\ limiti\ (.*?)$	[INDOOR-MOVEMENT] The player's capsule is on its indoor values: radius ${1}, slope limit ${2}
+IC-HAREKET	^\[IC\-HAREKET\]\ Oyuncu\ kapsulu\ dis\ mekan\ degerlerinde:\ yaricap\ (.*?),\ egim\ limiti\ (.*?)$	[INDOOR-MOVEMENT] The player's capsule is on its outdoor values: radius ${1}, slope limit ${2}
 ICERIDE-FLAG	^\[ICERIDE\-FLAG\]\ (.*?):\ hicbir\ klon\ acik\ degil\ ama\ oyuncu\ park\ edilmis\ ic\ mekanin\ hacminde\ duruyor\ \-\ bayrak\ ve\ kayit\ OLDUGU\ GIBI\ birakildi\.\ Ic\ mekan\ oyuncunun\ etrafinda\ kapanmis;\ asil\ hata\ o\.$	[INSIDE-FLAG] ${1}: no clone is open, but the player is standing inside the parked interior's space - the flag and the save were left AS THEY ARE. The interior was closed around the player; that is the real bug.
 ICERIDE-FLAG	^\[ICERIDE\-FLAG\]\ Hicbir\ klon\ sahne\ acik\ degilken\ 'oyuncu\ iceride'\ bayragi\ acik\ kalmisti\ \-\ temizlendi\ \(ruzgar\ korumasi\ ve\ ic\ mekan\ sicakligi\ normale\ dondu\)\.$	[INSIDE-FLAG] The 'player inside' flag was left on while no clone scene was open - cleared (wind shelter and indoor temperature are back to normal).
 INDOOR-STATE	^\[INDOOR\-STATE\]\ (.*?):\ ic\ mekan\ tetigi\ kaydedildi\ \(count=(.*?)\)\.$	[INDOOR-STATE] ${1}: the indoor space trigger was registered (count=${2}).
@@ -396,6 +403,10 @@ PERSIST	^\[PERSIST\]\ (.*?)\ DontDestroyOnLoad'a\ tasindi\.$	[PERSIST] ${1} move
 PERSIST	^\[PERSIST\]\ Klon\ interior\ (.*?)'a\ geri\ baglandi:\ (.*?)$	[PERSIST] Clone interior reattached to ${1}: ${2}
 PERSIST-FIX	^\[PERSIST\-FIX\]\ Kaydedilmis\ local\ pozisyon\ ile\ duzeltildi:\ (.*?)$	[PERSIST-FIX] Corrected using the saved local position: ${1}
 PERSIST-FIX	^\[PERSIST\-FIX\]\ Oyuncu\ Y\ duzeltildi\ \(fallback\):\ (.*?)$	[PERSIST-FIX] Player Y corrected (fallback): ${1}
+PLACEABLE-FIX	^\[PLACEABLE\-FIX\]\ (.*?)\ klon\ placeable\ kaydi\ oyunun\ yerlestirme\ listesinden\ cikarildi\ \(kayit\ oncesi\)\.$	[PLACEABLE-FIX] ${1} room placeable entries were taken off the game's placement list (before saving).
+PLACEABLE-FIX	^\[PLACEABLE\-FIX\]\ (.*?)\ klon\ placeable\ kaydi\ oyunun\ yerlestirme\ listesinden\ cikarildi\ \(yukleme\ sonu\)\.$	[PLACEABLE-FIX] ${1} room placeable entries were taken off the game's placement list (end of loading).
+PLACEABLE-FIX	^\[PLACEABLE\-FIX\]\ (.*?)\ klon\ placeable\ kaydi\ oyunun\ yerlestirme\ listesinden\ cikarildi\ \((.*?)\)\.$	[PLACEABLE-FIX] ${1} room placeable entries were taken off the game's placement list (${2}).
+PLACEABLE-FIX	^\[PLACEABLE\-FIX\]\ Klon\ kaydi\ temizligi:\ (.*?)$	[PLACEABLE-FIX] Cleaning up the room entries failed: ${1}
 PLACEABLE-FIX	^\[PLACEABLE\-FIX\]\ SerializeInventory\ oncesi\ olu/silinmis\ referans\ temizlendi:\ (.*?)$	[PLACEABLE-FIX] A dead/deleted reference was cleaned up before SerializeInventory: ${1}
 PLACEABLE-FIX	^\[PLACEABLE\-FIX\]\ Hata:\ (.*?)$	[PLACEABLE-FIX] Error: ${1}
 PLACEABLE-LOAD	^\[PLACEABLE\-LOAD\]\ (.*?)\ Save\ dosyasi\ bulunamadi,\ atlaniyor\.$	[PLACEABLE-LOAD] ${1} save file not found, skipping.
@@ -443,6 +454,13 @@ SCREEN-RELEASE	^\[SCREEN\-RELEASE\]\ Tum\ instance'lar\ hazir,\ ekran\ aciliyor\
 SCREEN-RELEASE	^\[SCREEN\-RELEASE\]\ Persist\ akisi:\ klonlar\ geri\ baglandi,\ ekran\ aciliyor\.$	[SCREEN-RELEASE] Persist flow: clones reattached, opening the screen.
 SETTINGS	^\[SETTINGS\]\ Legacy\ Save\ Import:\ (.*?)\ \(F6\ teshis\)$	[SETTINGS] Legacy Save Import: ${1} (F6 diagnostics)
 SETTINGS	^\[SETTINGS\]\ Window\ Glow:\ (.*?)\ \(flicker\ (.*?),\ strength\ (.*?)\)\ \(Shift\+F9\ onizleme\)$	[SETTINGS] Window Glow: ${1} (flicker ${2}, strength ${3}) (Shift+F9 preview)
+SHELL-MATCH	^\[SHELL\-MATCH\]\ (.*?):\ shell\ kapali\ varyant\ grubundaydi\ \('(.*?)'\),\ bu\ kayitta\ bina\ yok\ \-\ shell\ birakildi\ \(yukleme\ sonu\)\.$	[SHELL-MATCH] ${1}: the shell was in a switched-off variant group ('${2}'), this save has no building there - the shell was let go (end of loading).
+SHELL-MATCH	^\[SHELL\-MATCH\]\ (.*?):\ shell\ kapali\ varyant\ grubundaydi\ \('(.*?)'\),\ '(.*?)'\ ile\ degistirildi\ \(yukleme\ sonu\)\.$	[SHELL-MATCH] ${1}: the shell was in a switched-off variant group ('${2}'), replaced with the one in '${3}' (end of loading).
+SHELL-MATCH	^\[SHELL\-MATCH\]\ (.*?):\ shell\ kapali\ varyant\ grubundaydi\ \('(.*?)'\),\ bu\ kayitta\ bina\ yok\ \-\ shell\ birakildi\ \(kapidan\ giris\)\.$	[SHELL-MATCH] ${1}: the shell was in a switched-off variant group ('${2}'), this save has no building there - the shell was let go (entered through the door).
+SHELL-MATCH	^\[SHELL\-MATCH\]\ (.*?):\ shell\ kapali\ varyant\ grubundaydi\ \('(.*?)'\),\ '(.*?)'\ ile\ degistirildi\ \(kapidan\ giris\)\.$	[SHELL-MATCH] ${1}: the shell was in a switched-off variant group ('${2}'), replaced with the one in '${3}' (entered through the door).
+SHELL-MATCH	^\[SHELL\-MATCH\]\ (.*?):\ shell\ kapali\ varyant\ grubundaydi\ \('(.*?)'\),\ bu\ kayitta\ bina\ yok\ \-\ shell\ birakildi\ \((.*?)\)\.$	[SHELL-MATCH] ${1}: the shell was in a switched-off variant group ('${2}'), this save has no building there - the shell was let go (${3}).
+SHELL-MATCH	^\[SHELL\-MATCH\]\ (.*?):\ shell\ kapali\ varyant\ grubundaydi\ \('(.*?)'\),\ '(.*?)'\ ile\ degistirildi\ \((.*?)\)\.$	[SHELL-MATCH] ${1}: the shell was in a switched-off variant group ('${2}'), replaced with the one in '${3}' (${4}).
+SHELL-MATCH	^\[SHELL\-MATCH\]\ '(.*?)':\ (.*?)m\ icinde\ aktif\ shell\ yok\ \(fallback=(.*?)\)\ \-\ bu\ kayitta\ bina\ yok/yanmis\ olabilir\.$	[SHELL-MATCH] '${1}': no active shell within ${2}m (fallback=${3}) - this save may have no building there, or it burned down.
 SPAWN-PLACEABLE	^\[SPAWN\-PLACEABLE\]\ '(.*?)'\ klon\ disindan\ alindi\ \(parent='(.*?)'\)\.$	[SPAWN-PLACEABLE] '${1}' was taken from outside the clone (parent='${2}').
 SPAWN-PLACEABLE	^\[SPAWN\-PLACEABLE\]\ '(.*?)'\ uygulanamadi:\ (.*?)$	[SPAWN-PLACEABLE] '${1}' could not be applied: ${2}
 SPAWN-PLACEABLE-LOAD	^\[SPAWN\-PLACEABLE\-LOAD\]\ OLUSTURULAMADI:\ '(.*?)'$	[SPAWN-PLACEABLE-LOAD] COULD NOT CREATE: '${1}'

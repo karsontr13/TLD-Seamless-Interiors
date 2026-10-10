@@ -527,6 +527,21 @@ namespace SeamlessInteriors
                 "FX_LightShaft_E",
             };
 
+        // "FX_LightShaft_B (2)" is FX_LightShaft_B: Unity numbers the copies of an object placed more than once.
+        // The light shafts are matched by exact name, which missed the numbered ones. Thompson's Store has two,
+        // by its front windows, left switched on in a room whose other five shafts are off; drawn by a window
+        // camera they turn to face the player and not that camera (owner, 2026-10-09: "a weird broken sun beam
+        // effect on the front outside-in view. It moves unnaturally as I move"). Only the light shafts are
+        // matched this way: the destroy and disable lists stay exact, as their comment below explains.
+        private static string WithoutCopyNumber(string name)
+        {
+            if (string.IsNullOrEmpty(name) || name[name.Length - 1] != ')') return name;
+            int open = name.LastIndexOf(" (", System.StringComparison.Ordinal);
+            if (open <= 0 || open + 2 >= name.Length - 1) return name;
+            for (int i = open + 2; i < name.Length - 1; i++) if (name[i] < '0' || name[i] > '9') return name;
+            return name.Substring(0, open);
+        }
+
         private static void StripLightContainer(GameObject container)
         {
             if (container == null) return;
@@ -739,6 +754,77 @@ namespace SeamlessInteriors
                 "NightTime",
             };
 
+        // Does one of the room's lighting managers use this object, or anything inside it? True when
+        // the object holds a light, a particle effect or a light shaft gimble (the managers list
+        // those from their parents when they start), or when it is, holds, or sits inside something
+        // a manager names outright. A room with no manager has nothing to protect: always false.
+        private static bool LightingManagersUse(Transform candidate, ref List<Transform> parts, SeamlessInteriorInstance instance)
+        {
+            if (parts == null)
+            {
+                parts = new List<Transform>();
+                bool any = false;
+
+                foreach (var m in instance.MasterInterior.GetComponentsInChildren<InteriorLightingManager>(true))
+                {
+                    if (m == null) continue;
+                    any = true;
+                    AddLightingPart(parts, m.m_LightGroupParent);
+                    AddLightingPart(parts, m.m_LooseLightParent);
+                    AddLightingPart(parts, m.m_LooseLightMiddayParent);
+                    AddLightingPart(parts, m.m_FxParent);
+                    AddLightingPart(parts, m.m_LightShaftParent);
+                }
+
+                foreach (var g in instance.MasterInterior.GetComponentsInChildren<InteriorLightingGroup>(true))
+                {
+                    if (g == null || g.m_Objects == null) continue;
+                    for (int i = 0; i < g.m_Objects.Count; i++) AddLightingPart(parts, g.m_Objects[i]);
+                }
+
+                foreach (var m in instance.MasterInterior.GetComponentsInChildren<DarkLightingManager>(true))
+                {
+                    if (m == null) continue;
+                    any = true;
+                    AddLightingPart(parts, m.m_ConstantLights);
+                    AddLightingPart(parts, m.m_ColourizedLights);
+                    AddLightingPart(parts, m.m_NightLights);
+                    AddLightingPart(parts, m.m_Particles);
+                    AddLightingPart(parts, m.m_Lightshafts);
+                    if (m.m_FakeSky != null) parts.Add(m.m_FakeSky.transform);
+                    if (m.m_GlowObjects != null)
+                        for (int i = 0; i < m.m_GlowObjects.Count; i++)
+                            if (m.m_GlowObjects[i] != null) parts.Add(m.m_GlowObjects[i].transform);
+                }
+
+                // No manager in the room: an empty list with nothing in it answers false below,
+                // and the marker keeps the component searches from running.
+                if (!any) parts.Clear();
+                s_RoomHasLightingManager = any;
+            }
+
+            if (!s_RoomHasLightingManager) return false;
+
+            for (int i = 0; i < parts.Count; i++)
+            {
+                Transform part = parts[i];
+                if (part == null) continue;
+                if (part.IsChildOf(candidate) || candidate.IsChildOf(part)) return true;
+            }
+
+            return candidate.GetComponentInChildren<Light>(true) != null
+                || candidate.GetComponentInChildren<ParticleSystem>(true) != null
+                || candidate.GetComponentInChildren<LightShaftGimble>(true) != null;
+        }
+
+        // Set by LightingManagersUse for the room being prepared, alongside its list.
+        private static bool s_RoomHasLightingManager;
+
+        private static void AddLightingPart(List<Transform> parts, GameObject go)
+        {
+            if (go != null) parts.Add(go.transform);
+        }
+
         // Strips the freshly cloned scene: removes/disables the objects listed in the
         // config, cleans up lights and probes that would leak into the outside world, and
         // in dark mode brings the interior lighting managers up.
@@ -757,6 +843,11 @@ namespace SeamlessInteriors
             HashSet<string> destroySet = instance.Config.DestroySet;
             HashSet<string> disableSet = instance.Config.DisableSet;
 
+            // What the room's lighting managers hold, read the first time a listed object is about
+            // to be destroyed (see LightingManagersUse); null until then.
+            List<Transform> lightingManagerParts = null;
+            int keptForLightingManagers = 0;
+
             Transform[] masterChildren = instance.MasterInterior.GetComponentsInChildren<Transform>(true);
             foreach (Transform t in masterChildren)
             {
@@ -765,7 +856,7 @@ namespace SeamlessInteriors
                 string tName = t.name;
 
                 // Light shafts: no need to list them in a config, they are removed mod-wide.
-                if (s_LightShaftObjects.Contains(tName))
+                if (s_LightShaftObjects.Contains(tName) || s_LightShaftObjects.Contains(WithoutCopyNumber(tName)))
                 {
                     // NEVER Destroy, in either mode. These objects are held by
                     // LightShaftGimble.m_LightShaftRenderer (an array of Renderer) and by
@@ -807,6 +898,21 @@ namespace SeamlessInteriors
 
                 if (shouldDestroy)
                 {
+                    // WHAT A LIGHTING MANAGER STILL USES IS SWITCHED OFF, NEVER DESTROYED, in any
+                    // building and without a row saying so. Same reason as the light shafts above:
+                    // the room's managers keep lists of these lights, and a manager that runs with a
+                    // destroyed entry throws a null reference every frame. 46 rows destroy their
+                    // room's <Scene>_Lighting_Prefab and keep its manager, which dark mode switches
+                    // on: Thompson House 1 and 4 threw about 115 a second between them (2026-10-09,
+                    // 8 and 13 group lights and 44 and 13 loose lights destroyed, read live). An
+                    // inactive object looks the same as a destroyed one and keeps every reference.
+                    if (LightingManagersUse(t, ref lightingManagerParts, instance))
+                    {
+                        t.gameObject.SetActive(false);
+                        keptForLightingManagers++;
+                        continue;
+                    }
+
                     UnityEngine.Object.Destroy(t.gameObject);
                     continue;
                 }
@@ -826,6 +932,10 @@ namespace SeamlessInteriors
                     t.gameObject.SetActive(false);
                 }
             }
+
+            if (keptForLightingManagers > 0)
+                MelonLogger.Msg($"[LIGHT-KEEP] {instance.Config.ResolvedInstanceId}: silinecekler listesindeki {keptForLightingManagers} obje silinmedi, kapatildi (odanin isik yoneticisi onlari kullaniyor).",
+                                $"[LIGHT-KEEP] {instance.Config.ResolvedInstanceId}: {keptForLightingManagers} objects on the destroy list were switched off instead, because the room's lighting manager uses them.");
 
             // --- SHADER AND REFLECTION FIXES ---
 

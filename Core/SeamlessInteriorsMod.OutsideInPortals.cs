@@ -213,6 +213,158 @@ namespace SeamlessInteriors
         private const float OUTSIDE_IN_FROST_PANE_MARGIN = 0.12f;
 
         private const string OUTSIDE_IN_FROST_SHADER = "Legacy Shaders/Transparent/Diffuse";
+
+        // ─── THE FROST TAKES SHADOWS, AND THE GLASS BEHIND IT IS TINTED ───
+        //
+        // A see-through layer is lit and never shadowed, so under a porch roof the frost glowed
+        // white beside a window still wearing the building's own pane, which sat in the roof's
+        // shade like the wall around it. Owner, 2026-10-10, of two such windows side by side: "The
+        // frost on windows 2 is super white while the frost on 3 is subdued, and almost dark blue in
+        // the middle, like glass", and before that: "the window frost is creating a bright layer in
+        // front of the window cameras instead of darkening what comes through like the native one".
+        //
+        // So the frost is drawn with the game's own cut-out shader, which takes shadows and cannot
+        // blend: a spot of the sheet is drawn solid or left out. The building's see-through sheet has
+        // no clear part at all (measured: the glassy middle is 50 to 70% solid, the frost 80 to 100%),
+        // so the cut is set between the two and only the frost is drawn. At 35% the whole pane was
+        // drawn and the room was hidden ("Still no camera inside though").
+        //
+        // That leaves the middle perfectly clear ("Now back to too transparent"), so a dark tint
+        // stands 2.5 mm behind the frost: it darkens the room's picture in the clear part of the
+        // pane and the frost in front of it hides it everywhere else.
+        //
+        // The shader is not found by name (Shader.Find gives nothing for it) and is looked for once
+        // among the loaded ones. Without it the frost is the blended layer it was before.
+        private const string OUTSIDE_IN_FROST_SHADOWED_SHADER = "_LongDark/Transparent/Cutout/Diffuse";
+        private const float OUTSIDE_IN_GLASS_TINT_BEHIND_FROST = 0.0025f;
+        //
+        // OFF. He judged it live and went back: cut out, the pane lost the building sheet's own
+        // glassy middle, which is what he had liked that morning ("Opacity looks much more
+        // realistic"), and the tint behind it did not get a verdict. What he asked for on the
+        // blended frost, beside the same original pane in the same shade, was only "still a bit too
+        // bright": OutsideInFrostBrightness, which darkens the whole sheet, frost and glass alike,
+        // in either kind. It is one number for sun and shade both, which the cut-out kind would not
+        // need; that is the trade, and the cut-out kind is kept behind this switch for it.
+        internal static bool OutsideInFrostTakesShadows = false;
+        internal static float OutsideInFrostCutoff = 0.75f;
+        //
+        // 36% brightness, with the sheet's contrast at 170% (below) and the strength at full, are his
+        // own slider values at the Pleasant Valley farmhouse, 2026-10-10, beside a window still
+        // wearing the building's pane: "TUNED! That worked beautifully". That was in the shade of its
+        // porch at dawn. At Thompson's Store the same day, once the sheet there was no longer coarse,
+        // he set them again: 76% brightness and 125% contrast, which is what stands.
+        internal static float OutsideInFrostBrightness = 0.76f;
+        internal static float OutsideInGlassTint = 0.5f;
+        internal static Color OutsideInGlassTintColor = new Color(0.03f, 0.04f, 0.07f);
+        private static Shader s_OutsideInFrostShadowedShader;
+        private static bool s_OutsideInFrostShadowedShaderLooked;
+        private static Material s_OutsideInGlassTintMaterial;
+
+        // ─── THE FROST SHEET'S CONTRAST ───
+        //
+        // Owner, 2026-10-10, with the sheet at 60% brightness: "Any way to increase the contrast a
+        // bit?" The frost's shader has no such dial, so the frost wears a COPY of its sheet with the
+        // colors spread about the middle: frost lighter, glass darker. The see-through part of the
+        // sheet is left as it is. A copy is made once for each sheet (104 ms for the building's
+        // 1024 x 1024 one, measured) and again only when the number has changed and then stood still
+        // for a moment, so a dragged slider costs one copy and not one for every step. 1 is the sheet
+        // as painted, and no copy is made.
+        //
+        // THE GAME STREAMS THE SHEET, and a copy made while only a coarse level of it is loaded is
+        // coarse for good. Owner, 2026-10-10, at Thompson's Store after tuning at the farmhouse: "The
+        // frost is extemely low resolution"; read there: the sheet streaming, level 1 of 11 loaded,
+        // level 2 wanted. So the full sheet is asked for first, and until it has come the frost wears
+        // the sheet as painted and the copy is tried again a quarter of a second later. After three
+        // seconds of waiting the copy is made from what there is.
+        internal static float OutsideInFrostContrast = 1.25f;
+        private const float OUTSIDE_IN_FROST_SHEET_WAIT_SECONDS = 3f;
+        private static float s_OutsideInFrostSheetWaitingSince = -1f;
+        private static readonly Dictionary<int, Texture2D> s_OutsideInFrostContrastSheets = new Dictionary<int, Texture2D>();
+        private static readonly List<Texture2D> s_OutsideInFrostContrastRetired = new List<Texture2D>();
+        private static float s_OutsideInFrostContrastSheetsAt = 1f;
+        private static float s_OutsideInFrostContrastSeen = -1f, s_OutsideInFrostContrastSettlesAt;
+
+        // `ready` is false while the full sheet is still coming: what is returned is then the sheet
+        // as painted, and the caller asks again.
+        private static Texture OutsideInFrostSheetWithContrast(Texture source, out bool ready)
+        {
+            ready = true;
+            float contrast = Mathf.Clamp(OutsideInFrostContrast, 0f, 4f);
+            if (source == null || Mathf.Abs(contrast - 1f) < 0.005f) return source;
+
+            if (s_OutsideInFrostContrastSheetsAt != contrast)
+            {
+                // The copies before last go now: another building's frost may wear the last ones
+                // until its own next frame.
+                foreach (var old in s_OutsideInFrostContrastRetired) if (old != null) Object.Destroy(old);
+                s_OutsideInFrostContrastRetired.Clear();
+                s_OutsideInFrostContrastRetired.AddRange(s_OutsideInFrostContrastSheets.Values);
+                s_OutsideInFrostContrastSheets.Clear();
+                s_OutsideInFrostContrastSheetsAt = contrast;
+            }
+
+            int key = source.GetInstanceID();
+            Texture2D made;
+            if (s_OutsideInFrostContrastSheets.TryGetValue(key, out made) && made != null) return made;
+
+            var streamed = source.TryCast<Texture2D>();
+            if (streamed != null && streamed.streamingMipmaps && streamed.loadedMipmapLevel > 0)
+            {
+                if (streamed.requestedMipmapLevel != 0) streamed.requestedMipmapLevel = 0;
+                if (s_OutsideInFrostSheetWaitingSince < 0f) s_OutsideInFrostSheetWaitingSince = Time.unscaledTime;
+                if (Time.unscaledTime - s_OutsideInFrostSheetWaitingSince < OUTSIDE_IN_FROST_SHEET_WAIT_SECONDS) { ready = false; return source; }
+            }
+            s_OutsideInFrostSheetWaitingSince = -1f;
+
+            try
+            {
+                int width = source.width, height = source.height;
+                // The game's sheet cannot be read where it is, so it is drawn into a texture that can.
+                var target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+                Graphics.Blit(source, target);
+                var before = RenderTexture.active;
+                RenderTexture.active = target;
+                made = new Texture2D(width, height, TextureFormat.RGBA32, true, false);
+                made.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
+                RenderTexture.active = before;
+                RenderTexture.ReleaseTemporary(target);
+
+                var spread = new byte[256];
+                for (int v = 0; v < 256; v++) spread[v] = (byte)Mathf.RoundToInt(Mathf.Clamp01((v / 255f - 0.5f) * contrast + 0.5f) * 255f);
+                var pixels = made.GetPixels32(0);
+                for (int i = 0; i < pixels.Length; i++)
+                {
+                    var pixel = pixels[i];
+                    pixel.r = spread[pixel.r]; pixel.g = spread[pixel.g]; pixel.b = spread[pixel.b];
+                    pixels[i] = pixel;
+                }
+                made.SetPixels32(pixels, 0);
+                made.Apply(true, false);
+                made.name = "SeamlessInteriors_FrostSheet";
+                made.wrapMode = source.wrapMode;
+                made.filterMode = source.filterMode;
+                made.anisoLevel = source.anisoLevel;
+                s_OutsideInFrostContrastSheets[key] = made;
+                // The game goes back to streaming its sheet as it sees fit; the copy is not streamed.
+                if (streamed != null && streamed.streamingMipmaps) streamed.ClearRequestedMipmapLevel();
+                return made;
+            }
+            catch (System.Exception e)
+            {
+                MelonLogger.Warning($"[OUTSIDE-IN] The frost sheet could not be copied for its contrast and is used as painted: {e.Message}");
+                return source;
+            }
+        }
+
+        private static Shader FindOutsideInShadowedFrostShader()
+        {
+            if (s_OutsideInFrostShadowedShader != null || s_OutsideInFrostShadowedShaderLooked) return s_OutsideInFrostShadowedShader;
+            s_OutsideInFrostShadowedShaderLooked = true;
+            var loaded = Resources.FindObjectsOfTypeAll<Shader>();
+            for (int i = 0; i < loaded.Length; i++)
+                if (loaded[i] != null && loaded[i].name == OUTSIDE_IN_FROST_SHADOWED_SHADER) { s_OutsideInFrostShadowedShader = loaded[i]; break; }
+            return s_OutsideInFrostShadowedShader;
+        }
         private static Material s_OutsideInFrostMaterial { get => s_OI.FrostMaterial; set => s_OI.FrostMaterial = value; }
 
         // One per aperture, by aperture index, which is also the window's index in s_ShellWindows
@@ -663,8 +815,39 @@ namespace SeamlessInteriors
                 // Followed every frame rather than set once, so the dial works in the running game.
                 if (s_OutsideInFrostMaterial != null)
                 {
-                    float strength = Mathf.Clamp01(OutsideInFrostStrength);
-                    if (s_OutsideInFrostMaterial.color.a != strength) s_OutsideInFrostMaterial.color = new Color(1f, 1f, 1f, strength);
+                    if (s_OI.FrostSheetSource != null)
+                    {
+                        float contrast = OutsideInFrostContrast;
+                        if (contrast != s_OutsideInFrostContrastSeen) { s_OutsideInFrostContrastSeen = contrast; s_OutsideInFrostContrastSettlesAt = Time.unscaledTime + 0.3f; }
+                        if (s_OI.FrostContrastApplied != contrast && Time.unscaledTime >= s_OutsideInFrostContrastSettlesAt)
+                        {
+                            bool ready;
+                            s_OutsideInFrostMaterial.mainTexture = OutsideInFrostSheetWithContrast(s_OI.FrostSheetSource, out ready);
+                            if (ready) s_OI.FrostContrastApplied = contrast;
+                            else s_OutsideInFrostContrastSettlesAt = Time.unscaledTime + 0.25f;
+                        }
+                    }
+
+                    if (s_OI.FrostShadowed)
+                    {
+                        // Cut out, not blended: the strength dial has nothing to act on here.
+                        float bright = Mathf.Clamp01(OutsideInFrostBrightness);
+                        if (s_OutsideInFrostMaterial.color.r != bright) s_OutsideInFrostMaterial.color = new Color(bright, bright, bright, 1f);
+                        float cut = Mathf.Clamp01(OutsideInFrostCutoff);
+                        if (s_OutsideInFrostMaterial.GetFloat("_Cutoff") != cut) s_OutsideInFrostMaterial.SetFloat("_Cutoff", cut);
+                        if (s_OutsideInGlassTintMaterial != null)
+                        {
+                            var tint = new Color(OutsideInGlassTintColor.r, OutsideInGlassTintColor.g, OutsideInGlassTintColor.b, Mathf.Clamp01(OutsideInGlassTint));
+                            if (s_OutsideInGlassTintMaterial.color != tint) s_OutsideInGlassTintMaterial.color = tint;
+                        }
+                    }
+                    else
+                    {
+                        float strength = Mathf.Clamp01(OutsideInFrostStrength);
+                        float bright = Mathf.Clamp01(OutsideInFrostBrightness);
+                        Color now = s_OutsideInFrostMaterial.color;
+                        if (now.a != strength || now.r != bright) s_OutsideInFrostMaterial.color = new Color(bright, bright, bright, strength);
+                    }
                 }
 
                 UpdateOutsideInDressing();
@@ -793,7 +976,7 @@ namespace SeamlessInteriors
             // The interior's own apertures, found by glass material. This reads the clone's mesh
             // renderers with includeInactive true, so it works before the clone is switched on.
             double lapShellWindows = lapTimer.Elapsed.TotalMilliseconds;
-            var interiorOpenings = FindInteriorWindowOpenings(instance);
+            var interiorOpenings = WithoutViewOutOnly(FindInteriorWindowOpenings(instance));
             double lapRoomOpenings = lapTimer.Elapsed.TotalMilliseconds;
 
             Transform shell = instance.ExteriorShell.transform;
@@ -895,12 +1078,7 @@ namespace SeamlessInteriors
                     // Tried live on Trailer E first; he: "It looks good; the windows are just missing
                     // the frosting." It has no room-side drift, bar or frame to fit, hence Pretend.
                     aperture.Delta = meanSlide + instance.Config.ParkOffset;
-                    // A pretend eye moved by hand (WindowFit RoomRightCm/RoomUpCm, ViewStartCm = toward
-                    // outdoors): Milton house A's window 7 looked from inside the shower wall (2026-10-10).
-                    WindowFit pretendFit;
-                    if (TryGetWindowFit(shellName, s, out pretendFit))
-                        aperture.Delta += levelRight * (pretendFit.RoomRightCm * 0.01f) + Vector3.up * (pretendFit.RoomUpCm * 0.01f)
-                                        + outward * ((pretendFit.HasViewStart ? pretendFit.ViewStartCm : 0f) * 0.01f);
+                    // A pretend eye moved by hand is added once, in AssignOutsideInViews (PretendWindowHandMove).
                     aperture.Paired = true;
                     aperture.Pretend = true;
                 }
@@ -1119,7 +1297,12 @@ namespace SeamlessInteriors
             s_OutsideInAmbientValid = false;
             if (instance == null || instance.MasterInterior == null) return;
 
-            var ambient = FindRoomAmbient(instance);
+            // Whatever the mode is now: the values are only used in Dark Atmosphere (ApplyOutsideInAmbient),
+            // and the mode can be switched after this is read, so a TodAmbientLight in a dark-only part
+            // counts. FindRoomAmbient leaves those out in Outdoor Lighting, which is right for its callers.
+            TodAmbientLight ambient = null;
+            foreach (var tod in instance.MasterInterior.GetComponentsInChildren<TodAmbientLight>(true))
+                if (tod != null) { ambient = tod; break; }
             if (ambient == null) return;
 
             s_OutsideInAmbientDay = ambient.m_AmbientIndoorsDay;
@@ -1476,6 +1659,14 @@ namespace SeamlessInteriors
 
                 var overlayRenderer = overlay.GetComponent<MeshRenderer>();
                 if (overlayRenderer != null && overlayRenderer.enabled != show) overlayRenderer.enabled = show;
+
+                // The glass tint behind it, when the frost is the cut-out kind.
+                if (overlay.transform.childCount > 0)
+                {
+                    var tintRenderer = overlay.transform.GetChild(0).GetComponent<MeshRenderer>();
+                    bool showTint = show && OutsideInGlassTint > 0f;
+                    if (tintRenderer != null && tintRenderer.enabled != showTint) tintRenderer.enabled = showTint;
+                }
             }
 
             // The drift on the ledge does not depend on a portal drawing: it is real geometry on the
@@ -1671,15 +1862,37 @@ namespace SeamlessInteriors
             if (slot < s_OutsideInSlotAperture.Count) s_OutsideInSlotAperture[slot] = -1;
         }
 
-        // Interior ambient, read from the clone's own TodAmbientLight the way the 2026-09-13 proof
-        // did. Falls back to leaving the outdoor ambient alone rather than guessing a color.
+        // THE ROOM THROUGH THE WINDOW IS LIT AS IT IS FOR SOMEONE STANDING IN IT, in whichever Interior
+        // Lighting Mode is on, and follows the mode when it is switched from outside. Owner, 2026-10-09:
+        // "The rooms should look the same through the window as it would if you were standing in it."
+        //
+        // Outdoor Lighting: a room is lit at the outdoor level, so nothing is swapped. Dark Atmosphere:
+        // the room's own TodAmbientLight values, or for a room with none the outdoor level darkened by
+        // the factor ClonedInteriorLightingGuard uses for the same room from inside (its last resort,
+        // FALLBACK_DARK_FACTOR).
+        //
+        // Until this the room's own values were swapped in in BOTH modes (the 2026-09-13 proof, made
+        // when the mode could not change in play), so a room that has them never showed the switch:
+        // the Thompson houses stayed at 0.05 to 0.06 against 0.50 outdoors in either mode, read live,
+        // and passed at Thompson House 4 with the swap off in Outdoor Lighting ("Seems to work, but
+        // just not toggleable while outside").
+        private const float OUTSIDE_IN_DARK_FACTOR_NO_OWN_AMBIENT = 0.30f;
+
         private static void ApplyOutsideInAmbient()
         {
-            if (!s_OutsideInAmbientValid) return;
-            var tod = GameManager.GetTimeOfDayComponent();
-            bool night = tod != null && tod.IsNight();
+            if (!IsDarkAtmosphereMode) return;
+            if (s_OutsideInAmbientValid)
+            {
+                var tod = GameManager.GetTimeOfDayComponent();
+                bool night = tod != null && tod.IsNight();
+                RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+                RenderSettings.ambientLight = night ? s_OutsideInAmbientNight : s_OutsideInAmbientDay;
+                return;
+            }
+            Color outdoors = RenderSettings.ambientLight;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = night ? s_OutsideInAmbientNight : s_OutsideInAmbientDay;
+            RenderSettings.ambientLight = new Color(outdoors.r * OUTSIDE_IN_DARK_FACTOR_NO_OWN_AMBIENT, outdoors.g * OUTSIDE_IN_DARK_FACTOR_NO_OWN_AMBIENT,
+                                                    outdoors.b * OUTSIDE_IN_DARK_FACTOR_NO_OWN_AMBIENT, outdoors.a);
         }
 
         // The slot pool is sized from the preference once, and the preference is read through a NEW
@@ -2050,6 +2263,24 @@ namespace SeamlessInteriors
         private const float DOUBLE_WINDOW_SAME_PLANE = 0.05f;
         private const float DOUBLE_WINDOW_WIDTH_AGREES_WITHIN = 0.30f;
 
+        // A PRETEND WINDOW'S VIEW, MOVED BY HAND. A building window with no window in the room looks in
+        // from where the real pairs say the room stands (see Pretend), and nothing a hand set on it
+        // reached that point: the camera levers are read for a room window, and it has none. Thompson's
+        // Store has seven windows outside and two in the room, so five of its views could not be moved
+        // (owner, 2026-10-09: "'camera right' still does nothing"). The same three levers, in the same
+        // directions a room window's own frame gives them: right as seen from inside looking out, up,
+        // and the view's start along the wall's outward (+ toward outdoors), here from where the view
+        // would otherwise start, since there is no room glass to measure it from.
+        private static Vector3 PretendWindowHandMove(string shellName, int window, Vector3 roomOutward)
+        {
+            WindowFit fit;
+            if (string.IsNullOrEmpty(shellName) || !TryGetWindowFit(shellName, window, out fit)) return Vector3.zero;
+            Vector3 right = Vector3.Cross(Vector3.up, roomOutward).normalized;
+            Vector3 move = right * (fit.RoomRightCm * 0.01f) + Vector3.up * (fit.RoomUpCm * 0.01f);
+            if (fit.HasViewStart) move += roomOutward * (fit.ViewStartCm * 0.01f);
+            return move;
+        }
+
         private static void AssignOutsideInViews(string id)
         {
             string viewsShellName = s_OutsideInInstance != null && s_OutsideInInstance.Config != null ? s_OutsideInInstance.Config.ExteriorShellPrefabName : null;
@@ -2058,6 +2289,7 @@ namespace SeamlessInteriors
             {
                 var pane = s_OutsideInApertures[a];
                 pane.ViewCenter = pane.Center; pane.ViewDelta = pane.Delta;
+                if (pane.Paired && pane.Pretend) pane.ViewDelta += PretendWindowHandMove(viewsShellName, a, pane.RoomOutward);
                 pane.ViewWidth = pane.Width; pane.ViewHeight = pane.Height;
                 pane.ViewFollows = -1;
                 s_OutsideInApertures[a] = pane;
@@ -2192,12 +2424,19 @@ namespace SeamlessInteriors
 
             if (instance == null || instance.ExteriorShell == null || instance.MasterInterior == null) return;
 
-            // The frost texture comes from the interior's own glass rather than being looked up by
-            // name, so whatever variant this building's interior wears is the one its shell gets.
+            // THE FROST OUTSIDE IS PAINTED FROM THE BUILDING'S OWN SHEET (the see-through exterior one, found
+            // below), in every building. It used to be the room's sheet when the room had frosted glass,
+            // and the building's only as a fallback, and which one a building got depended on whether
+            // the player had been inside it: a room's glass wears the mod's own material from then on
+            // and is no longer found. The room's sheet is also thinner. Owner, 2026-10-10, with the
+            // building's sheet put on four buildings live: "Opacity looks much more realistic", "frost
+            // still lines up"; at Thompson's Store, whose room sheet does not agree with the building's
+            // layout at all: "That fixed it!" Off, the room's sheet is looked for first, as before.
             Texture frostTexture = null;
             Vector2 frostScale = Vector2.one, frostOffset = Vector2.zero;
+            bool fromBuildingSheet = OutsideInFrostFromBuildingSheet;
             var interiorRenderers = instance.MasterInterior.GetComponentsInChildren<MeshRenderer>(true);
-            for (int i = 0; i < interiorRenderers.Length && frostTexture == null; i++)
+            for (int i = 0; i < interiorRenderers.Length && frostTexture == null && !fromBuildingSheet; i++)
             {
                 var material = interiorRenderers[i] == null ? null : interiorRenderers[i].sharedMaterial;
                 if (material == null || material.mainTexture == null) continue;
@@ -2216,6 +2455,14 @@ namespace SeamlessInteriors
             // are painted from (STR_WindowGlassMix_A02_ExtAlpha, texture STR_WindowGlassMixExtApha_A),
             // and the overlays below are laid out by the building's own UVs, so it fits as it is.
             // Looked for among the loaded materials, once per set-up and only for such a room.
+            // Found once and kept: the search reads the name of every loaded material (about 7,000), and
+            // run for every building it took the frost step from 20 ms to 80 to 110 (2026-10-10).
+            if (frostTexture == null && fromBuildingSheet && s_OutsideInBuildingFrostSheet != null)
+            {
+                frostTexture = s_OutsideInBuildingFrostSheet;
+                frostScale = s_OutsideInBuildingFrostScale;
+                frostOffset = s_OutsideInBuildingFrostOffset;
+            }
             if (frostTexture == null)
             {
                 Material best = null;
@@ -2235,14 +2482,23 @@ namespace SeamlessInteriors
                     frostTexture = best.mainTexture;
                     frostScale = best.mainTextureScale;
                     frostOffset = best.mainTextureOffset;
+                    if (best.name.IndexOf("Ext", System.StringComparison.Ordinal) >= 0)
+                    {
+                        s_OutsideInBuildingFrostSheet = frostTexture;
+                        s_OutsideInBuildingFrostScale = frostScale;
+                        s_OutsideInBuildingFrostOffset = frostOffset;
+                    }
                     if (s_DebugBounds)
                         MelonLogger.Msg($"[DIS-ICE] {instance.Config.ResolvedInstanceId}: odanin buzlu cami yok; buz, binanin kendi cam dokusunun saydam halinden alindi ('{best.name}', doku '{frostTexture.name}').",
                                         $"[OUTSIDE-IN] {instance.Config.ResolvedInstanceId}: the room has no frosted glass of its own; the frost is taken from the see-through variant of the building's own pane sheet ('{best.name}', texture '{frostTexture.name}').");
                 }
             }
 
-            Shader frostShader = Shader.Find(OUTSIDE_IN_FROST_SHADER);
+            Shader frostShader = OutsideInFrostTakesShadows ? FindOutsideInShadowedFrostShader() : null;
+            bool shadowed = frostShader != null;
+            if (!shadowed) frostShader = Shader.Find(OUTSIDE_IN_FROST_SHADER);
             if (frostTexture == null || frostShader == null) return;
+            s_OI.FrostShadowed = shadowed;
 
             // The shell's most detailed mesh that carries a glass submesh. The overlays are their
             // own objects, so they do not care which LOD the shell happens to be showing.
@@ -2277,11 +2533,46 @@ namespace SeamlessInteriors
 
             s_OutsideInFrostMaterial = new Material(frostShader);
             s_OutsideInFrostMaterial.name = "SeamlessInteriors_FrostedPane";
-            s_OutsideInFrostMaterial.mainTexture = frostTexture;
+            s_OI.FrostSheetSource = frostTexture;
+            bool sheetReady;
+            s_OutsideInFrostMaterial.mainTexture = OutsideInFrostSheetWithContrast(frostTexture, out sheetReady);
+            // Not ready: the tick asks again until the full sheet has come.
+            s_OI.FrostContrastApplied = sheetReady ? OutsideInFrostContrast : -1f;
             s_OutsideInFrostMaterial.mainTextureScale = frostScale;
             s_OutsideInFrostMaterial.mainTextureOffset = frostOffset;
-            s_OutsideInFrostMaterial.renderQueue = 3000;   // after the portal quad at 2600
-            s_OutsideInFrostMaterial.color = new Color(1f, 1f, 1f, Mathf.Clamp01(OutsideInFrostStrength));
+            // After the portal quad at 2600 AND after a view part way through a fade, which is drawn
+            // later still (ViewFade.cs). At 3000 the fading view covered the frost for the whole fade
+            // and the frost came back the frame the fade ended. The farmhouse has more windows than
+            // cameras, so its windows trade cameras all the way round. Owner, 2026-10-10, orbiting it:
+            // "it was just the frost popping in/out"; with the frost moved after the fade, live:
+            // "No more popping. Just the normal portals fading in to view".
+            //
+            // The cut-out frost keeps its shader's own place among the solid things, before the view:
+            // it writes depth, so a view behind it can never cover it, fading or not.
+            if (shadowed)
+            {
+                float bright = Mathf.Clamp01(OutsideInFrostBrightness);
+                s_OutsideInFrostMaterial.color = new Color(bright, bright, bright, 1f);
+                s_OutsideInFrostMaterial.SetFloat("_Cutoff", Mathf.Clamp01(OutsideInFrostCutoff));
+                if (s_OutsideInGlassTintMaterial == null)
+                {
+                    var tintShader = Shader.Find("Sprites/Default");
+                    if (tintShader != null)
+                    {
+                        s_OutsideInGlassTintMaterial = new Material(tintShader);
+                        s_OutsideInGlassTintMaterial.name = "SeamlessInteriors_GlassTint";
+                        // Over a view part way through a fade, which is drawn late (ViewFade.cs).
+                        s_OutsideInGlassTintMaterial.renderQueue = WINDOW_VIEW_FADE_RENDER_QUEUE + 7;
+                        s_OutsideInGlassTintMaterial.color = new Color(OutsideInGlassTintColor.r, OutsideInGlassTintColor.g, OutsideInGlassTintColor.b, Mathf.Clamp01(OutsideInGlassTint));
+                    }
+                }
+            }
+            else
+            {
+                float bright = Mathf.Clamp01(OutsideInFrostBrightness);
+                s_OutsideInFrostMaterial.renderQueue = WINDOW_VIEW_FADE_RENDER_QUEUE + 10;
+                s_OutsideInFrostMaterial.color = new Color(bright, bright, bright, Mathf.Clamp01(OutsideInFrostStrength));
+            }
 
             var paneVertices = new List<Vector3>(64);
             var paneUvs = new List<Vector2>(64);
@@ -2383,8 +2674,22 @@ namespace SeamlessInteriors
                 var overlayRenderer = overlay.AddComponent<MeshRenderer>();
                 overlayRenderer.sharedMaterial = s_OutsideInFrostMaterial;
                 overlayRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                overlayRenderer.receiveShadows = false;
+                overlayRenderer.receiveShadows = shadowed;
                 overlayRenderer.enabled = false;
+
+                if (shadowed && s_OutsideInGlassTintMaterial != null)
+                {
+                    // A child, so it goes where the frost goes and is destroyed with it.
+                    var tintObject = new GameObject("SeamlessInteriors_GlassTint_" + a);
+                    tintObject.transform.SetParent(overlay.transform, false);
+                    tintObject.transform.localPosition = -s_OutsideInApertures[a].Outward * OUTSIDE_IN_GLASS_TINT_BEHIND_FROST;
+                    tintObject.AddComponent<MeshFilter>().sharedMesh = mesh;
+                    var tintRenderer = tintObject.AddComponent<MeshRenderer>();
+                    tintRenderer.sharedMaterial = s_OutsideInGlassTintMaterial;
+                    tintRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    tintRenderer.receiveShadows = false;
+                    tintRenderer.enabled = false;
+                }
 
                 s_OutsideInFrostOverlays[a] = overlay;
                 built++;
@@ -2411,6 +2716,11 @@ namespace SeamlessInteriors
         // The layout is carried from the source's measured glass onto this window's, across for
         // across and up for up as each is seen from OUTSIDE, so the glazing bar stays where the
         // building's bar is and nothing is mirrored.
+        internal static bool OutsideInFrostFromBuildingSheet = true;
+        // Unity's own null test tells when a region change has unloaded it; it is then looked for again.
+        private static Texture s_OutsideInBuildingFrostSheet;
+        private static Vector2 s_OutsideInBuildingFrostScale = Vector2.one, s_OutsideInBuildingFrostOffset = Vector2.zero;
+
         private const float OUTSIDE_IN_FROST_BORROW_UV_TOLERANCE = 0.04f;
         private const float OUTSIDE_IN_FROST_BORROW_SIZE_TOLERANCE = 0.10f;
 
@@ -2427,15 +2737,25 @@ namespace SeamlessInteriors
             for (int a = 0; a < count; a++)
             {
                 var pane = s_OutsideInApertures[a];
-                if (layoutVertices[a] == null || !pane.Paired || pane.Pretend || a >= s_OutsideInApertureOpenings.Count) continue;
+                if (!pane.Paired || pane.Pretend || a >= s_OutsideInApertureOpenings.Count) continue;
 
                 // A source named by hand wins, and -2 by hand means this window keeps its own.
+                //
+                // A WINDOW WITH NO FROST OF ITS OWN CAN STILL WEAR ANOTHER'S, by hand only. Glass the
+                // row adds from its own object (ExtraShellGlassObjects: the Community Hall's door) is
+                // not on the building's frosted sheet, so nothing was laid out for it and the door
+                // stood clear among seven frosted windows. Owner, 2026-10-09: "We also need to add
+                // frost to it ... borrow one of the long window frost textures." Its glass rectangle
+                // is then the window's own measured size, which is what the layout is carried onto.
                 WindowFit fit;
                 if (TryGetWindowFit(instance.Config.ExteriorShellPrefabName, a, out fit) && fit.FrostSource != -1)
                 {
+                    if (layoutVertices[a] == null && IsLeftAloneAt(instance.Config.ExteriorShellPrefabName, a)) continue;
                     if (fit.FrostSource >= 0 && fit.FrostSource < count && fit.FrostSource != a && layoutVertices[fit.FrostSource] != null) sources[a] = fit.FrostSource;
                     continue;
                 }
+
+                if (layoutVertices[a] == null) continue;
 
                 Vector4 roomUvRect;
                 if (!TryGetRoomGlassUvRect(s_OutsideInApertureOpenings[a], out roomUvRect)) continue;
@@ -2458,6 +2778,7 @@ namespace SeamlessInteriors
 
             // Carried only once every source is chosen, so a source is always its own glass.
             var carriedVertices = new Vector3[count][];
+            var carriedUvs = new Vector2[count][];
             for (int a = 0; a < count; a++)
             {
                 int s = sources[a];
@@ -2466,6 +2787,83 @@ namespace SeamlessInteriors
                 Vector4 fromRect = s_OutsideInGlassRects[s], toRect = s_OutsideInGlassRects[a];
                 float fromWidth = fromRect.y - fromRect.x, fromHeight = fromRect.w - fromRect.z;
                 if (fromWidth < 0.01f || fromHeight < 0.01f) { sources[a] = -1; continue; }
+
+                // GLASS IN SEVERAL PANES WEARS THE FROST ONCE PER PANE. The Community Hall's door is four tall
+                // panes in one glass object, and one window's frost carried over the whole door was cut up by
+                // the door's bars: the source's own glazing bar ran as a clear band through all four panes at
+                // one height and no pane had frost along its own edges (owner, 2026-10-09: "Frost is wrong").
+                //
+                // Each pane is one flat piece showing a pane-shaped PART of a source window's largest piece of
+                // frost, at the frost's own proportions. The first try fitted the whole piece to each pane, and
+                // a piece 76 cm wide squeezed into a pane a third of that stood every shape in it on end; with
+                // the same piece in all four it also repeated (owner: "the angle's off, and it reads a little
+                // repetitive"). So the panes take turns among the named source and the other windows of its
+                // size, and among the left and right edges of the piece, where the frost gathers.
+                List<FrostPane> toPanes = ExtraGlassPanes(instance, a, to);
+                if (toPanes != null)
+                {
+                    var paneSources = new List<int> { s };
+                    for (int o = 0; o < count; o++)
+                    {
+                        if (o == s || o == a || layoutVertices[o] == null || layoutUvs[o] == null) continue;
+                        var other = s_OutsideInApertures[o];
+                        if (Mathf.Abs(other.BaseWidth - from.BaseWidth) > OUTSIDE_IN_FROST_BORROW_SIZE_TOLERANCE) continue;
+                        if (Mathf.Abs(other.BaseHeight - from.BaseHeight) > OUTSIDE_IN_FROST_BORROW_SIZE_TOLERANCE) continue;
+                        paneSources.Add(o);
+                    }
+
+                    var paneVerts = new List<Vector3>(6 * toPanes.Count);
+                    var paneUvList = new List<Vector2>(6 * toPanes.Count);
+                    for (int tp = 0; tp < toPanes.Count; tp++)
+                    {
+                        int src = paneSources[tp % paneSources.Count];
+                        var fromPane = s_OutsideInApertures[src];
+                        List<FrostPane> pieces = SplitFrostIntoPanes(layoutVertices[src], fromPane.Center, fromPane.Right, fromPane.Up);
+                        FrostPane piece = null;
+                        for (int k = 0; k < pieces.Count; k++) if (piece == null || pieces[k].Area > piece.Area) piece = pieces[k];
+                        if (piece == null || piece.Triangles.Count == 0) continue;
+                        float pieceWidth = piece.Rect.y - piece.Rect.x, pieceHeight = piece.Rect.w - piece.Rect.z;
+                        Vector4 rect = toPanes[tp].Rect;
+                        float paneWidth = rect.y - rect.x, paneHeight = rect.w - rect.z;
+                        if (pieceWidth < 0.01f || pieceHeight < 0.01f || paneWidth < 0.01f || paneHeight < 0.01f) continue;
+
+                        // The sheet's place for any point of the piece, from one of its triangles: the frost is
+                        // laid flat on the glass, so one triangle gives the whole piece.
+                        int t0 = piece.Triangles[0] * 3;
+                        Vector2 p0 = FrostPlace(layoutVertices[src][t0], fromPane), p1 = FrostPlace(layoutVertices[src][t0 + 1], fromPane), p2 = FrostPlace(layoutVertices[src][t0 + 2], fromPane);
+                        Vector2 uv0 = layoutUvs[src][t0], uv1 = layoutUvs[src][t0 + 1], uv2 = layoutUvs[src][t0 + 2];
+                        Vector2 e1 = p1 - p0, e2 = p2 - p0;
+                        float det = e1.x * e2.y - e2.x * e1.y;
+                        if (Mathf.Abs(det) < 1e-6f) continue;
+                        Vector2 uvAcross = ((uv1 - uv0) * e2.y - (uv2 - uv0) * e1.y) / det;    // per meter across
+                        Vector2 uvUp = ((uv2 - uv0) * e1.x - (uv1 - uv0) * e2.x) / det;          // per meter up
+
+                        // The largest part of the piece that has the pane's shape, at one scale both ways.
+                        float scale = Mathf.Max(paneWidth / pieceWidth, paneHeight / pieceHeight);
+                        float partWidth = paneWidth / scale, partHeight = paneHeight / scale;
+                        float partLeft = piece.Rect.x + (pieceWidth - partWidth) * ((tp / Mathf.Max(1, paneSources.Count)) % 2 == 0 ? (tp % 2 == 0 ? 0f : 1f) : (tp % 2 == 0 ? 1f : 0f));
+                        float partBottom = piece.Rect.z + (pieceHeight - partHeight) * 0.5f;
+
+                        var corner = new Vector3[4]; var cornerUv = new Vector2[4];
+                        for (int c = 0; c < 4; c++)
+                        {
+                            float u = c == 1 || c == 2 ? 1f : 0f, v = c >= 2 ? 1f : 0f;
+                            corner[c] = to.Center + to.Right * Mathf.Lerp(rect.x, rect.y, u) + to.Up * Mathf.Lerp(rect.z, rect.w, v);
+                            Vector2 place = new Vector2(partLeft + partWidth * u, partBottom + partHeight * v);
+                            cornerUv[c] = uv0 + uvAcross * (place.x - p0.x) + uvUp * (place.y - p0.y);
+                        }
+                        // Wound to face out of the building, as the glass's own triangles are.
+                        bool facesOut = Vector3.Dot(Vector3.Cross(corner[1] - corner[0], corner[2] - corner[0]), to.Outward) > 0f;
+                        int[] order = facesOut ? new[] { 0, 1, 2, 0, 2, 3 } : new[] { 0, 2, 1, 0, 3, 2 };
+                        for (int k = 0; k < order.Length; k++) { paneVerts.Add(corner[order[k]]); paneUvList.Add(cornerUv[order[k]]); }
+                    }
+                    if (paneVerts.Count > 0)
+                    {
+                        carriedVertices[a] = paneVerts.ToArray();
+                        carriedUvs[a] = paneUvList.ToArray();
+                        continue;
+                    }
+                }
 
                 var carried = new Vector3[layoutVertices[s].Length];
                 for (int i = 0; i < carried.Length; i++)
@@ -2483,7 +2881,7 @@ namespace SeamlessInteriors
             {
                 if (sources[a] < 0 || carriedVertices[a] == null) continue;
                 layoutVertices[a] = carriedVertices[a];
-                layoutUvs[a] = layoutUvs[sources[a]];
+                layoutUvs[a] = carriedUvs[a] ?? layoutUvs[sources[a]];
                 borrowed += (borrowed.Length > 0 ? ", " : "") + a + "<-" + sources[a];
             }
 
@@ -2493,6 +2891,107 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[DIS-ICE] {id}: su pencereler baska bir pencerenin buz duzenini giyiyor (pencere<-kaynak): {borrowed}. Kaynak, odadaki pencerenin buz resmini tasiyan ayni boydaki camdir.",
                                 $"[OUTSIDE-IN] {id}: these windows wear another window's frost layout (window<-source): {borrowed}. The source is the pane of like size that carries the same frost picture as the room's window does inside.");
             }
+        }
+
+        // Where a point of a window's frost stands in that window's own frame: x across, y up, in meters.
+        private static Vector2 FrostPlace(Vector3 world, ShellAperture window)
+        {
+            Vector3 d = world - window.Center;
+            return new Vector2(Vector3.Dot(d, window.Right), Vector3.Dot(d, window.Up));
+        }
+
+        // One pane's worth of glass or frost, in a window's own frame: x, y = lowest and highest across, z, w =
+        // lowest and highest up, and the triangles (by number, three corners each) that make it.
+        private sealed class FrostPane
+        {
+            public Vector4 Rect;
+            public readonly List<int> Triangles = new List<int>();
+            public float Area { get { return (Rect.y - Rect.x) * (Rect.w - Rect.z); } }
+        }
+
+        // A list of triangles (three corners each, world space) gathered into the panes they form: triangles
+        // whose boxes touch or overlap in the window's frame belong to one pane.
+        private static List<FrostPane> SplitFrostIntoPanes(Vector3[] corners, Vector3 center, Vector3 right, Vector3 up)
+        {
+            var panes = new List<FrostPane>();
+            if (corners == null) return panes;
+            for (int t = 0; t + 2 < corners.Length; t += 3)
+            {
+                var pane = new FrostPane();
+                for (int c = 0; c < 3; c++)
+                {
+                    Vector3 d = corners[t + c] - center;
+                    float across = Vector3.Dot(d, right), upward = Vector3.Dot(d, up);
+                    if (c == 0) pane.Rect = new Vector4(across, across, upward, upward);
+                    pane.Rect.x = Mathf.Min(pane.Rect.x, across); pane.Rect.y = Mathf.Max(pane.Rect.y, across);
+                    pane.Rect.z = Mathf.Min(pane.Rect.z, upward); pane.Rect.w = Mathf.Max(pane.Rect.w, upward);
+                }
+                pane.Triangles.Add(t / 3);
+                panes.Add(pane);
+            }
+            const float TOUCHING = 0.015f;
+            bool merged = true;
+            while (merged)
+            {
+                merged = false;
+                for (int i = 0; i < panes.Count && !merged; i++)
+                    for (int j = i + 1; j < panes.Count && !merged; j++)
+                    {
+                        Vector4 a = panes[i].Rect, b = panes[j].Rect;
+                        if (a.x > b.y + TOUCHING || b.x > a.y + TOUCHING || a.z > b.w + TOUCHING || b.z > a.w + TOUCHING) continue;
+                        panes[i].Rect = new Vector4(Mathf.Min(a.x, b.x), Mathf.Max(a.y, b.y), Mathf.Min(a.z, b.z), Mathf.Max(a.w, b.w));
+                        panes[i].Triangles.AddRange(panes[j].Triangles);
+                        panes.RemoveAt(j);
+                        merged = true;
+                    }
+            }
+            return panes;
+        }
+
+        // The separate panes of a window the row added from its own glass object (ExtraShellGlassObjects), read
+        // from that object's mesh; null for any other window and for glass that is one pane.
+        private static List<FrostPane> ExtraGlassPanes(SeamlessInteriorInstance instance, int window, ShellAperture pane)
+        {
+            BuildingWindowOverride row;
+            if (instance == null || instance.Config == null || instance.ExteriorShell == null) return null;
+            if (!TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out row) || row.ExtraShellGlassObjects == null) return null;
+            int first = s_OutsideInApertures.Count - row.ExtraShellGlassObjects.Length;
+            if (window < first || window - first >= row.ExtraShellGlassObjects.Length) return null;
+            string want = row.ExtraShellGlassObjects[window - first];
+            if (string.IsNullOrEmpty(want)) return null;
+
+            MeshFilter best = null;
+            var filters = instance.ExteriorShell.GetComponentsInChildren<MeshFilter>(true);
+            for (int i = 0; i < filters.Length; i++)
+            {
+                var f = filters[i];
+                if (f == null || f.sharedMesh == null || !f.sharedMesh.isReadable) continue;
+                if (!f.gameObject.name.StartsWith(want, System.StringComparison.Ordinal)) continue;
+                if (best == null || f.sharedMesh.vertexCount > best.sharedMesh.vertexCount) best = f;
+            }
+            if (best == null) return null;
+
+            Vector3[] local = best.sharedMesh.vertices; int[] triangles = best.sharedMesh.triangles;
+            Transform t = best.transform;
+            float halfWidth = pane.Width * 0.5f + 0.05f, halfHeight = pane.Height * 0.5f + 0.05f;
+            var facingOut = new List<Vector3>(); var either = new List<Vector3>();
+            for (int k = 0; k + 2 < triangles.Length; k += 3)
+            {
+                Vector3 v0 = t.TransformPoint(local[triangles[k]]), v1 = t.TransformPoint(local[triangles[k + 1]]), v2 = t.TransformPoint(local[triangles[k + 2]]);
+                bool inside = true;
+                for (int c = 0; c < 3 && inside; c++)
+                {
+                    Vector3 d = (c == 0 ? v0 : c == 1 ? v1 : v2) - pane.Center;
+                    inside = Mathf.Abs(Vector3.Dot(d, pane.Right)) <= halfWidth && Mathf.Abs(Vector3.Dot(d, pane.Up)) <= halfHeight && Mathf.Abs(Vector3.Dot(d, pane.Outward)) <= 0.15f;
+                }
+                if (!inside) continue;
+                either.Add(v0); either.Add(v1); either.Add(v2);
+                if (Vector3.Dot(Vector3.Cross(v1 - v0, v2 - v0).normalized, pane.Outward) > 0.5f) { facingOut.Add(v0); facingOut.Add(v1); facingOut.Add(v2); }
+            }
+            var glass = facingOut.Count > 0 ? facingOut : either;
+            if (glass.Count == 0) return null;
+            List<FrostPane> panes = SplitFrostIntoPanes(glass.ToArray(), pane.Center, pane.Right, pane.Up);
+            return panes.Count > 1 ? panes : null;
         }
 
         // x, y = lowest and highest across the sheet; z, w = lowest and highest up it.

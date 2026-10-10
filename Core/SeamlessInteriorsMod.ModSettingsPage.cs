@@ -117,6 +117,11 @@ namespace SeamlessInteriors
             [ModSettings.Slider(0.25f, 1f, 16, NumberFormat = "{0:F2}")]
             public float WindowViewSharpness = 1f;
 
+            [ModSettings.Name("Windows drawn at once")]
+            [ModSettings.Description("The most windows that may show a real view in the same frame, nearest and largest first. Only windows you can see are drawn. A building with more windows in sight than this fades them in and out as you move. Fewer is cheaper.")]
+            [ModSettings.Slider(1f, 16f)]
+            public int WindowsDrawnAtOnce = 10;
+
             [ModSettings.Name("Rooms seen from outside within (m)")]
             [ModSettings.Description("How near a building must be before its windows show the real room. Past this a window keeps its frost and dark glass.")]
             [ModSettings.Slider(20f, 200f, 37, NumberFormat = "{0:F0}")]
@@ -178,6 +183,7 @@ namespace SeamlessInteriors
                 WindowsStartClean = s_PrefClearWindowPanes?.Value ?? false;
                 SnowInWindowFrames = s_PrefInsideOutShowSnowSlab?.Value ?? true;
                 WindowViewSharpness = Mathf.Clamp(s_PrefWindowPortalResolutionScale?.Value ?? 1f, 0.25f, 1f);
+                WindowsDrawnAtOnce = Mathf.Clamp(s_PrefWindowPortalLimit?.Value ?? 10, 1, 16);
                 RoomsSeenWithin = Mathf.Clamp(s_PrefOutsideInPortalRange?.Value ?? 100f, 20f, 200f);
                 RoomsKeptReady = Mathf.Clamp(s_PrefOutsideInMaxHeldRooms?.Value ?? 3, 1, 6);
                 WindowGlow = s_PrefEnableWindowGlow?.Value ?? true;
@@ -201,6 +207,12 @@ namespace SeamlessInteriors
                 Set(s_PrefClearWindowPanes, WindowsStartClean);
                 Set(s_PrefInsideOutShowSnowSlab, SnowInWindowFrames);
                 Set(s_PrefWindowPortalResolutionScale, WindowViewSharpness);
+                // The cameras for the views into rooms are made once at this size, so a new number
+                // lets them go here and they are made again on the next frame that needs them. The
+                // views out of a room take the new number the next time a room is entered.
+                bool limitChanged = s_PrefWindowPortalLimit != null && s_PrefWindowPortalLimit.Value != WindowsDrawnAtOnce;
+                Set(s_PrefWindowPortalLimit, WindowsDrawnAtOnce);
+                if (limitChanged) { DestroyOutsideInSlots(); DestroyOutsideInFadeMaterials(); }
                 Set(s_PrefOutsideInPortalRange, RoomsSeenWithin);
                 Set(s_PrefOutsideInMaxHeldRooms, RoomsKeptReady);
                 Set(s_PrefEnableWindowGlow, WindowGlow);

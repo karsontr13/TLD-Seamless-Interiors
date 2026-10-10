@@ -84,7 +84,7 @@ namespace SeamlessInteriors
             WindowSpot[] spots;
             if (!TryGetShellWindows(instance, out spots)) return;
 
-            var openings = FindInteriorWindowOpenings(instance);
+            var openings = WithoutViewOutOnly(FindInteriorWindowOpenings(instance));
             if (openings.Count == 0) return;
 
             string id = instance.Config.ResolvedInstanceId;

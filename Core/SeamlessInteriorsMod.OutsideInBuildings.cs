@@ -90,6 +90,9 @@ namespace SeamlessInteriors
             // Everything below was a static of the same name, s_OutsideIn + the name, when this
             // system served one building, and is documented where that static is still declared.
             public Material FrostMaterial;
+            public bool FrostShadowed;
+            public Texture FrostSheetSource;
+            public float FrostContrastApplied = 1f;
             public List<GameObject> FrostOverlays = new List<GameObject>();
             public List<List<Renderer>> ApertureDrifts = new List<List<Renderer>>();
             public float AppliedDriftOffset = float.NaN;

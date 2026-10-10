@@ -25,6 +25,7 @@
 *   **Strict AI Pathfinding & Collision Boundaries:** Generates a precise, hollow `BoxCollider` perimeter combined with custom `NavMeshObstacle` components around interiors. This physically prevents wildlife from clipping through walls during high-velocity flee or scent-tracking behaviors.
 *   **Deterministic Loot Synchronization:** Automatically handles spatial deduplication and PDID generation for gear items upon the first load, ensuring containers and originally spawned items transition flawlessly into the merged exterior space.
 *   **Indoors, you can switch between the original interior lighting and exterior lighting systems. (You can switch between modes using the F8 key)**
+*   **See-through windows:** look into a building through its windows from outside, and out at the world from inside, with the weather, the time of day and the frost on the glass as they are. Windows are set up building by building, so not every building has them yet.
 *   **Clean windows by hand:** look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window stays clean from inside and outside, and is kept with your save.
 *   **In-game settings:** with ModSettings installed, the mod's options are under Options > Mod Settings > Seamless Interiors. Without it, they are in `UserData/MelonPreferences.cfg`.
 

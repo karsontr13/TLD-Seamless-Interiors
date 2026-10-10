@@ -583,6 +583,7 @@ namespace SeamlessInteriors
         private static void RenderWindowPortals(Camera main)
         {
             RestoreParkedRoomShadow();      // the backstop; see ParkedRoomShadow.cs
+            RestoreWindowViewAmbient();
             Vector3 eye = main.transform.position;
 
             // Only when the late capture is not running: the tick sees the camera BEFORE the zoom
@@ -1001,8 +1002,20 @@ namespace SeamlessInteriors
                 fitRoomCenters.Add(s_WindowPortalOpenings[i].PortalCenter + buildingDelta);
                 fitRoomOutward.Add(s_WindowPortalOpenings[i].Outward);
             }
-            int[] roomToShell; Vector3 fitSlide;
-            bool fitted = FitWindowPattern(fitRoomCenters, fitRoomOutward, fitShellCenters, fitShellOutward, out roomToShell, out fitSlide);
+            // Views out only (InteriorWindowOpening.ViewOutOnly) are left out of the fit, so they cannot take a
+            // building window from a real one; unpaired, they look out from where the pairs agree the room stands.
+            var fitRooms = new List<int>(s_WindowPortalOpenings.Count);
+            var fitOnlyCenters = new List<Vector3>(s_WindowPortalOpenings.Count); var fitOnlyOutward = new List<Vector3>(s_WindowPortalOpenings.Count);
+            for (int i = 0; i < s_WindowPortalOpenings.Count; i++)
+            {
+                if (s_WindowPortalOpenings[i].ViewOutOnly) continue;
+                fitRooms.Add(i); fitOnlyCenters.Add(fitRoomCenters[i]); fitOnlyOutward.Add(fitRoomOutward[i]);
+            }
+            int[] fitOnlyToShell; Vector3 fitSlide;
+            bool fitted = FitWindowPattern(fitOnlyCenters, fitOnlyOutward, fitShellCenters, fitShellOutward, out fitOnlyToShell, out fitSlide);
+            int[] roomToShell = new int[s_WindowPortalOpenings.Count];
+            for (int i = 0; i < roomToShell.Length; i++) roomToShell[i] = -1;
+            if (fitted && fitOnlyToShell != null) for (int k = 0; k < fitRooms.Count && k < fitOnlyToShell.Length; k++) roomToShell[fitRooms[k]] = fitOnlyToShell[k];
 
             // The building's hand pairing, when it has one, so the views out pair as the views in do
             // (BuildingWindowOverride.PairedRoomWindows). Barn A's reached only the views in at first.
@@ -1208,7 +1221,7 @@ namespace SeamlessInteriors
                 var renderer = glass[i];
                 if (renderer == null) continue;
                 Material[] current = renderer.sharedMaterials;
-                if (current == null || current.Length < 2 || !HasFrameSlot(current)) { renderer.enabled = shown; continue; }
+                if (!IsGlassSharingItsObject(current)) { renderer.enabled = shown; continue; }
                 renderer.enabled = true;
                 if (shown) continue;            // GiveGlassTheFrostMaterial frosts the glass slots again
                 if (s_WindowPortalClearGlassMaterial == null)
@@ -1228,7 +1241,7 @@ namespace SeamlessInteriors
         {
             if (material == null) return false;
             if (material == s_WindowPortalFrostMaterial || material == s_WindowPortalClearGlassMaterial) return true;
-            return material.name.StartsWith(GLASS_MATERIAL_PREFIX) || material.name.StartsWith(MANY_PANE_GLASS_MATERIAL_PREFIX);
+            return material.name.StartsWith(GLASS_MATERIAL_PREFIX) || material.name.StartsWith(MANY_PANE_GLASS_MATERIAL_PREFIX) || IsWindowGlassMaterial(material);
         }
 
         private static bool HasFrameSlot(Material[] slots)
@@ -1244,7 +1257,17 @@ namespace SeamlessInteriors
             {
                 // Unity's overloaded == is what detects a destroyed native object here, which a
                 // renderer belonging to a clone being torn down may well be.
-                if (renderers[i] != null) renderers[i].enabled = enabled;
+                if (renderers[i] == null) continue;
+                // Glass that shares its object with something else is never switched off: that would take
+                // the door with it. Such a pane stays as it is when its window is cleaned.
+                if (!enabled)
+                {
+                    Material[] asMade = renderers[i].sharedMaterials;
+                    int frostedAt = s_WindowPortalFrostedGlass.IndexOf(renderers[i]);
+                    if (frostedAt >= 0 && frostedAt < s_WindowPortalFrostedGlassSaved.Count) asMade = s_WindowPortalFrostedGlassSaved[frostedAt];
+                    if (IsGlassSharingItsObject(asMade)) continue;
+                }
+                renderers[i].enabled = enabled;
             }
         }
 
@@ -1382,6 +1405,20 @@ namespace SeamlessInteriors
             return renderer;
         }
 
+        private static bool IsWindowGlassMaterial(Material material)
+        {
+            return material != null && material.name.IndexOf("WindowGlass", System.StringComparison.Ordinal) >= 0;
+        }
+
+        // Window glass in some slots and something else in others: the glass is part of a larger object.
+        private static bool IsGlassSharingItsObject(Material[] materials)
+        {
+            if (materials == null) return false;
+            bool glass = false, other = false;
+            for (int k = 0; k < materials.Length; k++) { if (IsGlassSlot(materials[k])) glass = true; else if (materials[k] != null) other = true; }
+            return glass && other;
+        }
+
         private static void GiveGlassTheFrostMaterial(List<Renderer> glass)
         {
             if (glass == null) return;
@@ -1390,7 +1427,12 @@ namespace SeamlessInteriors
             {
                 var renderer = glass[i];
                 if (renderer == null) continue;
-                bool mixed = renderer.sharedMaterials != null && renderer.sharedMaterials.Length > 1 && HasFrameSlot(renderer.sharedMaterials);
+                // GLASS THAT SHARES ITS OBJECT WITH SOMETHING ELSE. Only the glass slots are given the frost.
+                // Thompson's Store's door glass is one of three materials on the room's doors, and every slot
+                // used to be replaced: both doors turned to frosted glass from top to bottom, with the world
+                // 82 m below showing through them (owner, 2026-10-09: "Inside is all messed up"). An object
+                // that is glass in every slot, or in none by name, is treated as it always was.
+                bool mixed = IsGlassSharingItsObject(renderer.sharedMaterials);
                 if (s_WindowPortalFrostedGlass.Contains(renderer))
                 {
                     // Back from cleared: its glass slots wear the frost again.
@@ -1541,6 +1583,7 @@ namespace SeamlessInteriors
 
             s_WindowPortalInstanceId = id;
             BeginHidingParkedRoomShadow(instance);
+            BeginWindowViewAmbient();       // see WindowViewAmbient.cs
             QueueGlassSnow(instance, id);   // see WindowSnow.BuildingToRoom.cs
 
             if (s_DebugBounds)
@@ -1939,6 +1982,7 @@ namespace SeamlessInteriors
             // with the camera already gone - is a worse state than either end of the operation.
 
             try { EndHidingParkedRoomShadow(); } catch { }
+            try { EndWindowViewAmbient(); } catch { }
             try { TeardownWallCameras(); } catch { }
             try { TeardownGlassSnow(); } catch { }
 
