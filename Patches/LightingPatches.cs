@@ -104,6 +104,8 @@ namespace SeamlessInteriors
             {
                 // Inside -> outside: put the outdoor values back immediately.
                 if (s_HasExteriorAmbient) s_ExteriorAmbient.Apply();
+                // The room's manager left its tint in _LightingStrength; vanilla resets it on the region load.
+                Il2Cpp.LightingManager.SetLightingStrengthDefault();
 
                 if (SeamlessInteriorsMod.s_DebugBounds)
                     MelonLogger.Msg($"[LIGHT-OWNER] Sahiplik birakildi ({(prev != null ? prev.Config.ResolvedInstanceId : "?")}), " +
@@ -518,6 +520,43 @@ namespace SeamlessInteriors
         }
     }
 
+
+    // A running clone's InteriorLightingManager writes the global _LightingStrength (its room tint,
+    // black at night), which zeroed the ambient of the whole outdoors while outside-in portals held rooms open.
+    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.InteriorLightingManager), nameof(Il2Cpp.InteriorLightingManager.Update))]
+    public class KeepClonedLightingStrengthInRoomPatch
+    {
+        private static readonly int s_LightingStrengthId = Shader.PropertyToID("_LightingStrength");
+        private static readonly System.Collections.Generic.Dictionary<int, SeamlessInteriorInstance> s_CloneOf =
+            new System.Collections.Generic.Dictionary<int, SeamlessInteriorInstance>();
+        private static Vector4 s_Saved;
+
+        public static void Prefix(Il2Cpp.InteriorLightingManager __instance, out bool __state)
+        {
+            __state = false;
+            if (__instance == null) return;
+
+            int id = __instance.GetInstanceID();
+            SeamlessInteriorInstance clone;
+            // Only a found clone is cached: a scene-loaded room runs before it is registered as one.
+            if (!s_CloneOf.TryGetValue(id, out clone))
+            {
+                clone = ClonedInteriorLightingGuard.FindOwningInstance(__instance.transform);
+                if (clone != null) s_CloneOf[id] = clone;
+            }
+            if (clone == null || ClonedInteriorLightingGuard.IsOwner(clone)) return;
+
+            __state = true;
+            if (ClonedInteriorLightingGuard.Owner != null) s_Saved = Shader.GetGlobalVector(s_LightingStrengthId);
+        }
+
+        public static void Postfix(bool __state)
+        {
+            if (!__state) return;
+            if (ClonedInteriorLightingGuard.Owner == null) Il2Cpp.LightingManager.SetLightingStrengthDefault();
+            else Shader.SetGlobalVector(s_LightingStrengthId, s_Saved);
+        }
+    }
 
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Utils), nameof(Il2Cpp.Utils.SetAmbientLight))]
     public class BlockExteriorAmbientWhileInsidePatch

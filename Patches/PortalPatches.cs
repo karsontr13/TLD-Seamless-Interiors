@@ -58,11 +58,40 @@ namespace SeamlessInteriors
         }
     }
 
-    [HarmonyLib.HarmonyPatch(typeof(LoadScene), nameof(LoadScene.PerformInteraction))]
-    public class PortalMagicPatch
+    // A hold-to-use door (the whaling ship's hull) is finished by LoadScene.Update calling Activate itself,
+    // never PerformInteraction; it loaded the original scene. Doors already decided this frame pass.
+    [HarmonyLib.HarmonyPatch(typeof(LoadScene), nameof(LoadScene.Activate), new[] { typeof(bool) })]
+    public class PortalActivatePatch
     {
         public static bool Prefix(LoadScene __instance)
         {
+            if (__instance == null || PortalMagicPatch.DecidedThisFrame(__instance)) return true;
+            if (PortalMagicPatch.Prefix(__instance)) return true;
+            GameManager.GetPlayerManagerComponent()?.ResetInteraction();
+            return false;
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(LoadScene), nameof(LoadScene.PerformInteraction))]
+    public class PortalMagicPatch
+    {
+        private static int s_DecidedFrame = -1;
+        private static LoadScene s_DecidedDoor;
+
+        internal static bool DecidedThisFrame(LoadScene door)
+        {
+            return s_DecidedFrame == Time.frameCount && s_DecidedDoor != null && s_DecidedDoor.Pointer == door.Pointer;
+        }
+
+        internal static void MarkDecided(LoadScene door)
+        {
+            s_DecidedFrame = Time.frameCount;
+            s_DecidedDoor = door;
+        }
+
+        public static bool Prefix(LoadScene __instance)
+        {
+            MarkDecided(__instance);
             PlayerManager pm = GameManager.GetPlayerManagerComponent();
             if (pm == null) return true;
 
@@ -250,6 +279,10 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[DEBUG-PORTAL] Door: {__instance.gameObject.name} | Instance: {matchedInstance.Config.ResolvedInstanceId} | targetScene={__instance.m_SceneToLoad}");
             }
 
+            // Through black first, when asked for: this call only starts the fade, and the door
+            // is used again, for real, once the screen is black. See DeferDoorForFade.
+            if (DeferDoorForFade(__instance)) return false;
+
             // Tells the visibility watchdog to stand back for a moment.
             SeamlessInteriorsMod.NotifyPortalUsed();
 
@@ -329,7 +362,7 @@ namespace SeamlessInteriors
 
                 Vector3 spawnPos = GetDoorEntryPosition(matchedInstance, __instance);
                 spawnPos = SnapToGround(spawnPos);
-                GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, GameManager.GetPlayerTransform().rotation);
+                GameManager.GetPlayerManagerComponent().TeleportPlayer(spawnPos, FacingIntoRoom(matchedInstance, spawnPos, GameManager.GetPlayerTransform().rotation));
                 SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.PortalMarkInside, perf);
 
                 // AFTER the teleport, so the player is already in the building. The
@@ -414,6 +447,31 @@ namespace SeamlessInteriors
             }
 
             return true;
+        }
+
+        // ARRIVING INDOORS, THE PLAYER FACES INTO THE ROOM, straight away from the room door they came in
+        // by, as the game's own spawn points do. The config holds entry positions only, so the facing
+        // used to be whatever it was outside, which is into the room only while the room's door stands
+        // square to the building's. At Barn A, turned to its barn, the side door's room door is on a
+        // wall a quarter turn round and the player arrived facing the wall to their left (owner,
+        // 2026-09-30). The direction is from the room door to the landing spot, which the entries place
+        // just in front of each door; no door within reach, and the facing is left as it was.
+        private const float ENTRY_FACING_DOOR_REACH = 3f;
+
+        private static Quaternion FacingIntoRoom(SeamlessInteriorInstance instance, Vector3 spawnPos, Quaternion asWas)
+        {
+            if (instance == null || instance.MasterInterior == null) return asWas;
+            Vector3 best = Vector3.zero; float bestSqr = ENTRY_FACING_DOOR_REACH * ENTRY_FACING_DOOR_REACH;
+            foreach (var door in instance.MasterInterior.GetComponentsInChildren<LoadScene>(true))
+            {
+                if (door == null) continue;
+                Vector3 away = spawnPos - door.transform.position;
+                away.y = 0f;
+                float sqr = away.sqrMagnitude;
+                if (sqr < bestSqr && sqr > 0.01f) { bestSqr = sqr; best = away; }
+            }
+            if (best == Vector3.zero) return asWas;
+            return Quaternion.LookRotation(best.normalized, Vector3.up);
         }
 
         // Resolves the interior spawn point for the door that was used.
@@ -521,7 +579,7 @@ namespace SeamlessInteriors
                     Transform exit = FindNamedNearest(search, door.m_ExitPointName, clickedDoorPos);
                     if (exit == null) continue;
                     vanillaPoint = true;
-                    return exit.position;
+                    return OnTheGround(exit.position);
                 }
             }
 
@@ -530,6 +588,8 @@ namespace SeamlessInteriors
             // The region's sub-scenes too: the mine concentrator's exit points live in MiningRegion_SANDBOX.
             if (!string.IsNullOrEmpty(door.m_ExitPointName))
             {
+                // Measured from where the door stands outdoors: a parked clone's door is ParkOffset up.
+                Vector3 outdoorDoorPos = clickedDoorPos - instance.Config.ParkOffset;
                 Transform best = null;
                 float bestDist = 30f * 30f;
                 for (int s = 0; s < UnityEngine.SceneManagement.SceneManager.sceneCount; s++)
@@ -539,16 +599,16 @@ namespace SeamlessInteriors
                     foreach (GameObject root in SeamlessInteriorsMod.RealRootObjects(scene))
                     {
                         if (root == null || (instance.MasterInterior != null && root == instance.MasterInterior)) continue;
-                        Transform t = FindNamedNearest(root.transform, door.m_ExitPointName, clickedDoorPos);
+                        Transform t = FindNamedNearest(root.transform, door.m_ExitPointName, outdoorDoorPos);
                         if (t == null) continue;
-                        float d = (t.position - clickedDoorPos).sqrMagnitude;
+                        float d = (t.position - outdoorDoorPos).sqrMagnitude;
                         if (d < bestDist) { bestDist = d; best = t; }
                     }
                 }
                 if (best != null)
                 {
                     vanillaPoint = true;
-                    return best.position;
+                    return OnTheGround(best.position);
                 }
             }
 
@@ -561,6 +621,16 @@ namespace SeamlessInteriors
             // came off an object inside it, and the target is outdoors.
             fallbackPos -= instance.Config.ParkOffset;
             return fallbackPos;
+        }
+
+        // A vanilla exit point set down on the ground below it: the Orca store's stand 0.6 and 1.2 m up,
+        // and the player dropped on leaving; the whaling warehouse's back door 3 m (2026-10-10). Left as it is past 5.5 m.
+        private static Vector3 OnTheGround(Vector3 point)
+        {
+            RaycastHit hit;
+            if (Physics.Raycast(point + Vector3.up * 0.5f, Vector3.down, out hit, 6f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                return hit.point + Vector3.up * 0.05f;
+            return point;
         }
 
         // The building whose door the player last left through into a scene SI does not clone.
@@ -580,6 +650,7 @@ namespace SeamlessInteriors
         internal static void OnLoadingZone(LoadScene door)
         {
             if (door == null || string.IsNullOrEmpty(door.m_SceneToLoad)) return;
+            MarkDecided(door);
             var instance = SeamlessInteriorsMod.FindInstanceOwning(door.transform);
             if (instance == null) { TryRedirectIntoClone(door); return; }
             if (!LeadsToARegion(door.m_SceneToLoad) && door.m_SceneToLoad != instance.Config.InteriorSceneBaseName
@@ -711,6 +782,56 @@ namespace SeamlessInteriors
             return pos;
         }
 
+        // ─── THROUGH BLACK AT THE DOOR ───
+        //
+        // Owner, 2026-09-30, after more pop-in at the doors: "Instead of chasing this more and more
+        // like we've already done, I think we should just add a short fade in and out to black."
+        // Settled live on a console prototype the same day: a quarter of a second to black, a
+        // quarter held, a quarter back. Only where this mod moves the player itself: a door the
+        // game handles (an unmodded interior) keeps the game's own fade. Meant to go again once
+        // the doors show the other side (door portals).
+        //
+        // The first use of the door starts the fade and stops there; the fade uses the door again
+        // with s_DoorFadeThrough set, which does the move exactly as a door with no fade does.
+        // Clicks while a fade runs do nothing. The screen always comes back, even after an error.
+        private const float DOOR_FADE_OUT_SECONDS = 0.25f, DOOR_FADE_HOLD_SECONDS = 0.25f, DOOR_FADE_IN_SECONDS = 0.25f;
+        private static bool s_DoorFadeThrough, s_DoorFadeBusy;
+
+        private static bool DeferDoorForFade(LoadScene door)
+        {
+            if (s_DoorFadeThrough || !SeamlessInteriorsMod.IsDoorFadeEnabled) return false;
+            if (s_DoorFadeBusy) return true;
+            s_DoorFadeBusy = true;
+            MelonCoroutines.Start(DoorThroughBlack(door));
+            return true;
+        }
+
+        private static System.Collections.IEnumerator DoorThroughBlack(LoadScene door)
+        {
+            bool dark = true;
+            try { CameraFade.FadeOut(DOOR_FADE_OUT_SECONDS, 0f, null); }
+            catch (System.Exception ex) { dark = false; MelonLogger.Warning($"[DOOR-FADE] The fade to black failed, the door is used without it: {ex.Message}"); }
+
+            float until = Time.realtimeSinceStartup + DOOR_FADE_OUT_SECONDS;
+            while (dark && Time.realtimeSinceStartup < until) yield return null;
+
+            s_DoorFadeThrough = true;
+            try { if (door != null) door.PerformInteraction(); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[DOOR-FADE] The door failed behind the fade: {ex.Message}"); }
+            finally { s_DoorFadeThrough = false; }
+
+            until = Time.realtimeSinceStartup + DOOR_FADE_HOLD_SECONDS;
+            while (dark && Time.realtimeSinceStartup < until) yield return null;
+
+            try { CameraFade.FadeIn(DOOR_FADE_IN_SECONDS, 0f, null); }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[DOOR-FADE] The fade back failed, the screen is cleared at once: {ex.Message}");
+                try { CameraFade.FadeIn(0f, 0f, null); } catch { }
+            }
+            s_DoorFadeBusy = false;
+        }
+
         private static bool? TryHandleSubInteriorLink(LoadScene door)
         {
             Vector3 doorPos = door.transform.position;
@@ -755,6 +876,8 @@ namespace SeamlessInteriors
 
                     if (SeamlessInteriorsMod.s_DebugBounds)
                         MelonLogger.Msg($"[SUB-LINK] PARENT→CHILD: {instance.Config.ResolvedInstanceId} → {link.TargetInstanceId} (door={door.gameObject.name}, m_SceneToLoad={sceneToLoad})");
+
+                    if (DeferDoorForFade(door)) return false;
 
                     SeamlessInteriorsMod.NotifyPortalUsed();
 
@@ -826,6 +949,8 @@ namespace SeamlessInteriors
 
                     if (SeamlessInteriorsMod.s_DebugBounds)
                         MelonLogger.Msg($"[SUB-LINK] CHILD→PARENT: {link.TargetInstanceId} → {parentInstance.Config.ResolvedInstanceId} (door={door.gameObject.name}, m_SceneToLoad={sceneToLoad})");
+
+                    if (DeferDoorForFade(door)) return false;
 
                     SeamlessInteriorsMod.NotifyPortalUsed();
 
