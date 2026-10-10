@@ -346,7 +346,14 @@ namespace SeamlessInteriors
             s_HasRoomAmbientForShaders = true;
             if (s_HasExteriorAmbientForShaders)
                 for (int i = 0; i < 4; i++) Shader.SetGlobalVector(s_AmbientShaderIds[i], s_ExteriorAmbientForShaders[i]);
+            // The room's _LightingStrength (black at night in the dark mode) dimmed the ground outside the
+            // windows while the trees stayed lit; the outdoors gets the game's default (2026-10-11).
+            s_ViewOutRoomLightingStrength = Shader.GetGlobalVector(s_ViewOutLightingStrengthId);
+            Il2Cpp.LightingManager.SetLightingStrengthDefault();
         }
+
+        private static readonly int s_ViewOutLightingStrengthId = Shader.PropertyToID("_LightingStrength");
+        private static Vector4 s_ViewOutRoomLightingStrength;
 
         // THE SHADERS ARE HANDED THE AMBIENT TOO, BECAUSE UNITY HANDS IT OVER TOO LATE. Unity copies the
         // ambient into its shader values partway through a camera's drawing, so a camera starts with
@@ -373,6 +380,7 @@ namespace SeamlessInteriors
         {
             if (!s_ViewOutSwapped) return;
             s_ViewOutSwapped = false;
+            Shader.SetGlobalVector(s_ViewOutLightingStrengthId, s_ViewOutRoomLightingStrength);
             for (int i = 0; i < 4; i++) s_ExteriorAmbientForShaders[i] = Shader.GetGlobalVector(s_AmbientShaderIds[i]);
             s_HasExteriorAmbientForShaders = true;
             if (s_HasRoomAmbientForShaders)
