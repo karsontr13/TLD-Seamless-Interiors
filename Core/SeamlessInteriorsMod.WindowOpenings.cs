@@ -13,6 +13,11 @@ namespace SeamlessInteriors
     {
         public Transform PaneRoot;
 
+        // A view out and nothing else: never offered to a building window, from either side. Glass named by
+        // the building's row in RoomGlassViewOutOnly (the panes over a room's doors, where the building's
+        // door has no glass of its own to show a view in).
+        public bool ViewOutOnly;
+
         public Vector3 GlassCenter;     // centre of the glass plane
         public Vector3 PortalCenter;    // centre of the plane the quad goes on
         public Vector3 Outward;         // unit normal, pointing out of the building
@@ -685,7 +690,31 @@ namespace SeamlessInteriors
                     continue;
                 }
 
-                AddGlassPieceOpening(list, lead, lo, hi, bottom, top, depth, side > 0f ? lead.Normal : -lead.Normal, backdrop, result);
+                // THE OUTSIDE IS NEVER THE SIDE TOWARD THE MIDDLE OF THE ROOM'S GLASS. The side comes from where the
+                // backdrop stands, and what passes for a backdrop is not always the painted outside: at Thompson's
+                // Store it was the room's own window frames (STR_RuralStoreAInteriorWindows_Prefab), which stand
+                // on the ROOM side of the glass, so six of its seven windows were recorded facing into the room.
+                // Each then paired with whatever faced the same way across the room: its three tall windows,
+                // which sit directly behind the building's three tall ones, went unpaired, the views started
+                // meters into the room and the views out stood at the parked room's height (owner, 2026-10-09:
+                // "Why aren't they pairing though?"). Read live: the room's windows sit wall for wall where the
+                // building's do, 7 for 7, and only their facing was wrong. The Community Hall and the two Thompson
+                // houses loaded at the time have none facing in, so this changes nothing there. Glass all in one
+                // wall is within half a meter of its own middle and is left as the backdrop says.
+                Vector3 outwardSide = side > 0f ? lead.Normal : -lead.Normal;
+                {
+                    Vector3 sheetMiddle = Vector3.zero;
+                    for (int k = 0; k < list.Count; k++) sheetMiddle += list[k].Corners[0];
+                    sheetMiddle /= Mathf.Max(1, list.Count);
+                    Vector3 paneMiddle = lead.Corners[0] + lead.Along * ((lo + hi) * 0.5f) + lead.Normal * depth;
+                    if (Vector3.Dot(paneMiddle - sheetMiddle, outwardSide) < -0.5f)
+                    {
+                        outwardSide = -outwardSide;
+                        MelonLogger.Msg($"[WINDOW] {s_ScanBuildingId}: '{(lead.Source != null ? lead.Source.gameObject.name : "?")}' camin disi odanin ortasina bakiyordu ('{backdrop.gameObject.name}' camin oda tarafinda); cevrildi.",
+                                        $"[WINDOW] {s_ScanBuildingId}: a pane of '{(lead.Source != null ? lead.Source.gameObject.name : "?")}' had its outside toward the middle of the room, because '{backdrop.gameObject.name}' stands on the room side of the glass; turned to face out.");
+                    }
+                }
+                AddGlassPieceOpening(list, lead, lo, hi, bottom, top, depth, outwardSide, backdrop, result);
                 added++;
             }
 
@@ -895,6 +924,48 @@ namespace SeamlessInteriors
                                 $"[WINDOW] {id}: room windows that are not rectangles, their views cut to the glass's own outline (share of their rectangle): {odd}.");
         }
 
+        // The room windows a row names as views out only (BuildingWindowOverride.RoomGlassViewOutOnly), marked
+        // once when the room is read.
+        private static void MarkViewOutOnly(List<InteriorWindowOpening> openings, SeamlessInteriorInstance instance)
+        {
+            BuildingWindowOverride byHand;
+            if (openings == null || instance == null || instance.Config == null) return;
+            if (!TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out byHand) || byHand.RoomGlassViewOutOnly == null) return;
+            // STRIPS ARE NOT WINDOWS. Glass set into a door comes with thin pieces besides the pane one looks
+            // through: Thompson's Store's doors gave two panes of 83 x 44 cm and three strips 11 and 20 cm
+            // wide, one of them 267 cm tall, and each strip became a numbered window with a view of its own in
+            // the middle of the room (owner, 2026-10-09: "You have window number 11 in the middle of the
+            // building"). Anything of such glass narrower than this is dropped. They come after the room's real
+            // windows in the list, so dropping them moves no number the owner has judged.
+            const float VIEW_OUT_ONLY_NARROWEST = 0.30f;
+            int marked = 0, strips = 0;
+            for (int i = openings.Count - 1; i >= 0; i--)
+            {
+                var o = openings[i];
+                if (o.PaneRoot == null || System.Array.IndexOf(byHand.RoomGlassViewOutOnly, o.PaneRoot.name) < 0) continue;
+                float wide = o.GlassWidth > 0.01f ? o.GlassWidth : o.Width;
+                if (wide < VIEW_OUT_ONLY_NARROWEST) { openings.RemoveAt(i); strips++; continue; }
+                o.ViewOutOnly = true; openings[i] = o; marked++;
+            }
+            if (strips > 0)
+                MelonLogger.Msg($"[WINDOW] {instance.Config.InstanceId}: yalnizca disari bakan camdan {strips} dar serit pencere sayilmadi.",
+                                $"[WINDOW] {instance.Config.InstanceId}: {strips} narrow strips of the views-out-only glass were left out; they are not windows.");
+            if (marked > 0)
+                MelonLogger.Msg($"[WINDOW] {instance.Config.InstanceId}: {marked} oda penceresi yalnizca iceriden disari bakiyor (binanin satiri); bina pencereleriyle eslestirilmez.",
+                                $"[WINDOW] {instance.Config.InstanceId}: {marked} room windows are views out only, by the building's row; they are never paired with a building window.");
+        }
+
+        // The room's windows that may be paired with the building's: all but the views out only.
+        internal static List<InteriorWindowOpening> WithoutViewOutOnly(List<InteriorWindowOpening> openings)
+        {
+            bool any = false;
+            for (int i = 0; i < openings.Count && !any; i++) any = openings[i].ViewOutOnly;
+            if (!any) return openings;
+            var kept = new List<InteriorWindowOpening>(openings.Count);
+            for (int i = 0; i < openings.Count; i++) if (!openings[i].ViewOutOnly) kept.Add(openings[i]);
+            return kept;
+        }
+
         public static List<InteriorWindowOpening> FindInteriorWindowOpenings(SeamlessInteriorInstance instance)
         {
             if (instance == null || instance.MasterInterior == null) return new List<InteriorWindowOpening>();
@@ -917,6 +988,7 @@ namespace SeamlessInteriors
                 s_ScanBuildingId = instance.Config != null ? instance.Config.InstanceId : null;
                 try { found = new WindowOpeningsFound { Room = room, Placed = placed, Openings = ScanInteriorWindowOpenings(instance) }; }
                 finally { s_ScanWindowsWithoutBackdrop = null; s_ScanWindowJoins = null; s_ScanManyPaneJoinWithin = -1f; s_ScanBuildingId = null; }
+                MarkViewOutOnly(found.Openings, instance);
                 MeasureRoomWindowOutlines(found.Openings, instance.Config != null ? instance.Config.InstanceId : "?");
                 s_WindowOpeningsFound[key] = found;
             }

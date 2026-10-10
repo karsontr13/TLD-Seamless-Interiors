@@ -83,9 +83,20 @@ namespace SeamlessInteriors
         // and each takes its outside from the nearest window in the same wall. The Small Barn, 2026-10-01.
         public string[] RoomWindowsWithoutBackdrop;
 
+        // Room glass, by object name, that gets a view OUT and nothing else: its panes are never paired with
+        // a building window, so they take no pairing from the real windows and no view in is made for them.
+        // The object must also be read as glass (RoomManyPaneObjects, and RoomWindowsWithoutBackdrop where
+        // nothing is painted behind it). Each looks out from where the paired windows agree the room stands.
+        // Thompson's Store, 2026-10-09: the panes at the top of the room's two doors showed the world from
+        // the parked room's height, 82 m up; named as plain windows they took the low window's pairing.
+        // Owner: "We just need to make an inside-out camera only for each. Making the outside-in isn't worth
+        // it since they're too high up and don't have mesh parts on the exterior shell door."
+        public string[] RoomGlassViewOutOnly;
+
         // Room window objects (by name prefix) the rule misses: glass in a slot beside the frame, or not
         // STR_WindowGlassMix. Read from the glass submesh, facing away from the room's middle (2026-10-10).
         public string[] RoomGlassSlotObjects;
+
         // Room glass, by object name, joined into ONE window per set however far apart the pieces stand
         // (posts wider than the joining allows). A set takes its outside from the nearest window in the
         // same wall, not from a backdrop, and is added after the windows found by the rule, like
@@ -638,16 +649,69 @@ namespace SeamlessInteriors
             // "as good as it's gonna get", door side "as good as it's going to get", back "lined up".
             // Those were set before the joins, which move the door side's and the back's mean.
             {
+                "STR_Thompson_Store_Prefab", new BuildingWindowOverride
+                {
+                    // The room's window glass is ONE object, a sheet round the whole room, as at the Community
+                    // Hall. Unnamed it is read as 2 windows and a view hangs in the middle of the room (owner,
+                    // 2026-10-09: "Window 0 is in the center of the room again like Comm. Hall"). Named as
+                    // sheet glass it gives 6 room windows, and the pane with no painted outside is the 7th.
+                    RoomManyPaneObjects = new[] { "STR_RuralStoreAInteriorWindowsGlass_Prefab", "STR_RuralStoreAInteriorDoors_Prefab" },
+                    RoomWindowsWithoutBackdrop = new[] { "STR_RuralStoreAInteriorWindowsGlass_Prefab", "STR_RuralStoreAInteriorDoors_Prefab" },
+                    // The glass at the top of the room's two doors: a view out each, never paired, no view in.
+                    RoomGlassViewOutOnly = new[] { "STR_RuralStoreAInteriorDoors_Prefab" },
+                    // The three tall front windows look out through ONE camera (room windows 3, 4 and 5). Their glass
+                    // is on one plane to within 0.0 cm, read live 2026-10-09, and each pairs with the building's
+                    // tall window in front of it. The rules kept them apart only because the room's windows are
+                    // 88 cm wide and 141 and 148 cm apart where the building's are 74 to 76. The front door's top
+                    // glass is 5.0 cm further out than that plane, so it is not in the group yet: its number is
+                    // only known once the door glass has been read at a launch.
+                    ViewOutGroups = new[] { new[] { 3, 4, 5 } },
+                    // THE TURN IS PINNED TO WHAT THE RULE GAVE FROM TWO WINDOWS, 13.7 degrees, the turn the owner
+                    // judged. Naming the glass gives the rule seven windows and it then answers 0: he saw the
+                    // angle go wrong at the next launch. Half a turn on, tried because the window shapes then
+                    // match wall for wall, showed him sky. This room's windows do not match its building's.
+                    RoomTurnDegrees = 13.748832f,
+                    // The three tall front windows are NOT on a hand-made camera for the views in. They were, by
+                    // the owner's choice, and the room's morning sun patch then slid over the floor as he
+                    // strafed, window-frame shadows and all: a hand-made group is drawn by the screen camera,
+                    // which places a spotlight's pattern wrongly. On their own cameras it holds still (live
+                    // A/B, 2026-10-09: "That looks perfect"). Three cameras here until the screen camera is mended.
+                    // The room's frames are NOT hidden. They slid against the building's frames as he strafed because
+                    // the room is 2.6 m longer than its building along the line of sight through these windows
+                    // (13.7 x 7.6 m against 11.1 x 7.6), so the room's wall does not stand at the building's. That is
+                    // fitted with the view's start, not cut away (frames show by default). Hiding was tried on
+                    // 2026-10-09 and removed: it cut nothing he could see.
+                }
+            },
+            {
                 "STR_CommunityHallA_Exterior_Prefab (1)", new BuildingWindowOverride
                 {
                     // Every view from outside starts 10 cm into the room, past the room's frames (owner,
                     // 2026-10-02). Its window frames are one-sided, faces into the room only, so from
                     // outside their backs cannot be drawn and no fit closed the gap at the bars.
                     ViewFromOutsideStartsCm = -10f,
+                    // The door, building window 7: its picture stands 1.5 cm BEHIND the glass. The building's door
+                    // mesh runs from 12.5 cm in front of its glass to 3.4 cm behind (read live), and a picture at
+                    // the default 1 cm in front covered the back of the door's frame. Set by the owner's eye with
+                    // the rig, 2026-10-09.
+                    PicturePlaneCmByWindow = new[] { float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, -1.5f },
+                    // The door's glass is its own object, not on the building's frosted sheet, so it has no frost
+                    // of its own: each of its four tall panes wears a piece of window 1's, one of the hall's four
+                    // narrow windows (76 x 130 cm), the nearest in shape to a door pane. It first took window 0's,
+                    // a wide one, laid over the whole door (owner, 2026-10-09: "Frost is wrong").
+                    // Window 2: the camera in the room stands 6.5 cm higher (owner's eye, rig, 2026-10-09).
+                    Fits = new[]
+                    {
+                        new WindowFit(2, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, float.NaN, 0f, 6.5f),
+                        new WindowFit(7, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 1),
+                    },
                     RoomManyPaneObjects = new[] { "STR_CommunityHallA_GlassWin" },
                     RoomManyPaneJoinWithinCm = 50f,
                     ExtraShellGlassObjects = new[] { "STR_CommunityHallDoorsA_Glass" },
-                    ViewOutGroups = new[] { new[] { 3, 4, 7 }, new[] { 2, 6 }, new[] { 0, 1, 5 } },
+                    // The door (room window 7) is not in a group: sharing the door-side camera with windows 3
+                    // and 4 took its plane from the two windows and sliced the frames on the door (owner,
+                    // 2026-10-02 live, 2026-10-09). It looks out through its own camera.
+                    ViewOutGroups = new[] { new[] { 3, 4 }, new[] { 2, 6 }, new[] { 0, 1, 5 } },
                     ViewOutGroupSidewaysCm = new[] { -5f, 31f, -12f },
                 }
             },
@@ -718,7 +782,8 @@ namespace SeamlessInteriors
                 {
                     Fits = new[]
                     {
-                        new WindowFit(7, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, float.NaN, 40f, 0f),
+                        // Right is counted as seen from inside looking out, as for a room window (PretendWindowHandMove).
+                        new WindowFit(7, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -1, float.NaN, -40f, 0f),
                     },
                 }
             },

@@ -70,7 +70,7 @@ namespace SeamlessInteriors
         // Deferred, as the player's camera, with the game's fog pass on top. fogStartsAt is the view
         // depth the pass counts from (0: the camera's near plane). Deferred with no fog if the pass
         // cannot be built.
-        private static void UseWindowViewFogPass(Camera cam, int slot, Camera main, float fogStartsAt = 0f)
+        private static void UseWindowViewFogPass(Camera cam, int slot, Camera main, float fogStartsAt = 0f, bool wallCamera = false)
         {
             if (cam == null) return;
             if (cam.renderingPath != RenderingPath.DeferredShading)
@@ -111,11 +111,13 @@ namespace SeamlessInteriors
             buffer.Blit(target, new RenderTargetIdentifier(s_WindowFogCopyId));
             buffer.SetGlobalTexture(s_MainTexId, new RenderTargetIdentifier(s_WindowFogCopyId));
             buffer.SetRenderTarget(target);
-            bool fromWall = fogStartsAt > 0f;
+            // A wall camera's own near is where its view starts, at its windows (StartingAtTheWindows), so
+            // the fog is counted from the player's near, as it was before the view started there.
+            bool fromWall = fogStartsAt > 0f || (wallCamera && cam.nearClipPlane != main.nearClipPlane);
             if (fromWall)
             {
                 float far = cam.farClipPlane;
-                buffer.SetGlobalVector(s_ProjectionParamsId, new Vector4(1f, cam.nearClipPlane + fogStartsAt, far, 1f / far));
+                buffer.SetGlobalVector(s_ProjectionParamsId, new Vector4(1f, main.nearClipPlane + fogStartsAt, far, 1f / far));
             }
             buffer.DrawMesh(s_WindowFogTriangle, Matrix4x4.identity, s_WindowFogMaterial, 0, WINDOW_FOG_PASS_SKY_EXCLUDED);
             if (fromWall) buffer.SetupCameraProperties(cam);

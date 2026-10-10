@@ -647,28 +647,45 @@ namespace SeamlessInteriors
             return h / Mathf.Max(cos, FOG_FROM_WALL_MIN_COS);
         }
 
-        // The view depth of the nearest corner of any on-screen member's glass; 0 when none is in front.
-        private static float NearestOnScreenGlass(WallGroup group, Matrix4x4 vp)
-        {
-            float nearest = float.MaxValue;
-            foreach (int i in group.Members)
-            {
-                if (!s_WallMemberOnScreen[i]) continue;
-                var o = s_WindowPortalOpenings[i];
-                for (int c = 0; c < 4; c++)
-                {
-                    Vector3 q = o.PortalCenter + o.Right * (o.Width * ((c & 1) == 0 ? -0.5f : 0.5f)) + o.Up * (o.Height * ((c & 2) == 0 ? -0.5f : 0.5f));
-                    float w = (vp * new Vector4(q.x, q.y, q.z, 1f)).w;
-                    if (w > 1e-5f && w < nearest) nearest = w;
-                }
-            }
-            return nearest == float.MaxValue ? 0f : nearest;
-        }
-
         private static int WallTargetSize(int need, int current)
         {
             if (current >= need && current - need < WALL_TARGET_SLACK) return current;
             return Mathf.Max(WALL_TARGET_STEP, ((need + WALL_TARGET_STEP - 1) / WALL_TARGET_STEP) * WALL_TARGET_STEP);
+        }
+
+        // THE WALL CAMERA DRAWS NOTHING NEARER THAN ITS WINDOWS. It stands where the player's eye is, carried
+        // over to the building, and a room is deeper than its building: from the back of Thompson's Store the
+        // lens stood 11.4 m behind the front wall, out in the yard, and everything between was drawn and slid
+        // against the strafe (owner, 2026-10-10: "parts of the exterior shell are still visible zooming by").
+        // The hide list cannot cover that: it holds whole pieces of the building's own body within 3 m. So the
+        // view starts at the nearest point of the group's panes on screen. Only the near distance changes, in
+        // the two terms that carry it, so the projection is not bent. One on and off pair at the store showed
+        // it; his look from the back of the room is owed. NOT CHECKED: fog and falling snow in these views.
+        internal static bool WallCameraStartsAtItsWindows = true;
+        private const float WALL_VIEW_STARTS_BEFORE_THE_PANE = 0.05f;
+
+        private static Matrix4x4 StartingAtTheWindows(WallGroup group, Camera main, Vector3 eye, Matrix4x4 projection, out float startsAt)
+        {
+            startsAt = main.nearClipPlane;
+            if (!WallCameraStartsAtItsWindows) return projection;
+            Vector3 gaze = main.transform.forward;
+            float nearest = float.MaxValue;
+            foreach (int i in group.Members)
+            {
+                if (i >= s_WallVX.Count || !s_WallMemberOnScreen[i]) continue;
+                float[] vx = s_WallVX[i], vy = s_WallVY[i], vz = s_WallVZ[i];
+                for (int k = 0; k < vx.Length; k++)
+                {
+                    float depth = (vx[k] - eye.x) * gaze.x + (vy[k] - eye.y) * gaze.y + (vz[k] - eye.z) * gaze.z;
+                    if (depth < nearest) nearest = depth;
+                }
+            }
+            float near = nearest - WALL_VIEW_STARTS_BEFORE_THE_PANE, far = main.farClipPlane;
+            if (nearest == float.MaxValue || near <= main.nearClipPlane || far - near < 1f) return projection;
+            projection.m22 = -(far + near) / (far - near);
+            projection.m23 = -2f * far * near / (far - near);
+            startsAt = near;
+            return projection;
         }
 
         private static void DrawWallGroup(WallGroup group, int groupIndex, int slot, Camera main, Vector3 eye,
@@ -697,16 +714,19 @@ namespace SeamlessInteriors
             // ORDER MATTERS: these reset an explicit projection matrix, so they go first.
             cam.fieldOfView = s_LateFieldOfView;
             cam.aspect = main.aspect;
-            // Nothing nearer than the glass: the terrain inside the store's walls rose into its front
-            // windows' views as the player stepped back from them (Orca store, 2026-10-10).
-            float nearCut = Mathf.Max(NearestOnScreenGlass(group, vp) - 0.005f, main.nearClipPlane);
-            if (nearCut >= main.farClipPlane * 0.5f) nearCut = main.nearClipPlane;
-            cam.nearClipPlane = nearCut;      // the fog pass reads depth through the camera's own planes
+            // THE CAMERA IS TOLD WHERE ITS VIEW STARTS. Unity turns the depth buffer back into distance from
+            // the camera's own near and far, not from the matrix. With the view starting at the windows and
+            // the camera still holding the player's near, the far scenery read as a few meters away and the
+            // fog left it (owner, 2026-10-10: "the fog is mostly absent from the far distant scenery. It
+            // partially comes back if you get right up to the window", "View angle also changes it").
+            float startsAt;
+            Matrix4x4 lens = StartingAtTheWindows(group, main, eye, narrow * proj, out startsAt);
+            cam.nearClipPlane = startsAt;
             cam.farClipPlane = main.farClipPlane;
             cam.worldToCameraMatrix = view * Matrix4x4.Translate(-offset);
-            cam.projectionMatrix = narrow * WithNearDistance(proj, nearCut, main.nearClipPlane);
+            cam.projectionMatrix = lens;
             float fogStartsAt = ParkedCullEyeInForce ? FogFromTheGlass(group, main, eye) : 0f;
-            UseWindowViewFogPass(cam, slot, main, fogStartsAt);   // see WindowViewFog.cs
+            UseWindowViewFogPass(cam, slot, main, fogStartsAt, true);   // see WindowViewFog.cs
             SharePlayerBuffersWith(cam, slot, main);   // see WindowViewFog.cs
             cam.enabled = true;
             s_WallSlotGroup[slot] = groupIndex;

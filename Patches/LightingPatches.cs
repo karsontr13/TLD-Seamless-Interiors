@@ -302,6 +302,116 @@ namespace SeamlessInteriors
                                 $"(mode={s_OwnerAmbient.Mode}, light={s_OwnerAmbient.Light}) — dis dunya yazari artik engelleniyor.");
         }
 
+        // ─── The outdoor ambient, for the cameras that look out of the room's windows ───
+        //
+        // The lighting mode is for the indoor space and must not reach the views out of it
+        // (owner, 2026-10-10; see SeamlessInteriorsMod.WindowViewAmbient.cs). Two parts.
+        //
+        // THE SWAP: around one window camera's render the outdoor ambient is put in force and
+        // what was there is put back. Without the probe on the way in (reading it is expensive
+        // and this runs per camera per frame); the owner's probe is set again on the way out.
+        //
+        // THE SAMPLE: the outdoor ambient was captured once, on the way in, so after an hour
+        // indoors the windows would still show the hour the player walked in. The outdoor
+        // writer keeps asking to write and is refused (Utils.SetAmbientLight, see the patch on it at the
+        // end of this file; TodAmbientLight where a scene has one); once a second it is let through,
+        // what it wrote is kept as the outdoor ambient, and the room's is put straight back in
+        // the same call, before anything renders. The frame stamp is the same self-healing as
+        // the owner's write window, and EnforceOwnerAmbient is the backstop behind it.
+        //
+        // A switch, so the two can be compared live from inside a room.
+        public static bool ExteriorAmbientForViewsOut = true;
+
+        private const float EXTERIOR_SAMPLE_INTERVAL = 1f;
+        private static bool s_ViewOutSwapped;
+        private static AmbientState s_AmbientBeforeViewOut;
+        private static bool s_ExteriorSampling;
+        private static int s_ExteriorSampleFrame;
+        private static float s_ExteriorSampledAt = -1000f;
+        private static AmbientState s_AmbientBeforeExteriorSample;
+
+        public static void BeginExteriorAmbientForViewOut()
+        {
+            if (s_ViewOutSwapped || !ExteriorAmbientForViewsOut) return;
+            if (s_Owner == null || !s_HasOwnerAmbient || !s_HasExteriorAmbient) return;
+            s_AmbientBeforeViewOut = AmbientState.Capture(false);
+            s_ExteriorAmbient.Apply();
+            s_ViewOutSwapped = true;
+            for (int i = 0; i < 4; i++) s_RoomAmbientForShaders[i] = Shader.GetGlobalVector(s_AmbientShaderIds[i]);
+            s_HasRoomAmbientForShaders = true;
+            if (s_HasExteriorAmbientForShaders)
+                for (int i = 0; i < 4; i++) Shader.SetGlobalVector(s_AmbientShaderIds[i], s_ExteriorAmbientForShaders[i]);
+        }
+
+        // THE SHADERS ARE HANDED THE AMBIENT TOO, BECAUSE UNITY HANDS IT OVER TOO LATE. Unity copies the
+        // ambient into its shader values partway through a camera's drawing, so a camera starts with
+        // what the camera before it left. Read per camera in the game on 2026-10-10: the first window
+        // camera of a frame started on the room's 0.047 and the player's own view on the outdoor 0.565.
+        // Trees take that value and nothing else on their shaded side, so through a lone window they
+        // stood black, and lit as soon as a second window came into view (owner: "it's flipping back
+        // and forth depending on my view angle and position"). So the four values go in by hand on both
+        // sides of the swap. Each side's are read back from what Unity itself made of them the frame
+        // before: the room's on the way in, the outdoor ones on the way out. Four reads and four writes
+        // per window camera on each side. Prototyped in the console; owner: "Trees are lit at every
+        // angle now. Room looks fine".
+        private static readonly int[] s_AmbientShaderIds =
+        {
+            Shader.PropertyToID("unity_AmbientSky"), Shader.PropertyToID("unity_AmbientEquator"),
+            Shader.PropertyToID("unity_AmbientGround"), Shader.PropertyToID("glstate_lightmodel_ambient"),
+        };
+        private static readonly Vector4[] s_ExteriorAmbientForShaders = new Vector4[4];
+        private static readonly Vector4[] s_RoomAmbientForShaders = new Vector4[4];
+        private static bool s_HasExteriorAmbientForShaders;
+        private static bool s_HasRoomAmbientForShaders;
+
+        public static void EndExteriorAmbientForViewOut()
+        {
+            if (!s_ViewOutSwapped) return;
+            s_ViewOutSwapped = false;
+            for (int i = 0; i < 4; i++) s_ExteriorAmbientForShaders[i] = Shader.GetGlobalVector(s_AmbientShaderIds[i]);
+            s_HasExteriorAmbientForShaders = true;
+            if (s_HasRoomAmbientForShaders)
+                for (int i = 0; i < 4; i++) Shader.SetGlobalVector(s_AmbientShaderIds[i], s_RoomAmbientForShaders[i]);
+            s_AmbientBeforeViewOut.Apply();
+            if (s_ExteriorAmbient.HasProbe && s_HasOwnerAmbient && s_OwnerAmbient.HasProbe)
+            {
+                try { RenderSettings.ambientProbe = s_OwnerAmbient.Probe; } catch { }
+            }
+        }
+
+        public static bool IsExteriorSampling
+        {
+            get { return s_ExteriorSampling && s_ExteriorSampleFrame == Time.frameCount; }
+        }
+
+        // True when the refused outdoor write should be let through this once.
+        public static bool BeginExteriorSample()
+        {
+            if (!ExteriorAmbientForViewsOut || s_Owner == null || !s_HasOwnerAmbient || s_ViewOutSwapped) return false;
+            float now = Time.unscaledTime;
+            if (now - s_ExteriorSampledAt < EXTERIOR_SAMPLE_INTERVAL) return false;
+            s_ExteriorSampledAt = now;
+            s_AmbientBeforeExteriorSample = AmbientState.Capture();
+            s_ExteriorSampling = true;
+            s_ExteriorSampleFrame = Time.frameCount;
+            return true;
+        }
+
+        public static void EndExteriorSample()
+        {
+            if (!s_ExteriorSampling) return;
+            bool sameFrame = s_ExteriorSampleFrame == Time.frameCount;
+            s_ExteriorSampling = false;
+            if (!sameFrame) return;
+            // The outdoor writer wrote nothing: keep the outdoor ambient already held.
+            if (!s_AmbientBeforeExteriorSample.MatchesCurrent())
+            {
+                s_ExteriorAmbient = AmbientState.Capture();
+                s_HasExteriorAmbient = true;
+            }
+            s_AmbientBeforeExteriorSample.Apply();
+        }
+
         public static bool IsOwnerWriting
         {
             get { return s_OwnerWriteDepth > 0 && s_OwnerWriteFrame == Time.frameCount; }
@@ -321,6 +431,8 @@ namespace SeamlessInteriors
             s_Owner = null;
             s_HasOwnerAmbient = false;
             s_HasExteriorAmbient = false;
+            s_HasExteriorAmbientForShaders = false;
+            s_HasRoomAmbientForShaders = false;
             s_OwnerWriteDepth = 0;
             s_LoggedInstanceIds.Clear();
 
@@ -451,7 +563,8 @@ namespace SeamlessInteriors
                 if (ClonedInteriorLightingGuard.IsOwnerWriting
                     && !ClonedInteriorLightingGuard.OwnerAmbientOrphan) return true;
 
-                return !ClonedInteriorLightingGuard.OwnerAmbientEstablished;
+                if (!ClonedInteriorLightingGuard.OwnerAmbientEstablished) return true;
+                return ClonedInteriorLightingGuard.BeginExteriorSample();
             }
 
             if (ClonedInteriorLightingGuard.IsOwner(instance))
@@ -468,6 +581,7 @@ namespace SeamlessInteriors
 
         public static void Postfix(bool __state)
         {
+            ClonedInteriorLightingGuard.EndExteriorSample();
             if (!__state) return;
             ClonedInteriorLightingGuard.EndOwnerWrite();
         }
@@ -564,10 +678,26 @@ namespace SeamlessInteriors
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Utils), nameof(Il2Cpp.Utils.SetAmbientLight))]
     public class BlockExteriorAmbientWhileInsidePatch
     {
-        public static bool Prefix()
+        // THE OUTDOOR AMBIENT IS SAMPLED HERE. In a region nothing outdoors calls TodAmbientLight: the
+        // outdoors asks through this method, every frame (counted in the game on 2026-10-10: 1500 calls
+        // in 1500 frames, none through TodAmbientLight). So the once-a-second sample that was hung on
+        // TodAmbientLight never ran, and the views out kept the ambient of the moment the player walked
+        // in. Loaded with the player already inside, that moment comes before the outdoors has its
+        // light: the mod held 0.030 against a room at 0.047, and the views out stayed dark until the
+        // lighting mode was flipped. Prototyped in the console; owner, flipping the mode with it on:
+        // "Looks identical when switching."
+        public static bool Prefix(out bool __state)
         {
-            if (ClonedInteriorLightingGuard.IsOwnerWriting) return true;
-            return !ClonedInteriorLightingGuard.OwnerAmbientEstablished;
+            __state = false;
+            if (ClonedInteriorLightingGuard.IsOwnerWriting || ClonedInteriorLightingGuard.IsExteriorSampling) return true;
+            if (!ClonedInteriorLightingGuard.OwnerAmbientEstablished) return true;
+            __state = ClonedInteriorLightingGuard.BeginExteriorSample();
+            return __state;
+        }
+
+        public static void Postfix(bool __state)
+        {
+            if (__state) ClonedInteriorLightingGuard.EndExteriorSample();
         }
     }
 
@@ -577,7 +707,7 @@ namespace SeamlessInteriors
     {
         public static bool Prefix()
         {
-            if (ClonedInteriorLightingGuard.IsOwnerWriting) return true;
+            if (ClonedInteriorLightingGuard.IsOwnerWriting || ClonedInteriorLightingGuard.IsExteriorSampling) return true;
             return !ClonedInteriorLightingGuard.OwnerAmbientEstablished;
         }
     }
