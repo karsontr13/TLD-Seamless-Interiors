@@ -25,11 +25,14 @@
 *   **Strict AI Pathfinding & Collision Boundaries:** Generates a precise, hollow `BoxCollider` perimeter combined with custom `NavMeshObstacle` components around interiors. This physically prevents wildlife from clipping through walls during high-velocity flee or scent-tracking behaviors.
 *   **Deterministic Loot Synchronization:** Automatically handles spatial deduplication and PDID generation for gear items upon the first load, ensuring containers and originally spawned items transition flawlessly into the merged exterior space.
 *   **Indoors, you can switch between the original interior lighting and exterior lighting systems. (You can switch between modes using the F8 key)**
+*   **Clean windows by hand:** look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window stays clean from inside and outside, and is kept with your save.
+*   **In-game settings:** with ModSettings installed, the mod's options are under Options > Mod Settings > Seamless Interiors. Without it, they are in `UserData/MelonPreferences.cfg`.
 
 ### ⚙️ Installation Guide
 
 1.  Ensure you have **MelonLoader** installed on your PC.
 2.  Download the latest version of the mod (`SeamlessInteriors.dll`) from the **Releases** section.
 3.  Copy the `.dll` file into the `Mods` folder in your The Long Dark directory.
+    *   Optional: install **ModSettings** as well to change the mod's options in game.
 4.  Launch the game and enjoy your seamless world!
 
