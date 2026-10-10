@@ -1,0 +1,18 @@
+# Build output and IDE state
+bin/
+obj/
+.vs/
+
+# Claude Code: local session state and instructions stay on this computer
+.claude/
+CLAUDE.md
+
+# Backups and archives
+*.bak
+*.zip
+_yedek*
+_arsiv/
+
+# Personal working files, kept off GitHub by choice (owner, 2026-10-10)
+Docs/Vitrin/
+Tools/
