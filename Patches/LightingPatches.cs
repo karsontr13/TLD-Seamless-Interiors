@@ -325,6 +325,8 @@ namespace SeamlessInteriors
         private const float EXTERIOR_SAMPLE_INTERVAL = 1f;
         private static bool s_ViewOutSwapped;
         private static AmbientState s_AmbientBeforeViewOut;
+        private static UnityEngine.Rendering.SphericalHarmonicsL2 s_ViewOutRoomProbe;
+        private static bool s_ViewOutRoomProbeSaved;
         private static bool s_ExteriorSampling;
         private static int s_ExteriorSampleFrame;
         private static float s_ExteriorSampledAt = -1000f;
@@ -335,6 +337,9 @@ namespace SeamlessInteriors
             if (s_ViewOutSwapped || !ExteriorAmbientForViewsOut) return;
             if (s_Owner == null || !s_HasOwnerAmbient || !s_HasExteriorAmbient) return;
             s_AmbientBeforeViewOut = AmbientState.Capture(false);
+            // A room with no probe of its own on record (the dark fallback) has it read here, to be put back.
+            s_ViewOutRoomProbeSaved = s_ExteriorAmbient.HasProbe && !s_OwnerAmbient.HasProbe;
+            if (s_ViewOutRoomProbeSaved) s_ViewOutRoomProbe = RenderSettings.ambientProbe;
             s_ExteriorAmbient.Apply();
             s_ViewOutSwapped = true;
             for (int i = 0; i < 4; i++) s_RoomAmbientForShaders[i] = Shader.GetGlobalVector(s_AmbientShaderIds[i]);
@@ -375,8 +380,13 @@ namespace SeamlessInteriors
             s_AmbientBeforeViewOut.Apply();
             if (s_ExteriorAmbient.HasProbe && s_HasOwnerAmbient && s_OwnerAmbient.HasProbe)
             {
-                try { RenderSettings.ambientProbe = s_OwnerAmbient.Probe; } catch { }
+                try { AmbientState.SetProbe(s_OwnerAmbient.Probe); } catch { }
             }
+            else if (s_ViewOutRoomProbeSaved)
+            {
+                try { AmbientState.SetProbe(s_ViewOutRoomProbe); } catch { }
+            }
+            s_ViewOutRoomProbeSaved = false;
         }
 
         public static bool IsExteriorSampling
@@ -404,9 +414,20 @@ namespace SeamlessInteriors
             s_ExteriorSampling = false;
             if (!sameFrame) return;
             // The outdoor writer wrote nothing: keep the outdoor ambient already held.
+            // The writer sets colours and probe only: mode and intensity stay as captured on the way in (taking the
+            // room's darkened the outdoors on exit, 2026-10-10); its probe is rescaled from the room's intensity.
             if (!s_AmbientBeforeExteriorSample.MatchesCurrent())
             {
-                s_ExteriorAmbient = AmbientState.Capture();
+                AmbientState sampled = AmbientState.Capture();
+                if (s_HasExteriorAmbient)
+                {
+                    float room = AmbientState.LinearIntensity(sampled.Mode, sampled.Intensity);
+                    sampled.Mode = s_ExteriorAmbient.Mode;
+                    sampled.Intensity = s_ExteriorAmbient.Intensity;
+                    float outdoor = AmbientState.LinearIntensity(sampled.Mode, sampled.Intensity);
+                    if (sampled.HasProbe && room > 1e-6f) sampled.Probe = sampled.Probe * (outdoor / room);
+                }
+                s_ExteriorAmbient = sampled;
                 s_HasExteriorAmbient = true;
             }
             s_AmbientBeforeExteriorSample.Apply();
@@ -512,9 +533,22 @@ namespace SeamlessInteriors
 
                 if (HasProbe)
                 {
-                    try { RenderSettings.ambientProbe = Probe; }
+                    try { SetProbe(Probe); }
                     catch { }
                 }
+            }
+
+            // Unity scales a probe it is handed by the linear ambient intensity (Skybox mode) and reads it
+            // back scaled, so each read-and-write darkened it (at 0.3, x0.073 a time: the room blinked, 2026-10-10).
+            public static void SetProbe(UnityEngine.Rendering.SphericalHarmonicsL2 probe)
+            {
+                float k = LinearIntensity(RenderSettings.ambientMode, RenderSettings.ambientIntensity);
+                RenderSettings.ambientProbe = k > 1e-6f ? probe * (1f / k) : probe;
+            }
+
+            public static float LinearIntensity(UnityEngine.Rendering.AmbientMode mode, float intensity)
+            {
+                return mode == UnityEngine.Rendering.AmbientMode.Skybox ? Mathf.GammaToLinearSpace(intensity) : 1f;
             }
 
             public bool MatchesCurrent()
