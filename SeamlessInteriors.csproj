@@ -112,6 +112,11 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\Il2CppTLD.PDID.dll</HintPath>
     </Reference>
+    <!-- Optional at run time (MelonOptionalDependencies): the in-game settings page. -->
+    <Reference Include="ModSettings">
+      <HintPath>$(TheLongDarkPath)\Mods\ModSettings.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="MelonLoader">
       <HintPath>$(TheLongDarkPath)\MelonLoader\net6\MelonLoader.dll</HintPath>
     </Reference>
@@ -209,6 +214,8 @@
     <Compile Include="Core\SeamlessInteriorsMod.WindowOpenings.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowPairing.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowFrostState.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ModSettingsPage.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.WindowClearing.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowSnow.RoomToBuilding.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.ParkedRoomShadow.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowFit.cs" />
@@ -219,6 +226,7 @@
     <Compile Include="Core\SeamlessInteriorsMod.OutsideInBuildings.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.OutsideInPortals.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.ShellWindows.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ShapedViews.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InsideFlag.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.LegacyImport.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InteractiveState.cs" />
@@ -259,6 +267,14 @@
     <Compile Include="Patches\ParkedSnowBoxPatches.cs" />
     <Compile Include="Patches\WindInstanceFix.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <!-- Showcase video camera; dev builds only: -p:SIDev=true -->
+  <ItemGroup Condition="'$(SIDev)' == 'true'">
+    <Compile Include="Core\Dev\CineCam.cs" />
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.ImageConversionModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
