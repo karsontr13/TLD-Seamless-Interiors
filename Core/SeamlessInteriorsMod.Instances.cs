@@ -422,6 +422,10 @@ namespace SeamlessInteriors
         public readonly List<GameObject> HiddenOutsiders = new List<GameObject>();
         public bool OutsidersRecorded = false;
 
+        // Scene load count at this building's last whole-scene exit search. The quick physics
+        // search on the way out is trusted only within that same load (see QuickExitSearch).
+        public int FullExitSearchLoad = -1;
+
         // When the ParticleKiller trigger is built, the real interior bounds are
         // expanded by (1, 3, 1) (SetupWeatherAndParticles / ReattachPersistedInterior).
         // Shrinking by the same amount recovers the true volume.

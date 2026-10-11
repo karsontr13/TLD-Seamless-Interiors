@@ -35,6 +35,17 @@ namespace SeamlessInteriors
 
         private static Renderer[] s_Renderers;
 
+        // Set for one exit pass: the loose objects a physics query found around the building
+        // stand in for the whole scene (see QuickExitSearch).
+        private static Il2Cpp.GearItem[] s_LocalGear;
+        private static Il2CppTLD.Placement.Placeable[] s_LocalPlaceables;
+
+        public static void SetLocal(Il2Cpp.GearItem[] gear, Il2CppTLD.Placement.Placeable[] placeables)
+        {
+            s_LocalGear = gear;
+            s_LocalPlaceables = placeables;
+        }
+
         /// <summary>Starts a mutation-free read block (e.g. the save flow).</summary>
         public static void Begin()
         {
@@ -72,6 +83,7 @@ namespace SeamlessInteriors
 
         public static void InvalidateAll()
         {
+            SetLocal(null, null);
             InvalidateVolatile();
             s_Renderers = null;
             s_BatchDepth = 0;
@@ -83,6 +95,7 @@ namespace SeamlessInteriors
         // batch scope, otherwise scan fresh.
         public static Il2Cpp.GearItem[] GearAll()
         {
+            if (s_LocalGear != null) return s_LocalGear;
             if (s_BatchDepth > 0 && s_Gear != null) return s_Gear;
             long perf = Probe.Begin();
             var r = UnityEngine.Object.FindObjectsOfType<Il2Cpp.GearItem>(true);
@@ -93,6 +106,7 @@ namespace SeamlessInteriors
 
         public static Il2CppTLD.Placement.Placeable[] PlaceablesAll()
         {
+            if (s_LocalPlaceables != null) return s_LocalPlaceables;
             if (s_BatchDepth > 0 && s_Placeables != null) return s_Placeables;
             long perf = Probe.Begin();
             var r = UnityEngine.Object.FindObjectsOfType<Il2CppTLD.Placement.Placeable>(true);
