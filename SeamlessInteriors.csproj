@@ -273,7 +273,6 @@
   </ItemGroup>
   <!-- Showcase video camera; dev builds only: -p:SIDev=true -->
   <ItemGroup Condition="'$(SIDev)' == 'true'">
-    <Compile Include="Core\Dev\CineCam.cs" />
     <Reference Include="UnityEngine.ImageConversionModule">
       <HintPath>$(TheLongDarkPath)\MelonLoader\Il2CppAssemblies\UnityEngine.ImageConversionModule.dll</HintPath>
       <Private>False</Private>

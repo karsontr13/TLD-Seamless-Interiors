@@ -636,30 +636,6 @@ namespace SeamlessInteriors
                 }
             }
 
-            // ─── F11: "PRETEND THE SAFE IS CRACKED" EXPERIMENT (reversible) ───
-            // SHIFT+F11 forces the interaction under the crosshair instead - the call a
-            // click would make. Both live in SeamlessInteriorsMod.Interactivity.cs.
-            if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F11))
-            {
-                bool force = UnityEngine.Input.GetKey(UnityEngine.KeyCode.LeftShift)
-                          || UnityEngine.Input.GetKey(UnityEngine.KeyCode.RightShift);
-                try
-                {
-                    if (force)
-                    {
-                        ForceCrosshairInteraction();
-                        s_LightingModeMessage = "Nisangahtaki etkilesim zorlandi (loga bak)";
-                    }
-                    else
-                    {
-                        ToggleSafeCrackedExperiment();
-                        s_LightingModeMessage = "Kasa deneyi degistirildi (loga bak)";
-                    }
-                    s_LightingModeMessageTimer = 4f;
-                }
-                catch (System.Exception ex) { MelonLogger.Warning($"[DENEY] Hata: {ex}"); }
-            }
-
             // ─── F10: INTERACTION REPAIR (manual) ───
             // Re-enables item colliders left disabled in the clone the player is inside.
             // SHIFT+F10 shows the indoor temperatures instead (see SeamlessInteriorsMod.VanillaView.cs).
