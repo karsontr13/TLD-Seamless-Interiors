@@ -1691,6 +1691,11 @@ namespace SeamlessInteriors
 
             // The building's own glass stays until its views have fully faded in, and comes back the
             // moment they start fading out. See ViewFade.cs.
+            // Before the fade starts, so a window that is due is frosted when its view first shows and
+            // not held clean by it. Asking is what frosts it (WindowFrostState.cs).
+            if (s_OI.Level <= 0f)
+                for (int i = 0; i < s_OutsideInApertures.Count; i++) IsWindowCleaned(s_OutsideInInstanceId, i);
+
             s_OI.Level = Mathf.MoveTowards(s_OI.Level, s_OI.CamerasOn ? 1f : 0f, OutsideInFadeStep());
             bool live = s_OI.CamerasOn && s_OI.Level >= 1f;
             ShowShellGlassPastRange(!live);

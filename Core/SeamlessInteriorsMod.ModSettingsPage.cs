@@ -100,8 +100,13 @@ namespace SeamlessInteriors
             public bool SeeThroughWindows = true;
 
             [ModSettings.Name("Clean windows by hand")]
-            [ModSettings.Description("Look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window stays clean, from inside and outside, and is kept with your save.")]
+            [ModSettings.Description("Look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window is clean from inside and outside, and is kept with your save.")]
             public bool CleanWindowsByHand = true;
+
+            [ModSettings.Name("Windows frost over again after (hours)")]
+            [ModSettings.Description("Game hours until a cleaned window frosts over again. A fire burning in the building holds the count at zero. Heavy snow and blizzards shorten it. 0: a cleaned window stays clean for ever.")]
+            [ModSettings.Slider(0f, 240f, 21, NumberFormat = "{0:F0}")]
+            public float WindowFrostReturnsAfter = 48f;
 
             [ModSettings.Name("Windows start clean")]
             [ModSettings.Description("Off, as in the base game: windows start frosted with snow in their frames. On: every window you have not touched starts clean.")]
@@ -180,6 +185,7 @@ namespace SeamlessInteriors
                 InteriorLighting = (s_PrefInteriorLightingMode?.Value ?? 0) == 1 ? LightingChoice.DarkAtmosphere : LightingChoice.OutdoorLighting;
                 SeeThroughWindows = s_PrefEnableWindowPortals?.Value ?? true;
                 CleanWindowsByHand = s_PrefCleanWindowsByHand?.Value ?? true;
+                WindowFrostReturnsAfter = Mathf.Clamp(s_PrefWindowFrostReturnHours?.Value ?? 48f, 0f, 240f);
                 WindowsStartClean = s_PrefClearWindowPanes?.Value ?? false;
                 SnowInWindowFrames = s_PrefInsideOutShowSnowSlab?.Value ?? true;
                 WindowViewSharpness = Mathf.Clamp(s_PrefWindowPortalResolutionScale?.Value ?? 1f, 0.25f, 1f);
@@ -204,6 +210,7 @@ namespace SeamlessInteriors
                 Set(s_PrefInteriorLightingMode, InteriorLighting == LightingChoice.DarkAtmosphere ? 1 : 0);
                 Set(s_PrefEnableWindowPortals, SeeThroughWindows);
                 Set(s_PrefCleanWindowsByHand, CleanWindowsByHand);
+                Set(s_PrefWindowFrostReturnHours, WindowFrostReturnsAfter);
                 Set(s_PrefClearWindowPanes, WindowsStartClean);
                 Set(s_PrefInsideOutShowSnowSlab, SnowInWindowFrames);
                 Set(s_PrefWindowPortalResolutionScale, WindowViewSharpness);

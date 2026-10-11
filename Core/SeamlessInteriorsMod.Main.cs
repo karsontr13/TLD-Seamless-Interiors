@@ -340,7 +340,30 @@ namespace SeamlessInteriors
                 "CleanWindowsByHand",
                 true,
                 "Clean Windows By Hand",
-                "Look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window stays clean, from inside and outside, and is kept with the save."
+                "Look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window is clean from inside and outside, is kept with the save, and frosts over again after a while (see Windows Frost Over Again After)."
+            );
+
+            // How long a cleaned window stays clean (WindowFrostState.cs). New key, 2026-10-10.
+            s_PrefWindowFrostReturnHours = s_PrefCategory.CreateEntry<float>(
+                "WindowFrostReturnHours",
+                48f,
+                "Windows Frost Over Again After",
+                "Game hours until a cleaned window frosts over again. A fire burning in the building holds the count at zero. Heavy snow and blizzards shorten it. 0: a cleaned window stays clean for ever."
+            );
+
+            // How much faster the frost returns in heavy weather. New keys, 2026-10-10. Not on the
+            // settings page: tuned by the owner, like the frost strengths.
+            s_PrefWindowFrostHeavySnowRate = s_PrefCategory.CreateEntry<float>(
+                "WindowFrostHeavySnowRate",
+                2f,
+                "Window Frost Rate In Heavy Snow",
+                "How many times faster a cleaned window frosts over again while it is snowing heavily. 1: no faster."
+            );
+            s_PrefWindowFrostBlizzardRate = s_PrefCategory.CreateEntry<float>(
+                "WindowFrostBlizzardRate",
+                4f,
+                "Window Frost Rate In A Blizzard",
+                "How many times faster a cleaned window frosts over again during a blizzard. 1: no faster."
             );
 
             // ─── Window tuning. These started life as live dials and are kept as preferences so the
@@ -523,6 +546,12 @@ namespace SeamlessInteriors
 
             // The player cleaning one window by hand. (see SeamlessInteriorsMod.WindowClearing.cs)
             TickWindowClearing();
+
+            // Heavy weather brings the frost back sooner, and a fire in a building holds it off its
+            // cleaned windows. (see SeamlessInteriorsMod.WindowFrostState.cs)
+            TickWindowFrostWeather();
+            TickWindowFrostFires();
+            TickWindowFrostReturn();
 
             // Room objects a building's row hides stay hidden. (see HideRoomObjectsByRow)
             KeepRowHiddenRoomObjectsOff();
