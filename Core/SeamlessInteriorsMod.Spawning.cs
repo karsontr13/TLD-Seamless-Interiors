@@ -1037,8 +1037,9 @@ namespace SeamlessInteriors
 
         private static bool QuickExitSearch(SeamlessInteriorInstance instance)
         {
+            // Also used while the region loads: every closed building is hidden this way, and a
+            // whole-scene search each cost 95-300 ms, measured (15 buildings on Mystery Lake).
             if (!IsFastInteriorToggleEnabled) return false;
-            if (!instance.ContentHydrated) return false;   // the purge waits for it anyway
 
             // The widest margin any of the three passes uses (the purge's).
             Bounds box;

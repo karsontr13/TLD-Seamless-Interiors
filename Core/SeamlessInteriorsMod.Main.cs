@@ -2065,6 +2065,8 @@ namespace SeamlessInteriors
             CleanupLostAndFoundBoxes();
 
             ApplySafehouseCustomizationFix(instance);
+            trace?.End("temizlik");
+            trace?.Begin();
 
             // ─── CONTENT ───
             //
@@ -2096,6 +2098,8 @@ namespace SeamlessInteriors
                 EnsureHydratedNow(instance, playerSavedInside ? "oyuncu icerde kaydetmis" : "tembel yukleme kapali");
             }
 
+            trace?.End("doldurma-istegi");
+            trace?.Begin();
             InitializeVisibilityAndWatchdog(instance);
 
             // Fix the wind audio once Run() finishes in a new save.
@@ -2103,7 +2107,7 @@ namespace SeamlessInteriors
 
             if (trace != null)
             {
-                trace.End("temizlik-bekci");
+                trace.End("gorunurluk-bekci");
                 trace.Log("PERF-YUKLEME", instance.Config.ResolvedInstanceId,
                     $"esya={InteriorScan.Gear(instance.MasterInterior).Length} mobilya={InteriorScan.Placeables(instance.MasterInterior).Length} icerde={playerSavedInside}");
             }
