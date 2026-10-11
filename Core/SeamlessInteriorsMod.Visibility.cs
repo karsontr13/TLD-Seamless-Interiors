@@ -634,6 +634,7 @@ namespace SeamlessInteriors
         // ─────────────────────────────────────────────────────────────────────
         private static float s_NextStraySweep = 0f;
         private static float s_LastFullStraySweep = 0f;
+        private static bool s_FirstStraySweepDone;
         private static float s_StraySweepInterval = STRAY_SWEEP_INTERVAL;
         private static int s_QuietStraySweeps = 0;
         private static int s_SweptGearCount = -1;
@@ -657,8 +658,11 @@ namespace SeamlessInteriors
             // Strays are new objects; with the world's item counts unchanged there is
             // nothing to scan for. The fallback interval covers the case where something
             // moved without the counts changing.
-            if (!HasGamePopulationChanged(s_SweptGearCount, s_SweptPlaceableCount)
-                && Time.time - s_LastFullStraySweep < STRAY_SWEEP_FALLBACK_INTERVAL) return;
+            // Only the first sweep after a load searches the whole scene: it is the net for what the
+            // game's save put back without a live collider. Later sweeps use the physics query.
+            bool full = !s_FirstStraySweepDone;
+            bool timed = Time.time - s_LastFullStraySweep >= STRAY_SWEEP_FALLBACK_INTERVAL;
+            if (!full && !timed && !HasGamePopulationChanged(s_SweptGearCount, s_SweptPlaceableCount)) return;
 
             // Closed buildings near the player. An OPEN building is the one the player is
             // standing in and owns its own contents; a parked one belongs to another region.
@@ -674,7 +678,8 @@ namespace SeamlessInteriors
 
             if (s_SweepTargets.Count == 0) return;
 
-            s_LastFullStraySweep = Time.time;
+            if (full || timed) s_LastFullStraySweep = Time.time;
+            s_FirstStraySweepDone = true;
 
             long perf = PerfProbe.Begin();
             int adopted = 0, purged = 0;
@@ -687,6 +692,8 @@ namespace SeamlessInteriors
                     SeamlessInteriorInstance instance = s_SweepTargets[i];
                     if (instance.MasterInterior == null) continue;
 
+                    if (!full) QuickExitSearch(instance);
+
                     adopted += AdoptStrayInteriorObjects(instance);
 
                     // Copies of this building's own loot that the GAME's save restored into
@@ -694,10 +701,12 @@ namespace SeamlessInteriors
                     // steps outside, and adoption only catches part of them.
                     // (see SeamlessInteriorsMod.GearLeak.cs)
                     purged += PurgeLeakedCloneGearDuplicates(instance);
+                    SceneScan.SetLocal(null, null);
                 }
             }
             finally
             {
+                SceneScan.SetLocal(null, null);
                 SceneScan.End();
             }
 
@@ -733,6 +742,7 @@ namespace SeamlessInteriors
             s_InitialCheckScheduled = false;
             s_NextStraySweep = 0f;
             s_LastFullStraySweep = 0f;
+            s_FirstStraySweepDone = false;
             s_StraySweepInterval = STRAY_SWEEP_INTERVAL;
             s_QuietStraySweeps = 0;
             s_SweptGearCount = -1;
