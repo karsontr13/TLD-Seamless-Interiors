@@ -163,7 +163,11 @@ namespace SeamlessInteriors
                 case TAG_BREAKDOWN:
                     {
                         var x = c.TryCast<Il2Cpp.BreakDown>();
-                        if (x != null) x.Deserialize(data);
+                        if (x == null) return;
+                        x.Deserialize(data);
+                        // The game's post-load re-break sticks nearby objects to the ground by their pivot
+                        // (a shelf around a broken drawer sank 1.2 m); SI restores those positions itself.
+                        x.m_PostLoadBreakdown = false;
                         return;
                     }
                 case TAG_HARVESTABLE:
