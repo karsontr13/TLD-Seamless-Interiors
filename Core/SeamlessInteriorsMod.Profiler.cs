@@ -25,7 +25,7 @@ namespace SeamlessInteriors
                 WatchdogVisibility, WatchdogRepair, WatchdogSweep, InitialSync, PlaceContext, Save, Portal,
                 // ─── breakdowns, not counted again ───
                 PortalHydrate, PortalActivate, PortalForceRenderers, PortalColliders, PortalHideSync,
-                PortalItemsVisible, PortalMarkInside, ExitItems, ExitAudio, ExitDeactivate,
+                PortalItemsVisible, PortalMarkInside, ExitItems, ExitAudio, ExitDeactivate, ExitAdopt, ExitPurge,
                 SaveGear, SavePlaceables, SaveContainers, SaveState, SaveJunk,
                 ModLoad, ModFirstBuild, Count
             }
@@ -52,7 +52,7 @@ namespace SeamlessInteriors
                 "bekci-gorunurluk", "bekci-onarim", "bekci-supurme", "ilk-senkron", "baglam",
                 "kayit", "kapi-gecisi",
                 "giris-dolum", "giris-acma", "giris-renderer", "giris-collider", "giris-gizleme",
-                "giris-esya", "giris-konum", "cikis-esya", "cikis-ses", "cikis-kapatma",
+                "giris-esya", "giris-konum", "cikis-esya", "cikis-ses", "cikis-kapatma", "cikis-sahiplenme", "cikis-kopya",
                 "kayit-esya", "kayit-mobilya", "kayit-konteyner", "kayit-durum", "kayit-cop",
                 "mod-yukleme", "mod-ilk-kurulum"
             };

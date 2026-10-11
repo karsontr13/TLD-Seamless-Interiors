@@ -60,10 +60,71 @@ namespace SeamlessInteriors
             // in it belongs to the world and not to the clone.
             if (!instance.ContentHydrated) return 0;
 
+            Transform masterT = instance.MasterInterior.transform;
+
+            // Coarse AABB pre-filter, as everywhere else: one float compare rejects
+            // almost every item in the region. A leaked copy always stands at the
+            // building's own coordinates, so nothing real is filtered away.
+            Bounds filter;
+            bool hasFilter = TryGetWorldFilterBounds(instance, out filter, 1.6f);
+
+            float sqrRadius = LEAKED_GEAR_MATCH_RADIUS * LEAKED_GEAR_MATCH_RADIUS;
+
+            // LOOSE CANDIDATES FIRST. Copies only come back with a load, so on nearly every
+            // door there are none and the clone's own index below is never built.
+            var candidates = new List<LeakCandidate>();
+
+            foreach (var gear in SceneScan.GearAll())
+            {
+                if (gear == null || gear.gameObject == null) continue;
+
+                Vector3 pos = gear.transform.position;
+                bool judgedAsLifted = false;
+                if (hasFilter && !filter.Contains(pos))
+                {
+                    // LEFT BEHIND WHERE THE ROOM USED TO STAND. A building that was co-located when
+                    // the game last saved and is parked now has its leaked copies at the OLD spot,
+                    // ParkOffset below the room, where this purge never looks. Found 2026-09-18, the
+                    // hour every building was parked: a spray can and paper stacks hanging inside the
+                    // lake cabins' shells. Measured: lifted by ParkOffset each sat 0.00 m from the
+                    // room's own item of the same name, while a backer note lying near the same cabin
+                    // landed outside the room and matched nothing. So such an item is judged AS IF
+                    // lifted. It is still only deleted if it matches something the room owns, by id or
+                    // by name and place, so an item genuinely outdoors, on a porch say, is untouched.
+                    // Once purged the game stops saving it, so this does its work once per old save.
+                    if (!instance.Config.IsParked) continue;
+                    // Carried the way the room was: up, and turned if the room has since been
+                    // turned to its shell (ParkedInteriorPoint; with no turn it is pos + ParkOffset).
+                    Vector3 lifted = ParkedInteriorPoint(instance, pos);
+                    if (!filter.Contains(lifted)) continue;
+                    pos = lifted;
+                    judgedAsLifted = true;
+                }
+
+                // Already clone content: this is the copy we are keeping.
+                if (gear.transform.IsChildOf(masterT)) continue;
+
+                // A switched-off loose item is not what this is about - it is invisible,
+                // so it is not the loot left hanging in the air - and it may be something
+                // the game has deliberately parked. Only live copies are removed.
+                if (!gear.gameObject.activeInHierarchy) continue;
+
+                // NEVER touch anything on the player, in their hands or in their
+                // inventory, and never anything under the game's own placement root -
+                // that is where the player's belongings live.
+                if (IsPlayerOrInventory(gear.transform)) continue;
+                if (IsUnderPlacementRoot(gear.transform)) continue;
+
+                // Another building's clone owns this one.
+                if (BelongsToAnotherInstance(instance, gear.transform)) continue;
+
+                candidates.Add(new LeakCandidate { Gear = gear, Pos = pos, Lifted = judgedAsLifted });
+            }
+
+            if (candidates.Count == 0) return 0;
+
             var owned = InteriorScan.Gear(instance.MasterInterior);
             if (owned.Length == 0) return 0;
-
-            Transform masterT = instance.MasterInterior.transform;
 
             var ownedGuids = new HashSet<string>();
             var ownedCells = new Dictionary<long, List<DedupEntry>>();
@@ -134,58 +195,14 @@ namespace SeamlessInteriors
                 bucket.Add(entry);
             }
 
-            // Coarse AABB pre-filter, as everywhere else: one float compare rejects
-            // almost every item in the region. A leaked copy always stands at the
-            // building's own coordinates, so nothing real is filtered away.
-            Bounds filter;
-            bool hasFilter = TryGetWorldFilterBounds(instance, out filter, 1.6f);
-
-            float sqrRadius = LEAKED_GEAR_MATCH_RADIUS * LEAKED_GEAR_MATCH_RADIUS;
             int purged = 0;
 
-            foreach (var gear in SceneScan.GearAll())
+            foreach (var c in candidates)
             {
+                var gear = c.Gear;
                 if (gear == null || gear.gameObject == null) continue;
-
-                Vector3 pos = gear.transform.position;
-                bool judgedAsLifted = false;
-                if (hasFilter && !filter.Contains(pos))
-                {
-                    // LEFT BEHIND WHERE THE ROOM USED TO STAND. A building that was co-located when
-                    // the game last saved and is parked now has its leaked copies at the OLD spot,
-                    // ParkOffset below the room, where this purge never looks. Found 2026-09-18, the
-                    // hour every building was parked: a spray can and paper stacks hanging inside the
-                    // lake cabins' shells. Measured: lifted by ParkOffset each sat 0.00 m from the
-                    // room's own item of the same name, while a backer note lying near the same cabin
-                    // landed outside the room and matched nothing. So such an item is judged AS IF
-                    // lifted. It is still only deleted if it matches something the room owns, by id or
-                    // by name and place, so an item genuinely outdoors, on a porch say, is untouched.
-                    // Once purged the game stops saving it, so this does its work once per old save.
-                    if (!instance.Config.IsParked) continue;
-                    // Carried the way the room was: up, and turned if the room has since been
-                    // turned to its shell (ParkedInteriorPoint; with no turn it is pos + ParkOffset).
-                    Vector3 lifted = ParkedInteriorPoint(instance, pos);
-                    if (!filter.Contains(lifted)) continue;
-                    pos = lifted;
-                    judgedAsLifted = true;
-                }
-
-                // Already clone content: this is the copy we are keeping.
-                if (gear.transform.IsChildOf(masterT)) continue;
-
-                // A switched-off loose item is not what this is about - it is invisible,
-                // so it is not the loot left hanging in the air - and it may be something
-                // the game has deliberately parked. Only live copies are removed.
-                if (!gear.gameObject.activeInHierarchy) continue;
-
-                // NEVER touch anything on the player, in their hands or in their
-                // inventory, and never anything under the game's own placement root -
-                // that is where the player's belongings live.
-                if (IsPlayerOrInventory(gear.transform)) continue;
-                if (IsUnderPlacementRoot(gear.transform)) continue;
-
-                // Another building's clone owns this one.
-                if (BelongsToAnotherInstance(instance, gear.transform)) continue;
+                Vector3 pos = c.Pos;
+                bool judgedAsLifted = c.Lifted;
 
                 bool isCopy = false;
 
@@ -233,6 +250,13 @@ namespace SeamlessInteriors
             }
 
             return purged;
+        }
+
+        private struct LeakCandidate
+        {
+            public Il2Cpp.GearItem Gear;
+            public Vector3 Pos;
+            public bool Lifted;
         }
 
         private static long LeakCellKey(Vector3 p)

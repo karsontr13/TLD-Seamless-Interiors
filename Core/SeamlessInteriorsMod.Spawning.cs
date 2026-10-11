@@ -1025,7 +1025,9 @@ namespace SeamlessInteriors
             // at once - no item is left hanging outside.
             if (!visible)
             {
+                long perfAdopt = PerfProbe.Begin();
                 AdoptStrayInteriorObjects(instance);
+                PerfProbe.End(PerfProbe.Section.ExitAdopt, perfAdopt);
 
                 // ...and then throw away the copies of this building's own loot that the
                 // GAME's save put back into the region. Adoption cannot be relied on for
@@ -1034,7 +1036,9 @@ namespace SeamlessInteriors
                 // MasterInterior, so the SetActive(false) below cannot hide them and they
                 // stay hanging in the air once the player is outside.
                 // (see SeamlessInteriorsMod.GearLeak.cs)
+                long perfPurge = PerfProbe.Begin();
                 PurgeLeakedCloneGearDuplicates(instance);
+                PerfProbe.End(PerfProbe.Section.ExitPurge, perfPurge);
             }
 
             Transform masterT = instance.MasterInterior.transform;
