@@ -390,31 +390,7 @@ namespace SeamlessInteriors
 
             if (isExiting)
             {
-                Vector3 spawnPos = GetDoorExitPosition(matchedInstance, __instance, out bool vanillaExitPoint);
-
-                // DYNAMIC ELEVATION CORRECTION (guards against config mistakes).
-                // If the author raised ExitPosition by hand instead of using YOffset,
-                // spawnPos.y ends up hanging in the air. The game's own exit points are on the ground already.
-                if (!vanillaExitPoint && matchedInstance.ExteriorShell != null && matchedInstance.MasterInterior != null)
-                {
-                    float yDelta = matchedInstance.MasterInterior.transform.position.y - matchedInstance.ExteriorShell.transform.position.y;
-
-                    if (Mathf.Abs(yDelta) > 1.0f)
-                    {
-                        float distToHigh = Mathf.Abs(spawnPos.y - matchedInstance.MasterInterior.transform.position.y);
-                        float distToLow = Mathf.Abs(spawnPos.y - matchedInstance.ExteriorShell.transform.position.y);
-
-                        // Closer to the RAISED clone scene (MasterInterior) means that lift
-                        // (yDelta) is baked into spawnPos. Subtract it to bring the point
-                        // down to the exterior shell's ground level.
-                        if (distToHigh < distToLow)
-                        {
-                            spawnPos.y -= yDelta;
-                            if (SeamlessInteriorsMod.s_DebugBounds)
-                                MelonLogger.Msg($"[PORTAL-FIX] Dısarı cıkıs Y ekseni otomatik duzeltildi. Cıkarılan Yükseklik: {yDelta}");
-                        }
-                    }
-                }
+                Vector3 spawnPos = ResolveExitPoint(matchedInstance, __instance);
 
                 // ORDER MATTERS: close the building FIRST - hide the items, deactivate
                 // MasterInterior, bring the shell (and a sub-interior's parent shell) back.
@@ -526,6 +502,44 @@ namespace SeamlessInteriors
 
             Transform sp = door.transform.Find("SpawnPoint");
             return sp != null ? sp.position : door.transform.position;
+        }
+
+        // The outdoor point a clone door lets the player out at, before it is snapped to the ground.
+        // Also asked by the save (SafeSavePositionPatch), so a save made in a parked room stands there.
+        internal static Vector3 ResolveExitPoint(SeamlessInteriorInstance instance, LoadScene door)
+        {
+            Vector3 spawnPos = GetDoorExitPosition(instance, door, out bool vanillaExitPoint);
+
+            // DYNAMIC ELEVATION CORRECTION (guards against config mistakes).
+            // If the author raised ExitPosition by hand instead of using YOffset,
+            // spawnPos.y ends up hanging in the air. The game's own exit points are on the ground already.
+            if (!vanillaExitPoint && instance.ExteriorShell != null && instance.MasterInterior != null)
+            {
+                float yDelta = instance.MasterInterior.transform.position.y - instance.ExteriorShell.transform.position.y;
+
+                if (Mathf.Abs(yDelta) > 1.0f)
+                {
+                    float distToHigh = Mathf.Abs(spawnPos.y - instance.MasterInterior.transform.position.y);
+                    float distToLow = Mathf.Abs(spawnPos.y - instance.ExteriorShell.transform.position.y);
+
+                    // Closer to the RAISED clone scene (MasterInterior) means that lift
+                    // (yDelta) is baked into spawnPos. Subtract it to bring the point
+                    // down to the exterior shell's ground level.
+                    if (distToHigh < distToLow)
+                    {
+                        spawnPos.y -= yDelta;
+                        if (SeamlessInteriorsMod.s_DebugBounds)
+                            MelonLogger.Msg($"[PORTAL-FIX] Dısarı cıkıs Y ekseni otomatik duzeltildi. Cıkarılan Yükseklik: {yDelta}");
+                    }
+                }
+            }
+            return spawnPos;
+        }
+
+        // Is this clone door a way out into the region (not into another interior)?
+        internal static bool IsDoorToRegion(LoadScene door)
+        {
+            return door != null && LeadsToARegion(door.m_SceneToLoad);
         }
 
         // Resolves the outdoor spawn point for the door that was used.
@@ -738,7 +752,7 @@ namespace SeamlessInteriors
 
         private const float SNAP_LIFT = 0f;
 
-        private static Vector3 SnapToGround(Vector3 pos)
+        internal static Vector3 SnapToGround(Vector3 pos)
         {
             Vector3 rayOrigin = pos + Vector3.up * 0.5f;
             float maxDrop = 2.5f;

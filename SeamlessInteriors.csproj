@@ -263,6 +263,7 @@
     <Compile Include="Patches\SafehouseFixes.cs" />
     <Compile Include="Patches\SaveDeletionPatches.cs" />
     <Compile Include="Patches\SaveCommitPatches.cs" />
+    <Compile Include="Patches\SafeSavePositionPatch.cs" />
     <Compile Include="Patches\SpawningPatches.cs" />
     <Compile Include="Patches\SystemPatches.cs" />
     <Compile Include="Patches\ParkedCullEyePatches.cs" />
