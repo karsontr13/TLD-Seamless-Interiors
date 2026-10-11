@@ -1067,9 +1067,6 @@ namespace SeamlessInteriors
 
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
-            // Every load can put copies back into the world: the next exits search the whole scene.
-            s_SceneLoads++;
-
             // A new scene is up, so whatever was being torn down is gone. See
             // SuspendParkedCullEyeForSceneExit.
             ResumeParkedCullEye();

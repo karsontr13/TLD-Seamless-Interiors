@@ -1013,12 +1013,8 @@ namespace SeamlessInteriors
                 bool quick = !visible && QuickExitSearch(instance);
                 SetInteriorItemsVisibleCore(instance, visible);
 
-                // A whole-scene pass over a restored building: later exits of this load may go quick.
-                if (!visible && !quick && instance.ContentHydrated)
-                {
-                    instance.FullExitSearchLoad = s_SceneLoads;
-                    if (PerfProbe.On) MelonLogger.Msg($"[PERF-CIKIS] {instance.Config.ResolvedInstanceId}: tam sahne aramasi");
-                }
+                if (!visible && !quick && PerfProbe.On)
+                    MelonLogger.Msg($"[PERF-CIKIS] {instance.Config.ResolvedInstanceId}: tam sahne aramasi");
             }
             finally
             {
@@ -1033,47 +1029,43 @@ namespace SeamlessInteriors
         // walked every item in the region: 150-400 ms a door on a full Camp Office, measured.
         // A physics query over the building's box finds them for the cost of what stands there.
         //
-        // It sees only objects with a live collider. So the first exit after each load, and
-        // after the building's content is restored, still searches the whole scene: that is when
-        // the game's save puts back copies and pre-mod items, which may stand anywhere.
-        internal static int s_SceneLoads;
+        // It sees only objects with a live collider. Tested 2026-10-12 on a crowded pre-mod
+        // Camp Office: the first exit adopted the same items the whole-scene search did, once
+        // the parked room's old spot was queried too. The stray sweep still searches the scene.
         private const int QUICK_EXIT_BUFFER = 16384;
         private static Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Collider> s_QuickExitHits;
 
         private static bool QuickExitSearch(SeamlessInteriorInstance instance)
         {
             if (!IsFastInteriorToggleEnabled) return false;
-            if (!instance.ContentHydrated || instance.FullExitSearchLoad != s_SceneLoads) return false;
+            if (!instance.ContentHydrated) return false;   // the purge waits for it anyway
 
             // The widest margin any of the three passes uses (the purge's).
             Bounds box;
             if (!TryGetWorldFilterBounds(instance, out box, 1.6f)) return false;
 
             long perf = PerfProbe.Begin();
-            if (s_QuickExitHits == null)
-                s_QuickExitHits = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Collider>(QUICK_EXIT_BUFFER);
-
-            int count = Physics.OverlapBoxNonAlloc(box.center, box.extents, s_QuickExitHits,
-                                                   Quaternion.identity, ~0, QueryTriggerInteraction.Collide);
-            if (count >= QUICK_EXIT_BUFFER) return false;   // overflowed: the list may be missing objects
-
             Transform masterT = instance.MasterInterior.transform;
             var gear = new List<Il2Cpp.GearItem>();
             var placeables = new List<Il2CppTLD.Placement.Placeable>();
             var seen = new HashSet<System.IntPtr>();
 
-            for (int i = 0; i < count; i++)
+            int count = CollectLooseInBox(box.center, box.extents, masterT, gear, placeables, seen);
+            if (count < 0) return false;
+
+            // A PARKED ROOM ALSO HAS ITS OLD SPOT, at the building, where a pre-mod save's
+            // items and the game's leaked copies lie (see TryCarryStrayToParkedRoom). Missed
+            // here in a test: six items there were only adopted by the stray sweep a load later.
+            if (instance.Config.IsParked)
             {
-                Collider c = s_QuickExitHits[i];
-                if (c == null) continue;
-                Transform t = c.transform;
-                if (t.IsChildOf(masterT)) continue;   // the building's own
+                // ParkedInteriorPoint maps the old spot to the room; walk it back a few steps.
+                Vector3 old = box.center - instance.Config.ParkOffset;
+                for (int i = 0; i < 4; i++) old -= ParkedInteriorPoint(instance, old) - box.center;
 
-                var g = c.GetComponentInParent<Il2Cpp.GearItem>();
-                if (g != null && seen.Add(g.Pointer)) gear.Add(g);
-
-                var p = c.GetComponentInParent<Il2CppTLD.Placement.Placeable>();
-                if (p != null && seen.Add(p.Pointer)) placeables.Add(p);
+                // A cube around the box's diagonal covers it at any turn of the room.
+                int oldCount = CollectLooseInBox(old, Vector3.one * box.extents.magnitude, masterT, gear, placeables, seen);
+                if (oldCount < 0) return false;
+                count += oldCount;
             }
 
             SceneScan.SetLocal(gear.ToArray(), placeables.ToArray());
@@ -1082,6 +1074,32 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[PERF-CIKIS] {instance.Config.ResolvedInstanceId}: hizli arama {count} collider, " +
                                 $"{gear.Count} esya, {placeables.Count} mobilya ({(System.Diagnostics.Stopwatch.GetTimestamp() - perf) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:F1} ms)");
             return true;
+        }
+
+        // Loose gear and placeables with a collider in the box. -1 when the buffer overflowed.
+        private static int CollectLooseInBox(Vector3 center, Vector3 extents, Transform masterT,
+            List<Il2Cpp.GearItem> gear, List<Il2CppTLD.Placement.Placeable> placeables, HashSet<System.IntPtr> seen)
+        {
+            if (s_QuickExitHits == null)
+                s_QuickExitHits = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Collider>(QUICK_EXIT_BUFFER);
+
+            int count = Physics.OverlapBoxNonAlloc(center, extents, s_QuickExitHits,
+                                                   Quaternion.identity, ~0, QueryTriggerInteraction.Collide);
+            if (count >= QUICK_EXIT_BUFFER) return -1;
+
+            for (int i = 0; i < count; i++)
+            {
+                Collider c = s_QuickExitHits[i];
+                if (c == null) continue;
+                if (c.transform.IsChildOf(masterT)) continue;   // the building's own
+
+                var g = c.GetComponentInParent<Il2Cpp.GearItem>();
+                if (g != null && seen.Add(g.Pointer)) gear.Add(g);
+
+                var p = c.GetComponentInParent<Il2CppTLD.Placement.Placeable>();
+                if (p != null && seen.Add(p.Pointer)) placeables.Add(p);
+            }
+            return count;
         }
 
         private static void SetInteriorItemsVisibleCore(SeamlessInteriorInstance instance, bool visible)

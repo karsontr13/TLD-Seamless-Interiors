@@ -297,7 +297,6 @@ namespace SeamlessInteriors
             offAfterState = CountInactivePlaceables(instance);
 
             instance.ContentHydrated = true;
-            instance.FullExitSearchLoad = -1;   // freshly restored items: search the whole scene once
             instance.HydrationInProgress = false; instance.HydrationRoutine = null;
 
             // ─── 7. Put the freshly spawned objects into the right visual state ───
