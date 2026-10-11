@@ -44,6 +44,16 @@ namespace SeamlessInteriors
         //
         // Owner, 2026-10-10, on a console prototype of this: the wall views in the store, "I'd call
         // that good for now"; Camp Office window 7 from outside, "That looks pretty darn good."
+        //
+        // LEFT FOR LATER, none of it needed for the above:
+        //  - A view camera that skipped a frame, or was just handed to another window, tells TAA
+        //    nothing for one frame (HasBefore). The player's view of the frame before does not
+        //    depend on which view asks; kept once a frame instead of per camera, the gap goes.
+        //  - The two targets are four full-float channels and only two are used. RGFloat would
+        //    halve them. Untried.
+        //  - Never judged by eye: a frosted window (the frost is on the glass and is told it moves
+        //    like the room), something standing in front of a view, the weapon over a view,
+        //    turning while walking, and a single window looking out from inside.
 
         internal static bool ViewMotionForTaa = true;
 
