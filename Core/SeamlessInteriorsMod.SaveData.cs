@@ -2652,6 +2652,7 @@ namespace SeamlessInteriors
             }
 
             int restoredCount = 0;
+            double worstMs = 0; string worstKey = null; int worstItems = 0;
 
             for (int r = 0; r < records.Count; r++)
             {
@@ -2668,7 +2669,13 @@ namespace SeamlessInteriors
                 try
                 {
                     var loadedItems = new Il2CppSystem.Collections.Generic.List<Il2Cpp.GearItem>();
+                    long t0 = PerfProbe.Begin();
                     containers[i].Deserialize(records[r].data, loadedItems);
+                    if (t0 != 0)
+                    {
+                        double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                        if (ms > worstMs) { worstMs = ms; worstKey = keys[i]; worstItems = loadedItems.Count; }
+                    }
                     restoredCount++;
 
                     if (s_DebugBounds)
@@ -2693,6 +2700,9 @@ namespace SeamlessInteriors
                     if (instance.MasterInterior == null) yield break;
                 }
             }
+
+            if (worstKey != null)
+                MelonLogger.Msg($"[PERF-KONTEYNER] {instance.Config.ResolvedInstanceId}: en pahali '{worstKey}' {worstItems} esya, {worstMs:F1} ms");
 
             if (missed > 0 || s_DebugBounds)
             {

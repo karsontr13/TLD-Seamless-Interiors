@@ -111,15 +111,23 @@ namespace SeamlessInteriors
                 // falls through to the next building.
                 var trace = PerfProbe.Trace.Start();
                 int frames = 0;
+                double worst = 0;
+                string worstStep = null;
                 while (true)
                 {
-                    trace?.Begin();
+                    long t0 = PerfProbe.Begin();
                     bool more = routine.MoveNext();
-                    if (trace != null && more) { trace.End(null); frames++; }
+                    if (trace != null)
+                    {
+                        double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                        trace.Add(null, ms);
+                        if (ms > worst) { worst = ms; worstStep = s_HydrateStepNow; }
+                        frames++;
+                    }
                     if (!more) break;
                     yield return routine.Current;
                 }
-                trace?.Log("PERF-DOLUM", next.Config.ResolvedInstanceId, $"arka plan, {frames} kare");
+                trace?.Log("PERF-DOLUM", next.Config.ResolvedInstanceId, $"arka plan, {frames} kare, en uzun blok adimi: {worstStep}");
             }
 
             s_HydrationPumpRunning = false;
@@ -356,8 +364,12 @@ namespace SeamlessInteriors
         //
         // That happened, and the step had to be worked out from which save files existed.
         // One line per step in front of the work costs nothing and makes the log say it.
+        // The step running now, so the pump can say which one held its worst frame.
+        private static string s_HydrateStepNow;
+
         private static void HydrateStep(SeamlessInteriorInstance instance, string step)
         {
+            s_HydrateStepNow = step;
             if (!s_DebugBounds) return;
             MelonLogger.Msg($"[HYDRATE-ADIM] {instance.Config.ResolvedInstanceId}: {step}");
         }
