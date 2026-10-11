@@ -853,7 +853,13 @@ namespace SeamlessInteriors
                 UpdateOutsideInDressing();
             }
 
-            if (CountOutsideInHeldRooms() > 0) RenderOutsideInPortals(main);
+            if (CountOutsideInHeldRooms() > 0)
+            {
+                // Drawn after the game has finished moving the player's camera, when it can be. See
+                // DrawOutsideInViewsLate.
+                if (OutsideInViewsDrawLate()) s_OutsideInDrawLateFrame = Time.frameCount;
+                else RenderOutsideInPortals(main);
+            }
 
             // Left bound to the building the player is nearest, which is what the code outside this
             // system means by "the building the player is at" (cleaning a window, WindowFrostState).
@@ -1428,6 +1434,52 @@ namespace SeamlessInteriors
         // and vegetation activation late in the frame. An interior clone has no streaming and no
         // late activation - it is a static prefab this mod holds open itself - so there is nothing
         // to be early for. Rendering by hand is what lets the ambient swap below wrap the render.
+
+        // THE VIEWS INTO A ROOM ARE DRAWN FROM THE PLAYER'S EYE AS THE GAME LEAVES IT, NOT AS THE MOD'S
+        // TICK FINDS IT.
+        //
+        // The mod's OnLateUpdate runs before vp_FPSCamera.LateUpdate, where the game finishes
+        // moving the player's camera for the frame. A single window's view was drawn in the tick,
+        // so its room was drawn for one head position and the window round it for another. Owner,
+        // 2026-10-10, at Camp Office window 7: the view "is bouncing up and down disproportionately
+        // to the player camera as I approach the window", and backing up a slope, "there's a jump
+        // in the window camera". Measured that day over 1,545 moving frames: the camera stood up to
+        // 2.1 cm higher or lower, and 2.7 cm to the side, at the end of the frame than where the
+        // tick had read it. With TAA on, that mismatch also smears, and no motion vector can
+        // describe it. The wall views were already drawn from the postfix on
+        // vp_FPSCamera.LateUpdate for the zoom's sake (PortalFrustumPatch.cs); this puts the single
+        // windows there too. The tick still does everything else and only leaves the drawing.
+        //
+        // If that postfix did not run on the frame before (the game's camera component is off),
+        // the tick draws as it always did.
+        private static int s_OutsideInDrawLateFrame = -1;
+        private static int s_OutsideInLateHookFrame = -10;
+        private static bool s_OutsideInLateFaulted;
+
+        private static bool OutsideInViewsDrawLate()
+        {
+            return !s_OutsideInLateFaulted && Time.frameCount - s_OutsideInLateHookFrame <= 1;
+        }
+
+        // Called from the postfix on vp_FPSCamera.LateUpdate, before the outside-in wall cameras.
+        internal static void DrawOutsideInViewsLate()
+        {
+            s_OutsideInLateHookFrame = Time.frameCount;
+            if (s_OutsideInLateFaulted || s_OutsideInDrawLateFrame != Time.frameCount) return;
+            try
+            {
+                Camera main = GameManager.GetMainCamera();
+                if (main == null) return;
+                RenderOutsideInPortals(main);
+                // The tick leaves the nearest building bound; drawing binds each building in turn.
+                BindOutsideIn(NearestOutsideInBuilding());
+            }
+            catch (System.Exception e)
+            {
+                s_OutsideInLateFaulted = true;
+                MelonLogger.Warning("[OUTSIDE-IN] Drawing the views after the player's camera has moved failed; they are drawn from the mod's tick again until the game is restarted: " + e);
+            }
+        }
 
         private static void RenderOutsideInPortals(Camera main)
         {

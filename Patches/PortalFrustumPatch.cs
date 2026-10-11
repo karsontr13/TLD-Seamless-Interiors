@@ -38,6 +38,8 @@ namespace SeamlessInteriors
             SeamlessInteriorsMod.CaptureMainCameraFrustumLate();
             // The wall cameras need this frame's lens, after the zoom, and the planes just captured.
             SeamlessInteriorsMod.TickWallCameras();
+            // The single windows seen from outside, for the same reason and for the eye's place.
+            SeamlessInteriorsMod.DrawOutsideInViewsLate();
             // The same for the views into rooms from outside; the mod's tick handed out the slots.
             SeamlessInteriorsMod.TickOutsideInWallCameras();
         }
