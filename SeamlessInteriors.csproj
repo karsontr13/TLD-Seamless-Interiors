@@ -223,6 +223,7 @@
     <Compile Include="Core\SeamlessInteriorsMod.BuildingWindowOverrides.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowPortals.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowViewFog.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ViewMotionVectors.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowSnow.BuildingToRoom.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.OutsideInBuildings.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.OutsideInPortals.cs" />

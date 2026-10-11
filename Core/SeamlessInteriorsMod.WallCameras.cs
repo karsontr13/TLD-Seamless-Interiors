@@ -728,6 +728,7 @@ namespace SeamlessInteriors
             float fogStartsAt = ParkedCullEyeInForce ? FogFromTheGlass(group, main, eye) : 0f;
             UseWindowViewFogPass(cam, slot, main, fogStartsAt, true);   // see WindowViewFog.cs
             SharePlayerBuffersWith(cam, slot, main);   // see WindowViewFog.cs
+            TellTaaHowViewMoves(cam, main, Matrix4x4.Translate(-offset));   // see ViewMotionVectors.cs
             cam.enabled = true;
             s_WallSlotGroup[slot] = groupIndex;
 
@@ -743,6 +744,7 @@ namespace SeamlessInteriors
                 var renderer = quad.GetComponent<MeshRenderer>();
                 if (renderer.sharedMaterial != material) renderer.sharedMaterial = material;
                 renderer.enabled = true;
+                TellTaaWhichSheet(cam, renderer);
             }
         }
 

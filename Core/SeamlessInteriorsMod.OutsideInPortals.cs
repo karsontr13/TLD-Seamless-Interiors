@@ -1827,6 +1827,9 @@ namespace SeamlessInteriors
             cam.aspect = (rightExtent - left) / (top - bottom);
             // ORDER MATTERS: assigning fieldOfView or aspect resets an explicit projection matrix.
             cam.projectionMatrix = Matrix4x4.Frustum(left, rightExtent, bottom, top, near, OUTSIDE_IN_FAR_CLIP);
+            // The same carry as the position above, as one matrix, undone. See ViewMotionVectors.cs.
+            float carriedAcross, carriedUp;
+            TellTaaHowViewMoves(cam, main, OutsideInBuildingToRoom(pane, out carriedAcross, out carriedUp).inverse);
 
             // The clone's own lighting is gone in Outdoor Lighting mode - lightmaps stripped and 98
             // of about 103 lights destroyed at region load - so the room is lit by the outdoor
@@ -1851,6 +1854,7 @@ namespace SeamlessInteriors
             {
                 ApplyViewFade(quadRenderer, slot, OutsideInPaneLevel(s_OI, index));
                 quadRenderer.enabled = true;
+                TellTaaWhichSheet(cam, quadRenderer);
             }
             return true;
         }
@@ -4359,6 +4363,7 @@ namespace SeamlessInteriors
 
         public static void TeardownOutsideInPortals()
         {
+            try { TeardownViewMotion(); } catch { }
             // First, and on its own: overlays left behind would hang painted frost in mid air over a
             // window the portal system has stopped drawing.
             DestroyOutsideInFrostOverlays();

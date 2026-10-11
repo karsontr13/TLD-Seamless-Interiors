@@ -814,10 +814,13 @@ namespace SeamlessInteriors
             // NO Render() CALL. Unity draws this camera itself, later in the frame, once the game
             // has finished activating its terrain objects and vegetation. Driving it from here
             // instead is what produces a portal with no trees and no rock outcrops.
+            // The eye was carried to the camera by a plain shift, so the way back is the same shift undone.
+            TellTaaHowViewMoves(cam, main, Matrix4x4.Translate(eye - cam.transform.position));   // see ViewMotionVectors.cs
             cam.enabled = true;
 
             var quadRenderer = quad.GetComponent<MeshRenderer>();
             if (quadRenderer == null) return;
+            TellTaaWhichSheet(cam, quadRenderer);
 
             // Point the quad at the slot it was given this frame. Openings change slots as the
             // player turns and the priority order shifts, so a quad left on last frame's material
@@ -1987,6 +1990,7 @@ namespace SeamlessInteriors
             try { EndHidingParkedRoomShadow(); } catch { }
             try { EndWindowViewAmbient(); } catch { }
             try { TeardownWallCameras(); } catch { }
+            try { TeardownViewMotion(); } catch { }
             try { TeardownGlassSnow(); } catch { }
 
             s_RowHiddenRoomObjects.Clear();   // before the list below switches them back on

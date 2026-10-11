@@ -177,6 +177,7 @@ namespace SeamlessInteriors
             cam.fieldOfView = s_FrustumCapturedLate ? s_LateFieldOfView : main.fieldOfView;
             cam.aspect = (rightExtent - left) / (top - bottom);
             cam.projectionMatrix = Matrix4x4.Frustum(left, rightExtent, bottom, top, near, OUTSIDE_IN_FAR_CLIP);
+            TellTaaHowViewMoves(cam, main, group.BuildingToRoom.inverse);   // see ViewMotionVectors.cs
 
             // Each visible pane: a quad on its own glass taking its part of the rectangle.
             float du = u1 - u0, dv = v1 - v0;
@@ -194,6 +195,7 @@ namespace SeamlessInteriors
                 ApplyViewFade(quad.Renderer, slot, OutsideInPaneLevel(b, m));
                 quad.Renderer.enabled = true;
                 s_OutsideInPlaneShown.Add(quad.Renderer);
+                TellTaaWhichSheet(cam, quad.Renderer);
             }
 
             var savedMode = RenderSettings.ambientMode;
@@ -838,6 +840,7 @@ namespace SeamlessInteriors
             cam.farClipPlane = OUTSIDE_IN_FAR_CLIP;
             cam.worldToCameraMatrix = view * map.inverse;
             cam.projectionMatrix = narrow * (OutsideInWallCutAtGlass ? WithNearDistance(proj, nearestGlass - 0.005f, main.nearClipPlane) : proj);
+            TellTaaHowViewMoves(cam, main, map.inverse);   // see ViewMotionVectors.cs
 
             foreach (int m in s_OutsideInWallOnScreen)
             {
@@ -847,6 +850,7 @@ namespace SeamlessInteriors
                 ApplyViewFade(grid.Renderer, slot, OutsideInPaneLevel(b, m));
                 grid.Renderer.enabled = true;
                 s_OutsideInWallShown.Add(grid.Renderer);
+                TellTaaWhichSheet(cam, grid.Renderer);
             }
 
             if (group.Hidden == null) { if (group.HideByName != null) FindOutsideInWallHiddenByName(b, group); else FindOutsideInWallHidden(b, group); }
