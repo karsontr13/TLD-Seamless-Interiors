@@ -53,7 +53,7 @@ namespace SeamlessInteriors
             public CommandBuffer Buffer;
             public RenderTexture Earlier, Now;      // Earlier ends up holding half of (earlier minus now)
             public Material Show, Minus;
-            public Matrix4x4 Carried, CarriedBefore; // the player's view matrix carried into the room
+            public Matrix4x4 PlayerView, PlayerViewBefore;
             public int Frame = -10, SheetFrame = -10;
             public bool HasBefore, Ready;
             public float LensX, LensY;               // the player's lens the motion was measured with
@@ -164,16 +164,19 @@ namespace SeamlessInteriors
 
                 // A camera drawn twice in one frame measures both times from the frame before; one
                 // that skipped a frame has no frame before to measure from and is left alone this once.
-                Matrix4x4 carried = main.worldToCameraMatrix * roomToBuilding;
+                // Both frames are carried into the room by THIS frame's carry. A camera handed from
+                // one window to another, or a view fit that is still easing in, changes the carry
+                // between frames, and the last frame's would be read as the room moving.
                 int frame = Time.frameCount;
                 if (frame != v.Frame)
                 {
-                    v.CarriedBefore = v.Carried;
+                    v.PlayerViewBefore = v.PlayerView;
                     v.HasBefore = frame - v.Frame == 1;
                     v.Frame = frame;
                 }
-                v.Carried = carried;
+                v.PlayerView = main.worldToCameraMatrix;
                 if (!v.HasBefore) return;
+                Matrix4x4 carried = v.PlayerView * roomToBuilding, carriedBefore = v.PlayerViewBefore * roomToBuilding;
 
                 // The player's lens of THIS frame for both, so a zoom is not read as motion. Its
                 // jitter, if it still carries any, is in both passes and drops out.
@@ -186,10 +189,10 @@ namespace SeamlessInteriors
                 var b = v.Buffer;
                 b.SetGlobalMatrix(s_ViewMotionInverseId, own.inverse);
                 b.EnableShaderKeyword(VIEW_MOTION_WORLD_KEYWORD);
-                b.SetGlobalMatrix(s_ViewMotionPreviousId, lens * v.CarriedBefore);
+                b.SetGlobalMatrix(s_ViewMotionPreviousId, lens * carriedBefore);
                 b.SetRenderTarget(new RenderTargetIdentifier(v.Earlier));
                 b.DrawMesh(s_ViewMotionTriangle, Matrix4x4.identity, pass, 0, 1);
-                b.SetGlobalMatrix(s_ViewMotionPreviousId, lens * v.Carried);
+                b.SetGlobalMatrix(s_ViewMotionPreviousId, lens * carried);
                 b.SetRenderTarget(new RenderTargetIdentifier(v.Now));
                 b.DrawMesh(s_ViewMotionTriangle, Matrix4x4.identity, pass, 0, 1);
                 b.DisableShaderKeyword(VIEW_MOTION_WORLD_KEYWORD);
