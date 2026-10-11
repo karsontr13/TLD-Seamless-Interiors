@@ -255,7 +255,14 @@ namespace SeamlessInteriors
             // furniture before it could match up the containers built into it. Repeating
             // it would re-process several hundred objects for nothing.
             HydrateStep(instance, "2/7 oyuncunun yerlestirdigi mobilya");
-            if (!importedNow) GuardedCall(() => RestoreSpawnedPlaceables(instance), id, "mobilya", () => instance.PlaceableSaveBlocked = true);
+            if (!importedNow)
+            {
+                IEnumerator spawned = Guarded(RestoreSpawnedPlaceablesRoutine(instance, spread, null), id, "mobilya", () => instance.PlaceableSaveBlocked = true);
+                while (spawned.MoveNext())
+                {
+                    if (spread) yield return spawned.Current;
+                }
+            }
             if (spread) yield return null;
             if (instance.MasterInterior == null) { instance.HydrationInProgress = false; instance.HydrationRoutine = null; yield break; }
 

@@ -538,17 +538,28 @@ namespace SeamlessInteriors
         // rather than duplicated.
         public static int RestoreSpawnedPlaceables(SeamlessInteriorInstance instance)
         {
-            if (instance == null || instance.MasterInterior == null) return 0;
+            int applied = 0;
+            IEnumerator routine = RestoreSpawnedPlaceablesRoutine(instance, false, n => applied = n);
+            while (routine.MoveNext()) { }
+            return applied;
+        }
+
+        // Spread: one object at a time within the frame budget. A full base has hundreds, and
+        // creating them in one go held a frame for 926 ms, measured at Camp Office.
+        public static IEnumerator RestoreSpawnedPlaceablesRoutine(SeamlessInteriorInstance instance, bool spread, System.Action<int> done)
+        {
+            done?.Invoke(0);
+            if (instance == null || instance.MasterInterior == null) yield break;
 
             string path = GetSpawnedPlaceableSavePath(instance);
-            if (path == null || !SaveFiles.Exists(path)) return 0;
+            if (path == null || !SaveFiles.Exists(path)) yield break;
 
             string json;
             try { json = SaveFiles.Read(path); }
-            catch { return 0; }
+            catch { yield break; }
 
             var elements = SplitJsonArray(json);
-            if (elements.Count == 0) return 0;
+            if (elements.Count == 0) yield break;
 
             Transform interiorT = instance.MasterInterior.transform;
             int applied = 0;
@@ -563,6 +574,12 @@ namespace SeamlessInteriors
 
             foreach (var element in elements)
             {
+                if (spread && FrameBudget.Exceeded())
+                {
+                    yield return null;
+                    if (instance.MasterInterior == null) yield break;
+                }
+
                 string guid = ExtractString(element, "\"g\":\"", "\"");
                 if (string.IsNullOrEmpty(guid)) continue;
                 if (!seenGuids.Add(guid)) continue;
@@ -639,7 +656,7 @@ namespace SeamlessInteriors
                 MelonLogger.Warning($"[SPAWN-PLACEABLE-LOAD] {instance.Config.ResolvedInstanceId}: toplam {failedNames.Count} obje geri getirilemedi.");
             }
 
-            return applied;
+            done?.Invoke(applied);
         }
 
         // ─────────────────────────────────────────────────────────────────
