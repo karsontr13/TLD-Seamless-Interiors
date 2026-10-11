@@ -104,6 +104,9 @@ namespace SeamlessInteriors
 
         // Decides whether this building's loot still has to be generated, then removes
         // duplicated items and duplicated GUIDs.
+        // Run()'s trace while it is inside ProcessSpawnsAndDeduplication, for the step breakdown.
+        internal static PerfProbe.Trace s_LoadTrace;
+
         private void ProcessSpawnsAndDeduplication(SeamlessInteriorInstance instance)
         {
             string currentSaveName = SaveGameSystem.m_CurrentSaveName;
@@ -164,6 +167,8 @@ namespace SeamlessInteriors
                 // Keyed by InstanceId so the same scene produces different GUIDs in
                 // different buildings.
                 GenerateDeterministicPDIDs(instance.MasterInterior, instance.Config.ResolvedInstanceId);
+                s_LoadTrace?.End("pdid");
+                s_LoadTrace?.Begin();
 
                 if (IsInitialLootRollEnabled)
                 {
@@ -180,9 +185,13 @@ namespace SeamlessInteriors
                 }
             }
 
+            s_LoadTrace?.End("zar-hazirlik");
+            s_LoadTrace?.Begin();
             SpatialDeduplication(instance.MasterInterior);
-
+            s_LoadTrace?.End("konum-ayiklama");
+            s_LoadTrace?.Begin();
             DestroyDuplicateGuidGear(instance);
+            s_LoadTrace?.End("guid-ayiklama");
         }
 
         private static void DestroyDuplicateGuidGear(SeamlessInteriorInstance instance)
@@ -570,7 +579,7 @@ namespace SeamlessInteriors
 
             // Put the outside candidates into the spatial hash (name cleaned once).
             var grid = new Dictionary<long, List<DedupEntry>>();
-            foreach (var g in SceneScan.GearAll())
+            foreach (var g in DedupCandidates(insideBox, rootT))
             {
                 if (g == null || g.gameObject == null) continue;
 
@@ -606,6 +615,19 @@ namespace SeamlessInteriors
                 if (HasDuplicateNear(grid, insideName, pos, sqrRadius))
                     UnityEngine.Object.Destroy(insideGear.gameObject);
             }
+        }
+
+        // Loose gear around the building. The physics query costs what stands there; the whole-scene
+        // search was 36-80 ms per building per load (216 at Camp Office). The exit purge catches a miss.
+        private static IEnumerable<Il2Cpp.GearItem> DedupCandidates(Bounds box, Transform rootT)
+        {
+            if (!IsFastInteriorToggleEnabled) return SceneScan.GearAll();
+
+            var gear = new List<Il2Cpp.GearItem>();
+            var placeables = new List<Il2CppTLD.Placement.Placeable>();
+            if (CollectLooseInBox(box.center, box.extents, rootT, gear, placeables, new HashSet<System.IntPtr>()) < 0)
+                return SceneScan.GearAll();
+            return gear;
         }
 
         private struct DedupEntry
@@ -1083,6 +1105,9 @@ namespace SeamlessInteriors
         {
             if (s_QuickExitHits == null)
                 s_QuickExitHits = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Collider>(QUICK_EXIT_BUFFER);
+
+            // Moved transforms reach the physics scene only at its next step; a load may not have had one.
+            Physics.SyncTransforms();
 
             int count = Physics.OverlapBoxNonAlloc(center, extents, s_QuickExitHits,
                                                    Quaternion.identity, ~0, QueryTriggerInteraction.Collide);

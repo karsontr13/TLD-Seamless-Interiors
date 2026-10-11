@@ -1931,11 +1931,16 @@ namespace SeamlessInteriors
                 UnityEngine.PlayerPrefs.Save();
             }
 
+            trace?.End("eski-kayit");
+            s_LoadTrace = trace;
+            trace?.Begin();
             ProcessSpawnsAndDeduplication(instance);
 
+            s_LoadTrace = null;
+            trace?.Begin();
             DisableInteriorContainerSerialization(instance.MasterInterior);
             RestoreSceneSaveData(instance);
-            trace?.End("zar-ayiklama-kayit");
+            trace?.End("kayit-geri");
             yield return null;
 
             // Nothing saved for this building yet: its interior loads for mods as on a first visit, before the
