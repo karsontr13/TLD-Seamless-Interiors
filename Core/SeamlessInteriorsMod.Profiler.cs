@@ -25,7 +25,7 @@ namespace SeamlessInteriors
                 WatchdogVisibility, WatchdogRepair, WatchdogSweep, InitialSync, PlaceContext, Save, Portal,
                 // ─── breakdowns, not counted again ───
                 PortalHydrate, PortalActivate, PortalForceRenderers, PortalColliders, PortalHideSync,
-                PortalItemsVisible, PortalMarkInside,
+                PortalItemsVisible, PortalMarkInside, ExitItems, ExitAudio, ExitDeactivate,
                 SaveGear, SavePlaceables, SaveContainers, SaveState, SaveJunk,
                 ModLoad, ModFirstBuild, Count
             }
@@ -52,7 +52,7 @@ namespace SeamlessInteriors
                 "bekci-gorunurluk", "bekci-onarim", "bekci-supurme", "ilk-senkron", "baglam",
                 "kayit", "kapi-gecisi",
                 "giris-dolum", "giris-acma", "giris-renderer", "giris-collider", "giris-gizleme",
-                "giris-esya", "giris-konum",
+                "giris-esya", "giris-konum", "cikis-esya", "cikis-ses", "cikis-kapatma",
                 "kayit-esya", "kayit-mobilya", "kayit-konteyner", "kayit-durum", "kayit-cop",
                 "mod-yukleme", "mod-ilk-kurulum"
             };
@@ -125,6 +125,59 @@ namespace SeamlessInteriors
                 long elapsed = Stopwatch.GetTimestamp() - start;
                 s_Ticks[(int)section] += elapsed;
                 if (elapsed > s_MaxTicks[(int)section]) s_MaxTicks[(int)section] = elapsed;
+            }
+
+            // One log line per event (a building's load, a hydration, a door): which step
+            // took how long. Only the synchronous blocks between yields are timed.
+            internal sealed class Trace
+            {
+                private readonly StringBuilder m_Line = new StringBuilder();
+                private long m_Start;
+                private double m_Busy, m_Worst;
+
+                internal static Trace Start() { return On ? new Trace() : null; }
+
+                internal void Begin() { m_Start = Stopwatch.GetTimestamp(); }
+
+                internal void End(string step)
+                {
+                    double ms = (Stopwatch.GetTimestamp() - m_Start) * 1000.0 / Stopwatch.Frequency;
+                    Add(step, ms);
+                }
+
+                internal void Add(string step, double ms)
+                {
+                    m_Busy += ms;
+                    if (ms > m_Worst) m_Worst = ms;
+                    if (step == null) return;   // counted, not listed
+                    m_Line.Append(' ').Append(step).Append('=').Append(ms.ToString("F1", CultureInfo.InvariantCulture));
+                }
+
+                internal void Log(string tag, string id, string extra = null)
+                {
+                    MelonLogger.Msg(string.Format(CultureInfo.InvariantCulture,
+                        "[{0}] {1}: mesgul {2:F1} ms, en uzun blok {3:F1} ms{4}{5}",
+                        tag, id, m_Busy, m_Worst, m_Line.Length == 0 ? "" : " |" + m_Line,
+                        extra == null ? "" : " | " + extra));
+                }
+            }
+
+            // Breakdown sections that ran during one door interaction.
+            internal static long[] SnapshotTicks() { return On ? (long[])s_Ticks.Clone() : null; }
+
+            internal static void LogDoor(long[] before, long start)
+            {
+                if (before == null || start == 0L) return;
+                double total = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+                var sb = new StringBuilder();
+                for (int i = (int)Section.PortalHydrate; i < (int)Section.Count; i++)
+                {
+                    long d = s_Ticks[i] - before[i];
+                    if (d <= 0) continue;
+                    sb.Append(' ').Append(s_SectionNames[i]).Append('=')
+                      .Append((d * 1000.0 / Stopwatch.Frequency).ToString("F1", CultureInfo.InvariantCulture));
+                }
+                MelonLogger.Msg(string.Format(CultureInfo.InvariantCulture, "[PERF-KAPI] {0:F1} ms |{1}", total, sb));
             }
 
             internal static void Count(Hit hit)
@@ -451,16 +504,21 @@ namespace SeamlessInteriors
     [HarmonyPatch(typeof(Il2Cpp.LoadScene), nameof(Il2Cpp.LoadScene.PerformInteraction))]
     internal static class PortalTimingPatch
     {
+        private static long[] s_Before;
+
         [HarmonyPriority(Priority.First)]
         private static void Prefix(out long __state)
         {
             __state = SeamlessInteriorsMod.PerfProbe.Begin();
+            s_Before = SeamlessInteriorsMod.PerfProbe.SnapshotTicks();
         }
 
         [HarmonyPriority(Priority.Last)]
         private static void Postfix(long __state)
         {
             SeamlessInteriorsMod.PerfProbe.End(SeamlessInteriorsMod.PerfProbe.Section.Portal, __state);
+            SeamlessInteriorsMod.PerfProbe.LogDoor(s_Before, __state);
+            s_Before = null;
         }
     }
 }

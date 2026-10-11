@@ -109,7 +109,17 @@ namespace SeamlessInteriors
                 // MoveNext can return false because EnsureHydratedNow took this routine
                 // over and finished it; that is exactly the intent, and the loop simply
                 // falls through to the next building.
-                while (routine.MoveNext()) yield return routine.Current;
+                var trace = PerfProbe.Trace.Start();
+                int frames = 0;
+                while (true)
+                {
+                    trace?.Begin();
+                    bool more = routine.MoveNext();
+                    if (trace != null && more) { trace.End(null); frames++; }
+                    if (!more) break;
+                    yield return routine.Current;
+                }
+                trace?.Log("PERF-DOLUM", next.Config.ResolvedInstanceId, $"arka plan, {frames} kare");
             }
 
             s_HydrationPumpRunning = false;
@@ -144,7 +154,11 @@ namespace SeamlessInteriors
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[HYDRATE] {instance.Config.ResolvedInstanceId}: arka plandaki dolum devralindi ({reason}).");
 
+                var takeover = PerfProbe.Trace.Start();
+                takeover?.Begin();
                 while (running.MoveNext()) { }
+                takeover?.End("devralma");
+                takeover?.Log("PERF-DOLUM", instance.Config.ResolvedInstanceId, reason);
                 return;
             }
 
@@ -157,7 +171,11 @@ namespace SeamlessInteriors
 
             IEnumerator routine = HydrateRoutine(instance, false);
             instance.HydrationRoutine = routine;
+            var trace = PerfProbe.Trace.Start();
+            trace?.Begin();
             while (routine.MoveNext()) { }
+            trace?.End("aninda");
+            trace?.Log("PERF-DOLUM", instance.Config.ResolvedInstanceId, reason);
         }
 
         // ─── The actual work ───

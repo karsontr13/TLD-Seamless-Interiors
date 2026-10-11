@@ -1182,9 +1182,17 @@ namespace SeamlessInteriors
         {
             if (instance == null || instance.MasterInterior == null) return;
 
+            long perf = PerfProbe.Begin();
             SetInteriorItemsVisible(instance, false);
+            PerfProbe.End(PerfProbe.Section.ExitItems, perf);
+
+            perf = PerfProbe.Begin();
             LeaveAudioZones(instance);
+            PerfProbe.End(PerfProbe.Section.ExitAudio, perf);
+
+            perf = PerfProbe.Begin();
             instance.MasterInterior.SetActive(false);
+            PerfProbe.End(PerfProbe.Section.ExitDeactivate, perf);
         }
 
         // The interior's own audio occlusion zones get no exit once switched off: a player standing

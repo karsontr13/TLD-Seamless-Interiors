@@ -1800,6 +1800,8 @@ namespace SeamlessInteriors
         private IEnumerator Run(SeamlessInteriorInstance instance, bool playerSavedInside = false)
         {
             instance.IsCloningRoutineActive = true;
+            var trace = PerfProbe.Trace.Start();
+            trace?.Begin();
 
             // FIRST OF ALL: does the data on disk actually belong to THIS playthrough?
             // The game reuses the slot names of deleted saves, so "sandbox29" can be a
@@ -1808,6 +1810,7 @@ namespace SeamlessInteriors
             EnsureSaveIdentity();
 
             CheckNewGameLootLock(instance);
+            trace?.End("kimlik");
 
             // Wait for the scene load lock: if another coroutine is loading the same scene,
             // let it finish and store the template first.
@@ -1818,9 +1821,12 @@ namespace SeamlessInteriors
             while (IsLoadingInteriorScene)
                 yield return null;
 
+            float sceneWait = Time.realtimeSinceStartup;
             TakeSceneLoadLock();
             yield return LoadInteriorScenes(instance);
             s_SceneLoadLock = false;
+            if (trace != null) trace.Add("sahne-yukleme(duvar)", (Time.realtimeSinceStartup - sceneWait) * 1000.0);
+            trace?.Begin();
 
             // If the game tried to restore the region's loose gear while that scene was
             // coming in, it was turned away - run it now that the window has closed.
@@ -1828,6 +1834,7 @@ namespace SeamlessInteriors
 
             PrepareMasterInterior(instance);
             AlignWithExteriorShell(instance);
+            trace?.End("hazirlama");
 
             // EARLY ACTIVATION: if the player saved inside this scene, activate
             // MasterInterior right away and move the player to the spawn position, so they
@@ -1900,12 +1907,15 @@ namespace SeamlessInteriors
                     MelonLogger.Msg($"[EARLY-ACTIVATE] Run akisi: {instance.Config.ResolvedInstanceId} erken aktif edildi, oyuncu iceri spawn edildi.");
             }
 
+            trace?.Begin();
             HandleInitialPlaceables(instance);
+            trace?.End("ilk-mobilya");
             if (!playerSavedInside)
                 yield return new WaitForSeconds(0.5f);
             else
                 yield return null;
 
+            trace?.Begin();
             // PRE-MOD SAVE CHECK - must happen BEFORE ProcessSpawnsAndDeduplication.
             //
             // If the player already visited this building in the original interior scene,
@@ -1925,12 +1935,16 @@ namespace SeamlessInteriors
 
             DisableInteriorContainerSerialization(instance.MasterInterior);
             RestoreSceneSaveData(instance);
+            trace?.End("zar-ayiklama-kayit");
             yield return null;
 
             // Nothing saved for this building yet: its interior loads for mods as on a first visit, before the
             // spawn chance roll below so what they spawn rolls with the rest (SeamlessInteriorsMod.SceneLoadReplay.cs).
+            trace?.Begin();
             if (!HasPersistedLootRecord(instance))
                 LoadBuildingContentForMods(instance);
+            trace?.End("modlara-icerik");
+            trace?.Begin();
 
             // Activate the scene invisibly (so container Awake fires) with the renderers
             // switched off, so the player does not notice.
@@ -1996,6 +2010,7 @@ namespace SeamlessInteriors
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[GEAR-INIT] {instance.Config.InteriorSceneBaseName} gorunmez olarak aktif edildi (container Awake tetikleme).");
             }
+            trace?.End("ganimet-aktiflestirme");
 
             // Give container Awake time to fire.
             // Minimal wait when the player is inside; the normal delay for other scenes.
@@ -2008,6 +2023,7 @@ namespace SeamlessInteriors
             // environment fix come first. With the renderers on, StripBakedLightmaps would
             // let the player see the broken lighting.
 
+            trace?.Begin();
             Bounds interiorBounds = ComputeLocalInteriorBounds(instance.MasterInterior, instance.Config.BoundsRadius);
 
             SetupWeatherAndParticles(instance, interiorBounds);
@@ -2032,6 +2048,8 @@ namespace SeamlessInteriors
                 // (see SeamlessInteriorsMod.Interactivity.cs).
                 RestoreInteriorItemColliders(instance);
             }
+            trace?.End("isik-hava-cevre");
+            trace?.Begin();
 
             // Otherwise the renderers stay off - they come up in the batched
             // UpdateGlobalEnvironment call.
@@ -2082,6 +2100,13 @@ namespace SeamlessInteriors
 
             // Fix the wind audio once Run() finishes in a new save.
             MelonCoroutines.Start(FixWindAfterRun(instance));
+
+            if (trace != null)
+            {
+                trace.End("temizlik-bekci");
+                trace.Log("PERF-YUKLEME", instance.Config.ResolvedInstanceId,
+                    $"esya={InteriorScan.Gear(instance.MasterInterior).Length} mobilya={InteriorScan.Placeables(instance.MasterInterior).Length} icerde={playerSavedInside}");
+            }
         }
 
         // FixWindAfterRun moved to SeamlessInteriorsMod.Weather.cs.
