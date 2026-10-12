@@ -65,9 +65,10 @@ namespace SeamlessInteriors
         private const int OUTSIDE_IN_INTERIOR_LAYER = 3;
 
         // One layer per held room, so a camera draws only its own room: rooms of close neighbors
-        // overlap at park height (Milton H2/F3, 2026-10-09). 4 and 28 hold no objects in the game.
-        private static readonly int[] OUTSIDE_IN_ROOM_LAYERS = { OUTSIDE_IN_INTERIOR_LAYER, 4, 28 };
-        private static readonly int OUTSIDE_IN_ROOM_LAYERS_MASK = (1 << 3) | (1 << 4) | (1 << 28);
+        // overlap at park height (Milton H2/F3, 2026-10-09). 4 holds no objects in the game; 30 only the
+        // player's renderer-less trigger capsule. Not 28: Pleasant Valley's frozen river is on it.
+        private static readonly int[] OUTSIDE_IN_ROOM_LAYERS = { OUTSIDE_IN_INTERIOR_LAYER, 4, 30 };
+        private static readonly int OUTSIDE_IN_ROOM_LAYERS_MASK = (1 << 3) | (1 << 4) | (1 << 30);
 
         // A pool layer no other held room uses; the shared layer 3 when all are taken.
         private static int PickOutsideInRoomLayer(OutsideInBuilding building)
