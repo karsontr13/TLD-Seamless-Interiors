@@ -308,7 +308,10 @@ namespace SeamlessInteriors
         // the room already owns its twin there. The caller reparents it afterwards as it always did.
         internal static bool CarryStrayIntoParkedRoom(SeamlessInteriorInstance instance, Transform stray, Vector3 at)
         {
-            if (RoomOwnsTwinAt(instance, CleanGearName(stray.gameObject.name), at)) return false;
+            string name = CleanGearName(stray.gameObject.name);
+            if (RoomOwnsTwinAt(instance, name, at)) return false;
+            // A copy saved while the room was still stretched has its twin at the unstretched spot.
+            if (TryUndoPreParkStretch(instance, at, out Vector3 unstretched) && RoomOwnsTwinAt(instance, name, unstretched)) return false;
 
             stray.rotation = Quaternion.AngleAxis(instance.ParkedYawCorrection, Vector3.up) * stray.rotation;
             stray.position = at;

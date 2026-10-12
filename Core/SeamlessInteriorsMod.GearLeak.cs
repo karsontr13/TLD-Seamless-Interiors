@@ -101,6 +101,10 @@ namespace SeamlessInteriors
                     judgedAsLifted = true;
                 }
 
+                // Saved by a version that still stretched this room: matched at the unstretched spot too.
+                Vector3 oldPos = pos;
+                bool hasOld = judgedAsLifted && TryUndoPreParkStretch(instance, pos, out oldPos);
+
                 // Already clone content: this is the copy we are keeping.
                 if (gear.transform.IsChildOf(masterT)) continue;
 
@@ -118,7 +122,7 @@ namespace SeamlessInteriors
                 // Another building's clone owns this one.
                 if (BelongsToAnotherInstance(instance, gear.transform)) continue;
 
-                candidates.Add(new LeakCandidate { Gear = gear, Pos = pos, Lifted = judgedAsLifted });
+                candidates.Add(new LeakCandidate { Gear = gear, Pos = pos, Lifted = judgedAsLifted, HasOldPos = hasOld, OldPos = oldPos });
             }
 
             if (candidates.Count == 0) return 0;
@@ -220,6 +224,12 @@ namespace SeamlessInteriors
                 {
                     isCopy = true;
                 }
+                else if (c.HasOldPos
+                         && (HasOwnedCopyNear(ownedCells, CleanGearName(gear.gameObject.name), c.OldPos, sqrRadius)
+                             || HasOwnedCopyNear(ownedOffCells, CleanGearName(gear.gameObject.name), c.OldPos, sqrRadius)))
+                {
+                    isCopy = true;
+                }
 
                 if (!isCopy) continue;
 
@@ -257,6 +267,34 @@ namespace SeamlessInteriors
             public Il2Cpp.GearItem Gear;
             public Vector3 Pos;
             public bool Lifted;
+            public bool HasOldPos;
+            public Vector3 OldPos;
+        }
+
+        // Rooms that versions before 2.2.0 stretched to their shell (ScaleAdjustment, now 1 everywhere).
+        // The game's save from those versions holds this room's loot at the stretched positions.
+        private static readonly Dictionary<string, Vector3> s_PreParkStretch = new Dictionary<string, Vector3>
+        {
+            { "CampOffice", new Vector3(1.05f, 0.98f, 1.05f) },
+            { "FarmHouseA", new Vector3(1.15f, 1f, 1.15f) },
+            { "FarmHouseABasement", new Vector3(1.01f, 1f, 1f) },
+            { "QuonsetGasStation", new Vector3(1.04f, 1f, 1.02f) },
+            { "AFHangar", new Vector3(1.049f, 1.035f, 1.03f) },
+        };
+
+        // A lifted point of such a room put back where the unstretched room has it, along the room's own axes.
+        private static bool TryUndoPreParkStretch(SeamlessInteriorInstance instance, Vector3 lifted, out Vector3 unstretched)
+        {
+            unstretched = lifted;
+            Vector3 s;
+            if (!s_PreParkStretch.TryGetValue(instance.Config.InteriorSceneBaseName, out s)) return false;
+
+            Transform t = instance.MasterInterior.transform;
+            Quaternion asAuthored = Quaternion.AngleAxis(-instance.ParkedYawCorrection, Vector3.up) * t.rotation;
+            Vector3 inRoom = Quaternion.Inverse(asAuthored) * (lifted - t.position);
+            inRoom = new Vector3(inRoom.x / s.x, inRoom.y / s.y, inRoom.z / s.z);
+            unstretched = t.position + asAuthored * inRoom;
+            return true;
         }
 
         private static long LeakCellKey(Vector3 p)

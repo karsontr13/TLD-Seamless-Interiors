@@ -314,6 +314,11 @@ namespace SeamlessInteriors
             instance.ContentHydrated = true;
             instance.HydrationInProgress = false; instance.HydrationRoutine = null;
 
+            // The room the player loaded inside: the game's copies of its loot are cleared now, not at
+            // the door, or they show through the window views until the player steps out.
+            if (instance.MasterInterior.activeSelf)
+                GuardedCall(() => PurgeLeakedCloneGearDuplicates(instance), id, "sizinti");
+
             // ─── 7. Put the freshly spawned objects into the right visual state ───
             //
             // ONLY WHEN THE BUILDING IS OPEN.
