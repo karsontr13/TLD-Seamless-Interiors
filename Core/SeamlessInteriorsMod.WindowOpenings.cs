@@ -536,6 +536,31 @@ namespace SeamlessInteriors
             return piece;
         }
 
+        // The middle of the room, from every switched-on mesh in it. The room is still switched off when it is
+        // scanned: activeSelf, and mesh bounds (renderer bounds read zero).
+        private static bool TryGetRoomMiddle(MeshRenderer[] all, out Vector3 middle)
+        {
+            middle = Vector3.zero; int counted = 0;
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i] == null || !all[i].gameObject.activeSelf) continue;
+                var f = all[i].GetComponent<MeshFilter>();
+                if (f == null || f.sharedMesh == null) continue;
+                middle += all[i].transform.TransformPoint(f.sharedMesh.bounds.center); counted++;
+            }
+            if (counted == 0) return false;
+            middle /= counted;
+            return true;
+        }
+
+        // Would turning this pane round leave it facing the middle of the room? The middle is read once a
+        // scan, on the first pane that asks (read: 0 not yet, 1 read, -1 nothing to read).
+        private static bool TurningFacesTheRoomMiddle(MeshRenderer[] all, Vector3 paneMiddle, Vector3 outwardSide, ref Vector3 roomMiddle, ref int read)
+        {
+            if (read == 0) read = all != null && TryGetRoomMiddle(all, out roomMiddle) ? 1 : -1;
+            return read > 0 && Vector3.Dot(roomMiddle - paneMiddle, -outwardSide) > 0f;
+        }
+
         // Pieces of glass into windows, windows into openings. Shared by the one-glass-object room
         // (the gas station) and the loose-pane room (Grey Mother's house).
         private static int AddOpeningsFromGlassPieces(List<GlassPiece> list, bool joinStacked, MeshRenderer[] all, List<InteriorWindowOpening> result, string label)
@@ -640,6 +665,7 @@ namespace SeamlessInteriors
             }
 
             int added = 0, notWindows = 0;
+            Vector3 roomMiddle = Vector3.zero; int roomMiddleRead = 0;
             var withoutBackdrop = new List<PendingWindow>();
             var done = new HashSet<int>();
             for (int g = 0; g < list.Count; g++)
@@ -701,13 +727,20 @@ namespace SeamlessInteriors
                 // building's do, 7 for 7, and only their facing was wrong. The Community Hall and the two Thompson
                 // houses loaded at the time have none facing in, so this changes nothing there. Glass all in one
                 // wall is within half a meter of its own middle and is left as the backdrop says.
+                //
+                // NOR IS A PANE TURNED TO FACE THE MIDDLE OF THE ROOM. A sheet that is one stepped wall has its
+                // middle between the steps: each of the hangar's two side sheets is 11 windows on the wall and 6
+                // on the tier above, 7.3 m further in, so the upper 6 stood 4.7 m on the room side of their own
+                // sheet's middle and all 12 were turned to face in (read live 2026-10-12: 19.9 m from the room's
+                // middle, facing it). They then drew no view out and paired across the building from outside.
                 Vector3 outwardSide = side > 0f ? lead.Normal : -lead.Normal;
                 {
                     Vector3 sheetMiddle = Vector3.zero;
                     for (int k = 0; k < list.Count; k++) sheetMiddle += list[k].Corners[0];
                     sheetMiddle /= Mathf.Max(1, list.Count);
                     Vector3 paneMiddle = lead.Corners[0] + lead.Along * ((lo + hi) * 0.5f) + lead.Normal * depth;
-                    if (Vector3.Dot(paneMiddle - sheetMiddle, outwardSide) < -0.5f)
+                    if (Vector3.Dot(paneMiddle - sheetMiddle, outwardSide) < -0.5f
+                        && !TurningFacesTheRoomMiddle(all, paneMiddle, outwardSide, ref roomMiddle, ref roomMiddleRead))
                     {
                         outwardSide = -outwardSide;
                         MelonLogger.Msg($"[WINDOW] {s_ScanBuildingId}: '{(lead.Source != null ? lead.Source.gameObject.name : "?")}' camin disi odanin ortasina bakiyordu ('{backdrop.gameObject.name}' camin oda tarafinda); cevrildi.",
@@ -1282,17 +1315,8 @@ namespace SeamlessInteriors
         // whose material says Glass alone; added after the rule's windows so those keep their numbers.
         private static void AddRoomGlassSlotOpenings(string[] names, MeshRenderer[] all, Transform rootT, List<InteriorWindowOpening> result, string id, float joinWithin)
         {
-            Vector3 middle = Vector3.zero; int counted = 0;
-            // The room is still switched off when it is scanned: activeSelf, and mesh bounds (renderer bounds read zero).
-            for (int i = 0; i < all.Length; i++)
-            {
-                if (all[i] == null || !all[i].gameObject.activeSelf) continue;
-                var f = all[i].GetComponent<MeshFilter>();
-                if (f == null || f.sharedMesh == null) continue;
-                middle += all[i].transform.TransformPoint(f.sharedMesh.bounds.center); counted++;
-            }
-            if (counted == 0) return;
-            middle /= counted;
+            Vector3 middle;
+            if (!TryGetRoomMiddle(all, out middle)) return;
 
             int added = 0;
             for (int i = 0; i < all.Length; i++)
