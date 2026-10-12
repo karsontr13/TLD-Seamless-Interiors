@@ -2330,6 +2330,18 @@ namespace SeamlessInteriors
             Vector3 worldPos = interiorT.TransformPoint(entry.position);
             Quaternion worldRot = interiorT.rotation * entry.rotation;
 
+            // Saved after it fell through the room (see FreezeGearPhysics): put back at the door.
+            Bounds room;
+            Vector3 entryPoint;
+            bool relocated = false;
+            if (TryGetWorldFilterBounds(instance, out room) && worldPos.y < room.min.y - 10f && TryGetRoomEntryPoint(instance, out entryPoint))
+            {
+                MelonLogger.Msg($"[GEAR-RESTORE] {instance.Config.ResolvedInstanceId}: '{entry.name}' odanin altina dusmus kaydedilmis (y {worldPos.y:F0}), kapinin yanina kondu.",
+                                $"[GEAR-RESTORE] {instance.Config.ResolvedInstanceId}: '{entry.name}' was saved after falling under the room (y {worldPos.y:F0}); put back by the door.");
+                worldPos = entryPoint;
+                relocated = true;
+            }
+
             if (spawned.transform.parent != instance.MasterInterior.transform)
                 spawned.transform.SetParent(instance.MasterInterior.transform, true);
 
@@ -2344,6 +2356,9 @@ namespace SeamlessInteriors
                 spawned.transform.localScale = entry.scale;
 
             spawned.SetActive(entry.active);
+            FreezeGearPhysics(spawned.GetComponent<Il2Cpp.GearItem>());
+            // The entry point stands at head height: lowered onto the floor now, or once its colliders are on.
+            if (relocated && !TrySettleOnRoomFloor(instance, spawned)) instance.GearToSettle.Add(spawned);
 
             // The GUID has to be restored too, otherwise the item is seen as a new
             // object on the next save.
@@ -2357,6 +2372,56 @@ namespace SeamlessInteriors
             if (s_DebugBounds)
                 MelonLogger.Msg($"[GEAR-RESTORE] SPAWNED: {entry.name} worldPos={worldPos} durumlu={(!string.IsNullOrEmpty(entry.serialized))}");
             return spawned;
+        }
+
+        // Onto the highest surface of the room under the item; false while the room has no live collider there.
+        internal static bool TrySettleOnRoomFloor(SeamlessInteriorInstance instance, GameObject go)
+        {
+            if (go == null || instance.MasterInterior == null || !instance.MasterInterior.activeInHierarchy) return false;
+
+            Transform masterT = instance.MasterInterior.transform;
+            Vector3 pos = go.transform.position;
+            int count = RayScan.Cast(pos + Vector3.up * 0.5f, Vector3.down, 4f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            float floorY = float.MinValue;
+            for (int i = 0; i < count; i++)
+            {
+                RaycastHit hit = RayScan.Get(i);
+                Collider col = hit.collider;
+                if (col == null || !col.transform.IsChildOf(masterT) || col.transform.IsChildOf(go.transform)) continue;
+                if (hit.point.y > floorY) floorY = hit.point.y;
+            }
+            if (floorY == float.MinValue) return false;
+
+            go.transform.position = new Vector3(pos.x, floorY, pos.z);
+            return true;
+        }
+
+        internal static void SettlePendingGear(SeamlessInteriorInstance instance)
+        {
+            for (int i = instance.GearToSettle.Count - 1; i >= 0; i--)
+            {
+                GameObject go = instance.GearToSettle[i];
+                if (go != null && !TrySettleOnRoomFloor(instance, go)) continue;
+                instance.GearToSettle.RemoveAt(i);
+                if (go != null)
+                    MelonLogger.Msg($"[GEAR-RESTORE] {instance.Config.ResolvedInstanceId}: '{go.name}' odanin zeminine indirildi.",
+                                    $"[GEAR-RESTORE] {instance.Config.ResolvedInstanceId}: '{go.name}' lowered onto the room's floor.");
+            }
+        }
+
+        // Where the player comes in: the first door's entry point, else the config's, else the game's own.
+        private static bool TryGetRoomEntryPoint(SeamlessInteriorInstance instance, out Vector3 point)
+        {
+            point = Vector3.zero;
+            var doors = instance.Config.DoorSpawnPoints;
+            if (doors != null && doors.Count > 0 && doors[0] != null) point = ParkedInteriorPoint(instance, doors[0].EntryPosition);
+            else if (instance.Config.EntrySpawnPosition != Vector3.zero) point = ParkedInteriorPoint(instance, instance.Config.EntrySpawnPosition);
+            else if (instance.MasterInterior != null)
+            {
+                foreach (Transform t in instance.MasterInterior.GetComponentsInChildren<Transform>(true))
+                    if (t != null && t.name.EndsWith("EnterPoint", System.StringComparison.Ordinal)) { point = t.position; break; }
+            }
+            return point != Vector3.zero;
         }
 
         // A parsed record back in the file's own format (same fields as BuildGearEntryJson).

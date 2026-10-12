@@ -2015,6 +2015,8 @@ namespace SeamlessInteriors
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[GEAR-INIT] {instance.Config.InteriorSceneBaseName} gorunmez olarak aktif edildi (container Awake tetikleme).");
             }
+            // Template loot with live physics would fall once the room's colliders go off.
+            FreezeGearPhysicsIn(instance.MasterInterior);
             trace?.End("ganimet-aktiflestirme");
 
             // Give container Awake time to fire.

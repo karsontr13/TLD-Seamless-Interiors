@@ -830,6 +830,9 @@ namespace SeamlessInteriors
         {
             if (go == null) return;
 
+            // Its collider goes off below: an item with live physics would fall through the floor.
+            if (!visible) FreezeGearPhysics(go.GetComponent<Il2Cpp.GearItem>());
+
             foreach (var r in InteriorScan.Renderers(go)) if (r != null) r.enabled = visible;
 
             foreach (var c in InteriorScan.Colliders(go))
@@ -931,6 +934,7 @@ namespace SeamlessInteriors
                         MelonLogger.Msg($"[ADOPT] {instance.Config.ResolvedInstanceId}: '{t.gameObject.name}' klon sahneye baglandi.");
 
                     t.SetParent(interiorT, true);
+                    FreezeGearPhysics(t.GetComponent<Il2Cpp.GearItem>());
                     adopted++;
 
                     // A placeable from outside the template is the player's own: save it in full.
@@ -1029,6 +1033,8 @@ namespace SeamlessInteriors
             // destroys - PurgeLeakedCloneGearDuplicates - calls
             // SceneScan.InvalidateVolatile() itself, so the snapshot the rest of the block
             // reads is taken again after it, never over dead references.
+            if (visible) SettlePendingGear(instance);
+
             SceneScan.Begin();
             try
             {

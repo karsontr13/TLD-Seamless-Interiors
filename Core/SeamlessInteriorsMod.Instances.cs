@@ -283,6 +283,9 @@ namespace SeamlessInteriors
         public readonly System.Collections.Generic.List<string> OrphanContainerEntries = new System.Collections.Generic.List<string>();
         public readonly System.Collections.Generic.List<string> OrphanSpawnEntries = new System.Collections.Generic.List<string>();
 
+        // Items put back by the door after falling under the room, waiting for its floor colliders.
+        public readonly System.Collections.Generic.List<UnityEngine.GameObject> GearToSettle = new System.Collections.Generic.List<UnityEngine.GameObject>();
+
         // Lighting parts each mode needs, kept in both so F8 can switch live (see LightingModeSwitch.cs).
         public readonly System.Collections.Generic.List<UnityEngine.GameObject> DarkOnlyObjects = new System.Collections.Generic.List<UnityEngine.GameObject>();
         public readonly System.Collections.Generic.List<UnityEngine.ReflectionProbe> DarkOnlyProbes = new System.Collections.Generic.List<UnityEngine.ReflectionProbe>();

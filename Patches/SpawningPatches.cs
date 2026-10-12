@@ -279,6 +279,22 @@ namespace SeamlessInteriors
         }
     }
 
+    // The region's loose gear holds the game's copies of room items; one with live physics
+    // (the ballistic vest) must stay where it was saved (see FreezeGearPhysics).
+    [HarmonyLib.HarmonyPatch]
+    public class FreezeRestoredGearPhysicsPatch
+    {
+        public static System.Collections.Generic.IEnumerable<System.Reflection.MethodBase> TargetMethods()
+        {
+            return PreventGearManagerDuplicationPatch.TargetMethods();
+        }
+
+        public static void Postfix()
+        {
+            SeamlessInteriorsMod.FreezeRestoredGearPhysics();
+        }
+    }
+
     // The mod destroys clone GearItems in several places, and a dangling entry left in
     // GearManager.m_Gear makes the game walk into a dead object while it is writing the
     // region's gear blob - which holds everything the player dropped outdoors. Prune

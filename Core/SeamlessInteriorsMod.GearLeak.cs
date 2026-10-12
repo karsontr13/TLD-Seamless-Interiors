@@ -51,6 +51,59 @@ namespace SeamlessInteriors
         // each other; the margin only covers a clone rebuilt a hair off its old spot.
         private const float LEAKED_GEAR_MATCH_RADIUS = 0.12f;
 
+        // How far under a room a loose copy must lie to count as fallen out of the world.
+        private const float FELL_OUT_DEPTH = 1000f;
+
+        // The ballistic vest is the one gear prefab with a live Rigidbody. Without a floor or its own
+        // collider it falls forever, and the game then puts it back at the player's feet (2026-10-13).
+        internal static bool FreezeGearPhysics(Il2Cpp.GearItem gear)
+        {
+            if (gear == null) return false;
+            try
+            {
+                if (!gear.HasPhysicsEnabled()) return false;
+                gear.DisablePhysics();
+                return true;
+            }
+            catch { return false; }
+        }
+
+        internal static int FreezeGearPhysicsIn(GameObject root)
+        {
+            int frozen = 0;
+            foreach (var gear in InteriorScan.Gear(root))
+                if (FreezeGearPhysics(gear)) frozen++;
+            return frozen;
+        }
+
+        // After the game restores loose gear: its copies of a room's items come back where no floor
+        // may stand yet, and must wait there for the purge instead of falling.
+        internal static void FreezeRestoredGearPhysics()
+        {
+            if (!IsSupportedExteriorSceneLoaded()) return;
+
+            var names = new List<string>();
+            try
+            {
+                var list = Il2Cpp.GearManager.m_Gear;
+                if (list == null) return;
+                for (int i = 0; i < list.Count; i++)
+                {
+                    var gear = list[i];
+                    if (gear == null || gear.m_InPlayerInventory) continue;
+                    if (FreezeGearPhysics(gear)) names.Add(gear.gameObject.name);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[GEAR-PHYSICS] {ex.Message}");
+            }
+
+            if (names.Count > 0)
+                MelonLogger.Msg($"[GEAR-PHYSICS] Oyunun kaydindan fizigi acik gelen {names.Count} esya yerinde donduruldu: {string.Join(", ", names)}",
+                                $"[GEAR-PHYSICS] {names.Count} items the game's save restored with live physics were frozen in place: {string.Join(", ", names)}");
+        }
+
         public static int PurgeLeakedCloneGearDuplicates(SeamlessInteriorInstance instance)
         {
             if (instance == null || instance.MasterInterior == null) return 0;
@@ -80,7 +133,11 @@ namespace SeamlessInteriors
 
                 Vector3 pos = gear.transform.position;
                 bool judgedAsLifted = false;
-                if (hasFilter && !filter.Contains(pos))
+                bool outside = hasFilter && !filter.Contains(pos);
+
+                // Fell out of the world (see FreezeGearPhysics): such a copy is matched by identity only.
+                bool fellOut = outside && pos.y < filter.min.y - FELL_OUT_DEPTH;
+                if (outside && !fellOut)
                 {
                     // LEFT BEHIND WHERE THE ROOM USED TO STAND. A building that was co-located when
                     // the game last saved and is parked now has its leaked copies at the OLD spot,
@@ -122,7 +179,7 @@ namespace SeamlessInteriors
                 // Another building's clone owns this one.
                 if (BelongsToAnotherInstance(instance, gear.transform)) continue;
 
-                candidates.Add(new LeakCandidate { Gear = gear, Pos = pos, Lifted = judgedAsLifted, HasOldPos = hasOld, OldPos = oldPos });
+                candidates.Add(new LeakCandidate { Gear = gear, Pos = pos, Lifted = judgedAsLifted, HasOldPos = hasOld, OldPos = oldPos, FellOut = fellOut });
             }
 
             if (candidates.Count == 0) return 0;
@@ -132,6 +189,8 @@ namespace SeamlessInteriors
 
             var ownedGuids = new HashSet<string>();
             var ownedCells = new Dictionary<long, List<DedupEntry>>();
+            // The game's own item id: a copy carries it too, however far it has fallen.
+            var ownedIds = new Dictionary<int, string>();
 
             // THE ROOM'S SWITCHED-OFF ITEMS, for copies left where a parked room used to stand.
             // A room's loot roll switches some of its items off (Camp Trailer D on Pilgrim: 5 of 7),
@@ -188,6 +247,7 @@ namespace SeamlessInteriors
                 DedupEntry entry;
                 entry.name = CleanGearName(gear.gameObject.name);
                 entry.pos = gear.transform.position;
+                if (gear.m_InstanceID != 0) ownedIds[gear.m_InstanceID] = entry.name;
 
                 long cell = LeakCellKey(entry.pos);
                 List<DedupEntry> bucket;
@@ -209,12 +269,18 @@ namespace SeamlessInteriors
                 bool judgedAsLifted = c.Lifted;
 
                 bool isCopy = false;
+                string ownedName;
 
                 var looseGuid = gear.GetComponent<Il2Cpp.ObjectGuid>();
                 if (looseGuid != null && !string.IsNullOrEmpty(looseGuid.m_Guid)
                     && ownedGuids.Contains(looseGuid.m_Guid))
                 {
                     isCopy = true;
+                }
+                else if (c.FellOut)
+                {
+                    isCopy = ownedIds.TryGetValue(gear.m_InstanceID, out ownedName)
+                             && ownedName == CleanGearName(gear.gameObject.name);
                 }
                 else if (HasOwnedCopyNear(ownedCells, CleanGearName(gear.gameObject.name), pos, sqrRadius))
                 {
@@ -269,6 +335,7 @@ namespace SeamlessInteriors
             public bool Lifted;
             public bool HasOldPos;
             public Vector3 OldPos;
+            public bool FellOut;
         }
 
         // Rooms that versions before 2.2.0 stretched to their shell (ScaleAdjustment, now 1 everywhere).
