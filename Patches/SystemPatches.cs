@@ -13,12 +13,20 @@ namespace SeamlessInteriors
         public static bool Prefix(GameManager __instance)
         {
             string sceneName = SeamlessInteriorsMod.RealSceneName(__instance.gameObject.scene);
+            // Base name of the _SANDBOX / _DLC01 variants too: LakeCabinC_SANDBOX's manager slipped through.
+            string baseName = SeamlessInteriorsMod.GetInteriorBaseName(sceneName);
 
-            // Any GameManager waking up inside an interior scene we are currently
-            // cloning is a fake one: destroy it and skip the original Awake.
+            // A GameManager waking inside a template we are cloning, or inside a clone, is fake:
+            // destroy it and skip the original Awake.
+            if (SeamlessInteriorsMod.IsUnderAnyMasterInteriorPublic(__instance.transform))
+            {
+                // Only the component: its object may carry room content.
+                UnityEngine.Object.Destroy(__instance);
+                return false;
+            }
             foreach (var instance in SeamlessInteriorsMod.ActiveInteriors.Values)
             {
-                if (instance.IsCloningRoutineActive && sceneName == instance.Config.InteriorSceneBaseName)
+                if (instance.IsCloningRoutineActive && baseName != null && baseName == instance.Config.InteriorSceneBaseName)
                 {
                     UnityEngine.Object.Destroy(__instance.gameObject);
                     return false;
