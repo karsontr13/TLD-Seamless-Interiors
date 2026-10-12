@@ -1178,12 +1178,34 @@ namespace SeamlessInteriors
             n += CollectLegacyStates(fmt.m_BreakDownObjectsSerialized, TAG_BREAKDOWN, instance, entries, usedKeys);
             n += CollectLegacyStates(fmt.m_HarvestablesSerialized, TAG_HARVESTABLE, instance, entries, usedKeys);
             n += CollectLegacyStates(fmt.m_OpenClosersSerialized, TAG_OPENCLOSE, instance, entries, usedKeys);
+            n += CollectLegacyBrokenDecorations(fmt, entries, usedKeys);
 
             string path = GetInteractiveStateSavePath(instance);
             if (path == null) return 0;
 
             JsonWriteCache.Write(path, "[\n" + string.Join(",\n", entries) + "\n]");
             return n;
+        }
+
+        // Repaired cabinet doors: the old scene's list, by guid, in the shape SaveInteractiveState writes.
+        private static int CollectLegacyBrokenDecorations(SceneSaveGameFormat fmt, List<string> entries, HashSet<string> usedKeys)
+        {
+            var list = fmt.m_BrokenDecorationSaveData?.m_DataList;
+            if (list == null) return 0;
+
+            int count = 0;
+            foreach (var d in list)
+            {
+                if (string.IsNullOrEmpty(d.m_ItemId)) continue;
+
+                string key = $"{TAG_BROKENDECO}|g:{d.m_ItemId}";
+                if (!usedKeys.Add(key)) continue;
+
+                string data = $"{{\"m_Guid\":\"{d.m_ItemId}\",\"m_State\":\"{d.m_State}\"}}";
+                entries.Add($"{{\"k\":\"{EscapeJson(key)}\",\"d\":\"{EscapeJson(data)}\"}}");
+                count++;
+            }
+            return count;
         }
 
         private static int CollectLegacyStates(string blob, string typeTag, SeamlessInteriorInstance instance,

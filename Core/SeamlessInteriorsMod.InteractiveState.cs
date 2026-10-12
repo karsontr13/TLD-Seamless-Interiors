@@ -121,6 +121,27 @@ namespace SeamlessInteriors
         private const string TAG_SMASHABLE = "SM";
         private const string TAG_OPENCLOSE = "OC";
         private const string TAG_LOCK = "LK";
+        private const string TAG_BROKENDECO = "BR";
+
+        // A repairable decoration (kitchen cabinet doors) has no Serialize of its own: the game keeps
+        // its state in a scene-wide list by guid, which a clone never gets. Written in the same shape.
+        private static string SerializeBrokenDecoration(Il2Cpp.BrokenDecorationInteraction x)
+        {
+            string id = null;
+            var g = x.GetComponent<Il2Cpp.ObjectGuid>();
+            if (g != null) id = !string.IsNullOrEmpty(g.m_Guid) ? g.m_Guid : g.PDID;
+            return string.IsNullOrEmpty(id)
+                ? $"{{\"m_State\":\"{x.m_State}\"}}"
+                : $"{{\"m_Guid\":\"{id}\",\"m_State\":\"{x.m_State}\"}}";
+        }
+
+        private static void DeserializeBrokenDecoration(Il2Cpp.BrokenDecorationInteraction x, string data)
+        {
+            var state = data.Contains("\"Repaired\"")
+                ? Il2Cpp.BrokenDecorationState.Repaired
+                : Il2Cpp.BrokenDecorationState.Broken;
+            if (x.m_State != state) x.UpdateState(state);
+        }
 
         private static string SerializeComponent(Component c, string typeTag)
         {
@@ -150,6 +171,11 @@ namespace SeamlessInteriors
                     {
                         var x = c.TryCast<Il2Cpp.Lock>();
                         return (x != null) ? x.Serialize() : null;
+                    }
+                case TAG_BROKENDECO:
+                    {
+                        var x = c.TryCast<Il2Cpp.BrokenDecorationInteraction>();
+                        return (x != null) ? SerializeBrokenDecoration(x) : null;
                     }
             }
             return null;
@@ -192,6 +218,12 @@ namespace SeamlessInteriors
                     {
                         var x = c.TryCast<Il2Cpp.Lock>();
                         if (x != null) x.Deserialize(data);
+                        return;
+                    }
+                case TAG_BROKENDECO:
+                    {
+                        var x = c.TryCast<Il2Cpp.BrokenDecorationInteraction>();
+                        if (x != null) DeserializeBrokenDecoration(x, data);
                         return;
                     }
             }
@@ -255,6 +287,7 @@ namespace SeamlessInteriors
             int nSmash = CollectStates<Il2Cpp.SmashableItem>(instance, TAG_SMASHABLE, entries, usedKeys);
             int nOpen = CollectStates<Il2Cpp.OpenClose>(instance, TAG_OPENCLOSE, entries, usedKeys);
             int nLock = CollectStates<Il2Cpp.Lock>(instance, TAG_LOCK, entries, usedKeys);
+            CollectStates<Il2Cpp.BrokenDecorationInteraction>(instance, TAG_BROKENDECO, entries, usedKeys);
 
             string json = "[\n" + string.Join(",\n", entries) + "\n]";
             JsonWriteCache.Write(path, json);
@@ -291,6 +324,7 @@ namespace SeamlessInteriors
             restored += ApplyStates<Il2Cpp.SmashableItem>(instance, TAG_SMASHABLE, keyToData, usedKeys, ref missed);
             restored += ApplyStates<Il2Cpp.OpenClose>(instance, TAG_OPENCLOSE, keyToData, usedKeys, ref missed);
             restored += ApplyStates<Il2Cpp.Lock>(instance, TAG_LOCK, keyToData, usedKeys, ref missed);
+            restored += ApplyStates<Il2Cpp.BrokenDecorationInteraction>(instance, TAG_BROKENDECO, keyToData, usedKeys, ref missed);
 
             MelonLogger.Msg($"[STATE-LOAD] {instance.Config.ResolvedInstanceId}: {restored}/{keyToData.Count} durum geri yuklendi ({missed} eslesmedi).");
         }
