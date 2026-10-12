@@ -593,7 +593,8 @@ namespace SeamlessInteriors
                     new DoorSpawnPoint {
                     DoorName = "BackDoorInteriorExit",
                     DoorTransformPosition = new Vector3(2361.78f, 56.613f, 2265.771f),
-                    EntryPosition = new Vector3(2363.052f, 57.4187f, 2264.541f),
+                    // The game's own CommunityHallABackEnterPoint; the old point was inside the kitchen cabinet.
+                    EntryPosition = new Vector3(2362.403f, 57.4187f, 2265.506f),
                     ExitPosition = new Vector3(2365.669f, 56.8886f, 2268.47f)
 
                     },
