@@ -463,7 +463,10 @@ namespace SeamlessInteriors
                 Mathf.Max(0.1f, size.z));
 
             Bounds volume = new Bounds(InteriorTrigger.center, size);
-            if (padding != 0f) volume.Expand(padding);
+            // A negative padding keeps doorway items out, so it shrinks only the walls:
+            // shrinking the floor too dropped furniture standing on it from the save.
+            if (padding > 0f) volume.Expand(padding);
+            else if (padding < 0f) volume.Expand(new Vector3(padding, 0f, padding));
 
             return volume.Contains(localPos);
         }
