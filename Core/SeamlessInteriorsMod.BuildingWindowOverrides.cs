@@ -909,6 +909,14 @@ namespace SeamlessInteriors
                     RoomManyPaneObjects = new[] { "STR_RadarStation_InteriorWindowGlass_A" },
                 }
             },
+            // Mountain Town church: both side walls' windows are one glass object, read as two 5.75 m windows
+            // whose view stood in the middle of the nave (2026-10-12). Read pane by pane instead.
+            {
+                "STR_ChurchB_Prefab", new BuildingWindowOverride
+                {
+                    RoomManyPaneObjects = new[] { "STR_ChurchBGlass_Prefab" },
+                }
+            },
             // Zone of Contamination pump house: all room windows in one unreadable glass object the rule never
             // read (0 of the building's 5) (2026-10-10).
             {
