@@ -725,7 +725,8 @@ namespace SeamlessInteriors
                  FallbackPosition = new Vector3(2266.723f, 55.53f, 2286.753f),
                  ForceExactPosition = true,
                  ObjectsToDestroy = new List<string> { "FX_LightShaft_E", "ChurchC_Lighting_Prefab", "CONTAINER_InaccessibleGear" },
-                 ObjectsToDisable = new List<string> { "STR_ChurchCGlowMesh_Prefab", "STR_ChurchCInt_Glass_Prefab" },
+                 // The stained glass stays: the room is parked 80 m up, so without it the windows were holes.
+                 ObjectsToDisable = new List<string> { "STR_ChurchCGlowMesh_Prefab" },
                  EntrySpawnPosition = new Vector3(2270.964f, 57.3307f, 2286.781f),
                  ExitSpawnPosition = new Vector3(2272.547f, 57.6147f, 2288.157f),
                  RotationOffset = new Vector3(0f, 180f, 0f),
