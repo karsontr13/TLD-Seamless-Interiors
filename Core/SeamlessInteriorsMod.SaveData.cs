@@ -1375,7 +1375,9 @@ namespace SeamlessInteriors
         // not. A fresh clone starts every fire Off, so that is the only direction the error
         // can go, and leaving everything else alone keeps this out of the way of whatever
         // the game did manage to restore.
-        private static int RestoreCloneFireStates(string blob)
+        // With 'only' set, just that building: a pre-mod save's fire guids repeat in every
+        // copy of the same template.
+        private static int RestoreCloneFireStates(string blob, SeamlessInteriorInstance only = null)
         {
             if (string.IsNullOrEmpty(blob)) return 0;
 
@@ -1396,6 +1398,7 @@ namespace SeamlessInteriors
             foreach (var instance in ActiveInteriors.Values)
             {
                 if (instance == null || instance.MasterInterior == null) continue;
+                if (only != null && instance != only) continue;
 
                 bool needsThisOne = false;
 

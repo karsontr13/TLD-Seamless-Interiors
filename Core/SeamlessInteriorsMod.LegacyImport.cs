@@ -702,6 +702,10 @@ namespace SeamlessInteriors
             try { TranscodeJunk(instance, fmt); }
             catch (System.Exception ex) { MelonLogger.Warning($"[LEGACY] {id}: cop durumu aktarimi hatasi - {ex.Message}"); }
 
+            // ─── 6. Fires still burning in the old save ───
+            try { TranscodeFires(instance, fmt); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[LEGACY] {id}: ates aktarimi hatasi - {ex.Message}"); }
+
             WriteLegacyMarker(instance, "imported", instance.LegacySourceId,
                               gearCount, containerCount, stateCount, placeableCount);
             instance.LegacyImport = LegacyImportState.Done;
@@ -1215,6 +1219,22 @@ namespace SeamlessInteriors
             }
 
             return count;
+        }
+
+        // ─── 6. Fires ──────────────────────────────────────────────────────────
+        // The old scene's FireManager records, put on the clone's fires by guid. The fires
+        // are registered first, or the region's next save would not write them.
+        private static void TranscodeFires(SeamlessInteriorInstance instance, SceneSaveGameFormat fmt)
+        {
+            if (string.IsNullOrEmpty(fmt.m_FireManagerSerialized) || instance.MasterInterior == null) return;
+
+            var registered = RealFires();
+            foreach (var f in instance.MasterInterior.GetComponentsInChildren<Il2Cpp.Fire>(true))
+                if (f != null && (registered == null || !registered.Contains(f))) Il2Cpp.FireManager.AddFire(f);
+
+            int lit = RestoreCloneFireStates(fmt.m_FireManagerSerialized, instance);
+            if (lit > 0)
+                MelonLogger.Msg($"[LEGACY] {instance.Config.ResolvedInstanceId}: eski kayitta yanan {lit} ates aktarildi.");
         }
 
         // ─── 4. Junk ───────────────────────────────────────────────────────────

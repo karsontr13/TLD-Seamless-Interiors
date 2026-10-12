@@ -317,6 +317,7 @@ LEGACY	^\[LEGACY\]\ (.*?):\ esya\ aktarimi\ hatasi\ \-\ (.*?)$	[LEGACY] ${1}: ge
 LEGACY	^\[LEGACY\]\ (.*?):\ etkilesim\ durumu\ aktarimi\ hatasi\ \-\ (.*?)$	[LEGACY] ${1}: interaction state import error - ${2}
 LEGACY	^\[LEGACY\]\ (.*?):\ cop\ durumu\ aktarimi\ hatasi\ \-\ (.*?)$	[LEGACY] ${1}: junk state import error - ${2}
 LEGACY	^\[LEGACY\]\ (.*?):\ eski\ kayit\ aktarildi\ \-\ (.*?)\ esya,\ (.*?)\ konteyner,\ (.*?)\ etkilesim\ durumu,\ (.*?)\ yerlestirilmis\ obje\.$	[LEGACY] ${1}: old save imported - ${2} items, ${3} containers, ${4} interaction states, ${5} placed objects.
+LEGACY	^\[LEGACY\]\ (.*?):\ eski\ kayitta\ yanan\ (.*?)\ ates\ aktarildi\.$	[LEGACY] ${1}: ${2} fires still burning in the old save were carried over.
 LEGACY	^\[LEGACY\]\ (.*?):\ (.*?)\.\ Aktarim\ iptal\ edildi\.$	[LEGACY] ${1}: ${2}. Import canceled.
 LEGACY	^\[LEGACY\]\ (.*?):\ bu\ bina\ bu\ oturumda\ fazla\ loot\ ile\ gorunebilir;\ bir\ sonraki\ bolge\ yuklemesinde\ normal\ loot\ akisina\ donecek\.\ Yeniden\ denemek\ icin\ SeamlessInteriorsData\ icindeki\ '\*_(.*?)_legacy\.json'\ dosyasini\ silin\.$	[LEGACY] ${1}: this building may show too much loot this session; it will return to the normal loot flow on the next region load. To try again, delete the '*_${2}_legacy.json' file inside SeamlessInteriorsData.
 LEGACY	^\[LEGACY\]\ Marker\ yazilamadi:\ (.*?)$	[LEGACY] Marker could not be written: ${1}
