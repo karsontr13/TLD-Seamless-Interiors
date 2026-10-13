@@ -94,6 +94,8 @@ namespace SeamlessInteriors
                     var t = s_CleanTargets[i];
                     if (t.Go == null) { s_CleanTargetsKey = null; return; }   // gone with its scene: rebuild next frame
                     bool frosted = t.Inside ? !IsWindowPaneCleared(t.Index) : !IsWindowCleaned(s_OutsideInInstanceId, t.Index);
+                    // A window frosting over again can be wiped before it is full.
+                    if (t.Inside && WindowCoverLayers && !frosted) { float f, s; GetRoomPaneCover(t.Index, out f, out s); frosted = f >= 0.2f; }
                     if (t.Go.activeSelf != frosted) t.Go.SetActive(frosted);
 
                     // LETTING GO STOPS IT. The game's hold does not cancel on release by itself (its
@@ -257,6 +259,7 @@ namespace SeamlessInteriors
                 {
                     id = s_OutsideInInstanceId;
                     SetWindowCleaned(id, target.Index, true);
+                    ClearWindowSnow(id, target.Index, false);
                 }
                 if (target.Go != null) target.Go.SetActive(false);
 

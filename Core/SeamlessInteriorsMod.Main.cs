@@ -535,6 +535,7 @@ namespace SeamlessInteriors
             TickWindowFrostWeather();
             TickWindowFrostFires();
             TickWindowFrostReturn();
+            TickWindowCoverLayers();   // the frost and snow drawn on the room's glass
 
             // Room objects a building's row hides stay hidden. (see HideRoomObjectsByRow)
             KeepRowHiddenRoomObjectsOff();

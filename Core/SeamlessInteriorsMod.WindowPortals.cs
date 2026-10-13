@@ -1209,6 +1209,14 @@ namespace SeamlessInteriors
             if (openingIndex >= s_WindowPaneCleared.Count) return;
 
             var opening = s_WindowPortalOpenings[openingIndex];
+            // The cover layers draw the window instead of the painted frost (WindowCoverLayers.cs).
+            if (WindowCoverLayers)
+            {
+                SetGlassShown(opening.Glass, false);
+                s_WindowPaneCleared[openingIndex] = cleared;
+                MarkWindowCoverDirty();
+                return;
+            }
             SetGlassShown(opening.Glass, !cleared);
             SetRenderersEnabled(opening.Frost, !cleared && InsideOutShowSnowSlab);
             if (!cleared && !s_WindowPortalKeepsOwnGlass) GiveGlassTheFrostMaterial(opening.Glass);
@@ -1491,6 +1499,7 @@ namespace SeamlessInteriors
 
             if (s_WindowPortalSnowSlabApplied == InsideOutShowSnowSlab) return;
             s_WindowPortalSnowSlabApplied = InsideOutShowSnowSlab;
+            if (WindowCoverLayers) { MarkWindowCoverDirty(); return; }
             for (int i = 0; i < s_WindowPaneCleared.Count && i < s_WindowPortalOpenings.Count; i++)
                 if (!s_WindowPaneCleared[i]) SetRenderersEnabled(s_WindowPortalOpenings[i].Frost, InsideOutShowSnowSlab);
         }
@@ -1992,6 +2001,7 @@ namespace SeamlessInteriors
             try { TeardownWallCameras(); } catch { }
             try { TeardownViewMotion(); } catch { }
             try { TeardownGlassSnow(); } catch { }
+            try { TeardownWindowCoverLayers(); } catch { }
 
             s_RowHiddenRoomObjects.Clear();   // before the list below switches them back on
             for (int i = 0; i < s_WindowPortalHiddenBackdrops.Count; i++)

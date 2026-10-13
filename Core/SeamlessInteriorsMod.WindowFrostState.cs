@@ -174,6 +174,8 @@ namespace SeamlessInteriors
             s_WindowFrostBonusOnDisk = false;
             s_WindowFrostWeatherLastHour = -1f;
             s_WindowFrostWeatherRate = 1f;
+            s_WindowSnowHours = 0f;
+            s_WindowSnowWeight = 0f;
 
             try
             {
@@ -189,6 +191,7 @@ namespace SeamlessInteriors
                 if (end > colon && float.TryParse(json.Substring(colon + 1, end - colon - 1).Trim(), System.Globalization.NumberStyles.Float,
                                                   System.Globalization.CultureInfo.InvariantCulture, out hours) && hours > 0f)
                     s_WindowFrostBonusHours = hours;
+                s_WindowSnowHours = Mathf.Max(0f, ReadJsonFloat(json, "\"snowHours\"", 0f));
             }
             catch (System.Exception ex)
             {
@@ -202,10 +205,12 @@ namespace SeamlessInteriors
         {
             if (SaveGameSystem.m_CurrentSaveName != s_WindowFrostBonusSaveName) return;
             // No heavy weather yet and nothing on disk: leave it that way.
-            if (s_WindowFrostBonusHours <= 0f && !s_WindowFrostBonusOnDisk) return;
+            if (s_WindowFrostBonusHours <= 0f && s_WindowSnowHours <= 0f && !s_WindowFrostBonusOnDisk) return;
             string path = GetWindowFrostBonusSavePath();
             if (path == null) return;
-            JsonWriteCache.Write(path, "{\"v\":1,\"bonusHours\":" + s_WindowFrostBonusHours.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "}");
+            var invariant = System.Globalization.CultureInfo.InvariantCulture;
+            JsonWriteCache.Write(path, "{\"v\":1,\"bonusHours\":" + s_WindowFrostBonusHours.ToString("0.###", invariant)
+                                     + ",\"snowHours\":" + s_WindowSnowHours.ToString("0.###", invariant) + "}");
             s_WindowFrostBonusOnDisk = true;
         }
 
@@ -238,6 +243,10 @@ namespace SeamlessInteriors
                 float passed = now - last;
                 if (last >= 0f && passed > 0f && passed <= WINDOW_FROST_WEATHER_MAX_STEP_HOURS && s_WindowFrostWeatherRate > 1f)
                     s_WindowFrostBonusHours += passed * (s_WindowFrostWeatherRate - 1f);
+                // Snow on the windows, counted the same way at the weight that held over those hours.
+                if (last >= 0f && passed > 0f && passed <= WINDOW_FROST_WEATHER_MAX_STEP_HOURS && s_WindowSnowWeight > 0f)
+                    s_WindowSnowHours += passed * s_WindowSnowWeight;
+                s_WindowSnowWeight = WindowSnowWeightOf(stage);
 
                 if (rate != s_WindowFrostWeatherRate)
                 {
@@ -292,7 +301,9 @@ namespace SeamlessInteriors
 
             float after = WindowFrostReturnHours;
             if (after <= 0f || now - hour < after) return false;
-            if (IsWindowBeingDrawn(instanceId, window, roomWindow)) return false;
+            // The cover layers grow the frost in sight, so the record can turn while seen; the old
+            // all-at-once frost waits until the window is out of sight.
+            if (!WindowCoverLayers && IsWindowBeingDrawn(instanceId, window, roomWindow)) return false;
 
             building[window] = false;
             at.Remove(window);
@@ -560,12 +571,20 @@ namespace SeamlessInteriors
             for (int i = 0; i < s_WindowPortalSpot.Count; i++)
                 if (s_WindowPortalSpot[i] + 1 > windows) windows = s_WindowPortalSpot[i] + 1;
 
-            for (int window = 0; window < windows; window++) SetWindowCleaned(instanceId, window, cleaned);
+            for (int window = 0; window < windows; window++)
+            {
+                SetWindowCleaned(instanceId, window, cleaned);
+                SetWindowSnowCleared(instanceId, window, false, cleaned);
+            }
 
             // Interior openings that paired with no shell window keep their own record.
             if (s_WindowPortalInstanceId == instanceId)
                 for (int i = 0; i < s_WindowPortalSpot.Count; i++)
-                    if (s_WindowPortalSpot[i] < 0) SetRoomWindowCleaned(instanceId, i, cleaned);
+                    if (s_WindowPortalSpot[i] < 0)
+                    {
+                        SetRoomWindowCleaned(instanceId, i, cleaned);
+                        SetWindowSnowCleared(instanceId, i, true, cleaned);
+                    }
         }
 
         public static bool AreAllWindowsCleaned()
@@ -601,6 +620,8 @@ namespace SeamlessInteriors
             s_RoomWindowCleaned.Clear();
             s_WindowCleanedHour.Clear();
             s_RoomWindowCleanedHour.Clear();
+            s_WindowSnowFrom.Clear();
+            s_RoomWindowSnowFrom.Clear();
             s_WindowFrostFires.Clear();
             s_WindowStateLoaded.Clear();
             s_WindowStateSaveName = null;
@@ -623,6 +644,8 @@ namespace SeamlessInteriors
                 s_RoomWindowCleaned.Clear();
                 s_WindowCleanedHour.Clear();
                 s_RoomWindowCleanedHour.Clear();
+                s_WindowSnowFrom.Clear();
+                s_RoomWindowSnowFrom.Clear();
                 s_WindowFrostFires.Clear();
                 s_WindowStateLoaded.Clear();
             }
@@ -654,6 +677,14 @@ namespace SeamlessInteriors
                 var roomHours = new Dictionary<int, float>();
                 ReadWindowHours(json, "\"roomCleanedAt\"", room, roomHours);
                 if (roomHours.Count > 0) s_RoomWindowCleanedHour[instanceId] = roomHours;
+
+                // Absent from files written before 2026-10-13: those windows count as fully snowed over.
+                var snowFrom = new Dictionary<int, float>();
+                ReadWindowValues(json, "\"snowFrom\"", snowFrom);
+                if (snowFrom.Count > 0) s_WindowSnowFrom[instanceId] = snowFrom;
+                var roomSnowFrom = new Dictionary<int, float>();
+                ReadWindowValues(json, "\"roomSnowFrom\"", roomSnowFrom);
+                if (roomSnowFrom.Count > 0) s_RoomWindowSnowFrom[instanceId] = roomSnowFrom;
 
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[PENCERE-LOAD] {instanceId}: {building.Count} pencerenin, {room.Count} yalniz oda penceresinin durumu okundu.",
@@ -753,13 +784,16 @@ namespace SeamlessInteriors
             Dictionary<int, bool> building, room;
             bool any = s_WindowCleaned.TryGetValue(instanceId, out building) && building.Count > 0;
             bool anyRoom = s_RoomWindowCleaned.TryGetValue(instanceId, out room) && room.Count > 0;
+            Dictionary<int, float> snowFrom, roomSnowFrom;
+            bool anySnow = s_WindowSnowFrom.TryGetValue(instanceId, out snowFrom) && snowFrom.Count > 0;
+            bool anyRoomSnow = s_RoomWindowSnowFrom.TryGetValue(instanceId, out roomSnowFrom) && roomSnowFrom.Count > 0;
 
             string path = GetWindowStateSavePath(instanceId);
             if (path == null) return;
 
             // Nothing recorded and nothing on disk: leave it that way. An untouched building gets
             // no file.
-            if (!any && !anyRoom && !SaveFiles.Exists(path)) return;
+            if (!any && !anyRoom && !anySnow && !anyRoomSnow && !SaveFiles.Exists(path)) return;
 
             var cleanedList = new List<int>();
             var frostedList = new List<int>();
@@ -785,7 +819,8 @@ namespace SeamlessInteriors
             // without them reads the building lists exactly as before and ignores the rest.
             string json = "{\"v\":1,\"cleaned\":[" + string.Join(",", cleanedList) + "],\"frosted\":[" + string.Join(",", frostedList) + "]"
                         + ",\"roomCleaned\":[" + string.Join(",", roomCleanedList) + "],\"roomFrosted\":[" + string.Join(",", roomFrostedList) + "]"
-                        + ",\"cleanedAt\":[" + WriteWindowHours(cleanedList, hours) + "],\"roomCleanedAt\":[" + WriteWindowHours(roomCleanedList, roomHours) + "]}";
+                        + ",\"cleanedAt\":[" + WriteWindowHours(cleanedList, hours) + "],\"roomCleanedAt\":[" + WriteWindowHours(roomCleanedList, roomHours) + "]"
+                        + ",\"snowFrom\":[" + WriteWindowValues(snowFrom) + "],\"roomSnowFrom\":[" + WriteWindowValues(roomSnowFrom) + "]}";
             JsonWriteCache.Write(path, json);
 
             if (s_DebugBounds)
