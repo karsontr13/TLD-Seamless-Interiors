@@ -1294,6 +1294,7 @@ namespace SeamlessInteriors
                 }
                 s_CoverLightRoom = id;
                 s_CoverLight = light; s_CoverBankLight = bankTint;
+                TickSnowedUpWindowShafts();
                 int fills = 0;
                 for (int i = 0; i < s_CoverLayers.Count; i++)
                 {

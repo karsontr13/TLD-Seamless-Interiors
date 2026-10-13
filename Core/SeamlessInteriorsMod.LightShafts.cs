@@ -96,6 +96,111 @@ namespace SeamlessInteriors
             gimble.m_LightShaftRenderer = kept;
         }
 
+        // ─── A WINDOW SNOWED UP LETS NO SUNLIGHT IN ───
+        // Owner, 2026-10-14: once snow covers more than 60% of a window, the patch of light and window shadow it
+        // throws on the floor goes. Each shaft (gimble or the simpler TOD one) belongs to the room window nearest
+        // it; past the line its external intensity is held at 0 and its spotlight off, and given back below it.
+        private const float SNOWED_UP_WINDOW = 0.6f;
+
+        private sealed class DimmedShaft
+        {
+            internal Light Light;
+            internal bool LightWasOn;
+            internal float External;
+        }
+
+        private static readonly Dictionary<int, DimmedShaft> s_DimmedShafts = new Dictionary<int, DimmedShaft>();
+        private static readonly Dictionary<int, Component> s_DimmedShaftOwners = new Dictionary<int, Component>();
+        private static string s_ShaftWindowsRoom;
+        private static readonly List<Component> s_RoomShafts = new List<Component>();
+        private static readonly List<int> s_RoomShaftWindow = new List<int>();
+
+        // From the window covers' once-a-second look, for the room the player is in.
+        private static void TickSnowedUpWindowShafts()
+        {
+            string room = WindowCoverLayers ? s_WindowPortalInstanceId : null;
+            if (room != s_ShaftWindowsRoom)
+            {
+                RestoreSnowedUpShafts();
+                s_ShaftWindowsRoom = room;
+                s_RoomShafts.Clear(); s_RoomShaftWindow.Clear();
+                SeamlessInteriorInstance instance;
+                if (room == null || !ActiveInteriors.TryGetValue(room, out instance) || instance == null || instance.MasterInterior == null) return;
+                foreach (var g in instance.MasterInterior.GetComponentsInChildren<LightShaftGimble>(true)) AddRoomShaft(g);
+                foreach (var t in instance.MasterInterior.GetComponentsInChildren<LightShaftTod>(true)) AddRoomShaft(t);
+            }
+            if (room == null) return;
+
+            for (int i = 0; i < s_RoomShafts.Count; i++)
+            {
+                var shaft = s_RoomShafts[i];
+                int window = s_RoomShaftWindow[i];
+                if (shaft == null || window < 0) continue;
+                float frost, snow;
+                GetRoomPaneCover(window, out frost, out snow);
+                bool snowedUp = (InsideOutShowSnowSlab ? snow : 0f) > SNOWED_UP_WINDOW;
+                int id = shaft.GetInstanceID();
+                bool dimmed = s_DimmedShafts.ContainsKey(id);
+                if (snowedUp) DimShaft(shaft, id, dimmed);
+                else if (dimmed) RestoreShaft(id);
+            }
+        }
+
+        private static void AddRoomShaft(Component shaft)
+        {
+            if (shaft == null) return;
+            Vector3 at = shaft.transform.position;
+            int best = -1; float bestSqr = float.MaxValue;
+            for (int w = 0; w < s_WindowPortalOpenings.Count; w++)
+            {
+                float sqr = (s_WindowPortalOpenings[w].GlassCenter - at).sqrMagnitude;
+                if (sqr < bestSqr) { bestSqr = sqr; best = w; }
+            }
+            s_RoomShafts.Add(shaft);
+            s_RoomShaftWindow.Add(best);
+        }
+
+        // Held at 0 every look: the room's own manager writes the external intensity too.
+        private static void DimShaft(Component shaft, int id, bool already)
+        {
+            var gimble = shaft.TryCast<LightShaftGimble>();
+            var tod = gimble == null ? shaft.TryCast<LightShaftTod>() : null;
+            Light light = gimble != null ? gimble.m_Light : (tod != null ? tod.m_Light : null);
+            if (!already)
+            {
+                s_DimmedShafts[id] = new DimmedShaft
+                {
+                    Light = light, LightWasOn = light != null && light.enabled,
+                    External = gimble != null ? gimble.m_ExternalIntensity : (tod != null ? tod.m_ExternalIntensity : 1f)
+                };
+                s_DimmedShaftOwners[id] = shaft;
+            }
+            if (gimble != null) gimble.m_ExternalIntensity = 0f;
+            if (tod != null) tod.m_ExternalIntensity = 0f;
+            if (light != null && light.enabled) light.enabled = false;
+        }
+
+        private static void RestoreShaft(int id)
+        {
+            DimmedShaft was;
+            Component shaft;
+            if (s_DimmedShafts.TryGetValue(id, out was) && s_DimmedShaftOwners.TryGetValue(id, out shaft) && shaft != null)
+            {
+                var gimble = shaft.TryCast<LightShaftGimble>();
+                var tod = gimble == null ? shaft.TryCast<LightShaftTod>() : null;
+                if (gimble != null) gimble.m_ExternalIntensity = was.External;
+                if (tod != null) tod.m_ExternalIntensity = was.External;
+                if (was.Light != null && was.LightWasOn) was.Light.enabled = true;
+            }
+            s_DimmedShafts.Remove(id);
+            s_DimmedShaftOwners.Remove(id);
+        }
+
+        private static void RestoreSnowedUpShafts()
+        {
+            foreach (var id in new List<int>(s_DimmedShafts.Keys)) RestoreShaft(id);
+        }
+
         // InteriorLightingManager.GetTimeOfDayIntensity: rising through dawn, full by day, falling through dusk, none at night.
         private static float WindowShaftTodIntensity()
         {

@@ -39,7 +39,9 @@ namespace SeamlessInteriors
             {
                 s_OI.Covers.Add(null);
                 var pane = s_OutsideInApertures[a];
-                if (!pane.Paired || IsLeftAloneAt(instance.Config.ExteriorShellPrefabName, a)) continue;
+                // A pretend pane has no room window behind it (the lighthouse lantern's glass): no frost or snow
+                // record belongs to it, and it was buried in snow (owner, 2026-10-14).
+                if (!pane.Paired || pane.Pretend || IsLeftAloneAt(instance.Config.ExteriorShellPrefabName, a)) continue;
                 Vector4 glass = a < s_OutsideInGlassRects.Count ? s_OutsideInGlassRects[a]
                               : new Vector4(-pane.Width * 0.5f, pane.Width * 0.5f, -pane.Height * 0.5f, pane.Height * 0.5f);
                 float width = glass.y - glass.x, height = glass.w - glass.z;

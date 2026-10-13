@@ -209,6 +209,9 @@ namespace SeamlessInteriors
         // Past that range it stands 7 mm in front of the backing, at sizes too small to show a fight.
         private const float OUTSIDE_IN_FROST_PROUD_OF_QUAD = 0.005f;
 
+        // How far outside the room's box a pretend window's eye may still land (it stands in the wall).
+        private const float PRETEND_EYE_IN_ROOM = 0.5f;
+
         // How far outside a pane's nominal rectangle a triangle's middle may lie and still belong
         // to it. Panes are split by glazing bars, so a window is several quads, not one.
         private const float OUTSIDE_IN_FROST_PANE_MARGIN = 0.12f;
@@ -1077,7 +1080,10 @@ namespace SeamlessInteriors
                     aperture.Delta = RoomPointBehindPane(interiorOpenings[best], shellName, s) - center;
                     aperture.Paired = true;
                 }
-                else if (fitted && !HasNoView(shellName, s))
+                // Only where the eye lands in the room: the lighthouse's lantern stands above its room, and its
+                // 34 panes showed the empty space there (owner, 2026-10-14). Those keep the building's own glass.
+                else if (fitted && !HasNoView(shellName, s)
+                         && (instance.InteriorTrigger == null || instance.IsPositionInVolume(center + meanSlide + instance.Config.ParkOffset, PRETEND_EYE_IN_ROOM)))
                 {
                     // A WINDOW ON THE BUILDING WITH NO WINDOW IN THE ROOM (Trailers B and E have six
                     // outside and four inside). It used to get the dark backing and nothing else, a
