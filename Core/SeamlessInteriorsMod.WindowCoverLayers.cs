@@ -19,10 +19,17 @@ namespace SeamlessInteriors
         private const int BANK_COLUMNS = 48, BANK_ROWS = 8, BANK_ROUND_ROWS = 5;
         // How far at most the rounded outer face bulges past the top's edge.
         private const float BANK_ROUND_REACH = 0.016f;
-        private const float BANK_DEPTH = 0.018f, BANK_SLUMP = 0.45f, BANK_UV = 2f;
+        private const float BANK_DEPTH = 0.018f, BANK_SLUMP = 0.45f;
+        // Texture per metre, as the buildings' own snow is laid (0.09; at 2 the blots of the texture showed).
+        private const float BANK_UV = 0.09f;
         private const float BANK_SIDE_WIDTH = 0.15f, BANK_SIDE_RISE = 0.35f, BANK_TOP_GAPS = 0.08f, BANK_DRIFT = 2.5f;
         // The pane bottom tucks this far under its bar, and a pane under another one hides this much of its top behind the bar.
         private const float BANK_TUCK = 0.03f, BANK_UNDER_BAR = 0.10f;
+        // The view must stand at least this far out for the bank to fit in front of it.
+        private const float COVER_BANK_OUTSIDE_NEEDS = 0.004f + BANK_DEPTH + BANK_ROUND_REACH;
+        // A bank on the room side: its depth, all of it behind the frost moved this far into the room.
+        private const float COVER_ROOM_SIDE_FROST_IN = 0.014f, COVER_ROOM_SIDE_STAND_OFF = 0.0005f;
+        private const float COVER_ROOM_SIDE_DEPTH = 0.007f, COVER_ROOM_SIDE_REACH = 0.005f;
 
         private class WindowCoverLayer
         {
@@ -35,12 +42,16 @@ namespace SeamlessInteriors
             public Color32[] FrostPixels;
             // Per pixel, worked out once for the window's own shape.
             public float[] VeinTime, Vein, Glow, HazeTime, Grain, GlassAlpha, GlassWhite;
+            // Zero where a bar barely proud of the glass would be drawn over; null for none.
+            public float[] FrostMask;
             // Panes in metres from Center along Right and Up: left, right, bottom, top, 1 when a bar sits above.
             public List<float[]> Panes;
             public Vector3 Center, Right, Up, Outward;
             public float FrostShown = -1f, SnowShown = -1f;
             // The bank's depth out from the glass, its rounded face, and how it meets the bars.
             public float BankDepth = BANK_DEPTH, BankReach = BANK_ROUND_REACH, BankTuck = BANK_TUCK, BankUnderBar = BANK_UNDER_BAR;
+            // How far from the glass the bank's flat face stands.
+            public float BankStandOff = 0.004f;
             // Set by the worker thread once the per-pixel tables are done.
             public volatile bool Ready;
             public bool Shown;
@@ -122,6 +133,14 @@ namespace SeamlessInteriors
             }
             width = maxR - minR; height = maxU - minU;
             center = opening.GlassCenter + opening.Right * ((minR + maxR) * 0.5f) + opening.Up * ((minU + maxU) * 0.5f);
+            // One glass mesh for the whole building (Community Hall's STR_CommunityHallA_GlassWin): its bounds
+            // are the building's, 23 m across. The opening's own measure is the window then.
+            float ownWidth = opening.GlassWidth > 0f ? opening.GlassWidth : opening.Width;
+            float ownHeight = opening.GlassHeight > 0f ? opening.GlassHeight : opening.Height;
+            if (ownWidth > 0.05f && ownHeight > 0.05f && (width > ownWidth * 1.5f + 0.1f || height > ownHeight * 1.5f + 0.1f))
+            {
+                width = ownWidth; height = ownHeight; center = opening.GlassCenter;
+            }
             return width > 0.05f && height > 0.05f;
         }
 
@@ -152,13 +171,28 @@ namespace SeamlessInteriors
             // Seeded by the building's window where there is one, so the outside shows the same frost and snow.
             int window = index < s_WindowPortalSpot.Count ? s_WindowPortalSpot[index] : -1;
             var layer = new WindowCoverLayer { Opening = index, Seed = window >= 0 ? window : 100 + index };
-            if (!MakeCoverFrost(layer, "SeamlessInteriors_WindowFrost_" + index, center - opening.Outward * 0.008f, opening.Right, opening.Up, -opening.Outward,
+
+            // Where the view of the outdoors stands in front of the bank's place (Community Hall's at 2.5 mm,
+            // 2026-10-13), the bank would stand behind the picture. It moves to the room side, behind the
+            // frost, turned to face the room (owner's choice "A").
+            Vector3 portal = opening.PortalCenter != Vector3.zero ? opening.PortalCenter : opening.GlassCenter + opening.Outward * opening.PortalOffsetLocal;
+            bool roomSide = Vector3.Dot(portal - center, opening.Outward) < COVER_BANK_OUTSIDE_NEEDS;
+            float frostIn = roomSide ? COVER_ROOM_SIDE_FROST_IN : 0.008f;
+            if (!MakeCoverFrost(layer, "SeamlessInteriors_WindowFrost_" + index, center - opening.Outward * frostIn, opening.Right, opening.Up, -opening.Outward,
                                 width, height, WINDOW_VIEW_OUT_FROST_QUEUE + 2)) return null;
 
             // Snow is a real bank outside the glass in the game's own window snow; drawn flat on the glass
             // it looked like a cut-out from the side (owner, 2026-10-13).
             layer.Center = center; layer.Right = opening.Right; layer.Up = opening.Up; layer.Outward = opening.Outward;
-            layer.Panes = CoverPanes(opening, center, height);
+            layer.Panes = CoverPanes(opening, center, width, height);
+            if (roomSide)
+            {
+                // Turned half round on its upright: across and out both reverse, so the panes are read mirrored.
+                layer.Right = -opening.Right; layer.Outward = -opening.Outward;
+                foreach (var p in layer.Panes) { float left = p[0]; p[0] = -p[1]; p[1] = -left; }
+                layer.BankStandOff = COVER_ROOM_SIDE_STAND_OFF;
+                layer.BankDepth = COVER_ROOM_SIDE_DEPTH; layer.BankReach = COVER_ROOM_SIDE_REACH;
+            }
             MakeCoverBank(layer, CoverBankMaterial(opening), "SeamlessInteriors_WindowSnow_" + index);
             StartCoverTables(layer, width / height);
             return layer;
@@ -391,7 +425,7 @@ namespace SeamlessInteriors
             int count = layer.Vein.Length;
             float reach = frost * 1.15f, haze0 = frost * 0.06f;
             var veinTime = layer.VeinTime; var vein = layer.Vein; var hazeTime = layer.HazeTime; var grain = layer.Grain; var glow = layer.Glow; var pixels = layer.FrostPixels;
-            var glassAlpha = layer.GlassAlpha; var glassWhite = layer.GlassWhite;
+            var glassAlpha = layer.GlassAlpha; var glassWhite = layer.GlassWhite; var mask = layer.FrostMask;
             for (int i = 0; i < count; i++)
             {
                 float v = vein[i] * C01((reach - veinTime[i]) * 12f);
@@ -401,7 +435,7 @@ namespace SeamlessInteriors
                 // The frost laid over the glass.
                 float ga = glassAlpha[i] * (1f - a), gw = glassWhite[i], all = a + ga;
                 float k = all > 0.0001f ? 1f / all : 0f;
-                pixels[i] = CoverPixel((w * 0.90f * a + gw * 0.88f * ga) * k, (w * 0.95f * a + gw * 0.93f * ga) * k, (w * a + gw * 0.98f * ga) * k, all);
+                pixels[i] = CoverPixel((w * 0.90f * a + gw * 0.88f * ga) * k, (w * 0.95f * a + gw * 0.93f * ga) * k, (w * a + gw * 0.98f * ga) * k, mask != null ? all * mask[i] : all);
             }
             layer.FrostTex.SetPixels32(pixels);
             layer.FrostTex.Apply(true);
@@ -409,7 +443,7 @@ namespace SeamlessInteriors
         }
 
         // The panes are the glass mesh's own rectangles (a sash window has one per sash).
-        private static List<float[]> CoverPanes(InteriorWindowOpening opening, Vector3 center, float height)
+        private static List<float[]> CoverPanes(InteriorWindowOpening opening, Vector3 center, float width, float height)
         {
             var panes = new List<float[]>();
             float bottom = -height * 0.5f;
@@ -425,12 +459,22 @@ namespace SeamlessInteriors
                 for (int k = 0; k + 2 < triangles.Length; k += 3)
                 {
                     float r0 = float.MaxValue, r1 = float.MinValue, u0 = float.MaxValue, u1 = float.MinValue;
+                    Vector3 a0 = Vector3.zero, a1 = Vector3.zero, a2 = Vector3.zero;
                     for (int j = 0; j < 3; j++)
                     {
                         var p = t.TransformPoint(vertices[triangles[k + j]]) - center;
+                        if (j == 0) a0 = p; else if (j == 1) a1 = p; else a2 = p;
                         float r = Vector3.Dot(p, opening.Right), u = Vector3.Dot(p, opening.Up);
                         r0 = Mathf.Min(r0, r); r1 = Mathf.Max(r1, r); u0 = Mathf.Min(u0, u); u1 = Mathf.Max(u1, u);
                     }
+                    // A glass mesh shared by the building's windows: only this window's own glass counts.
+                    Vector3 mid = (a0 + a1 + a2) / 3f, normal = Vector3.Cross(a1 - a0, a2 - a0);
+                    if (Mathf.Abs(Vector3.Dot(mid, opening.Outward)) > 0.15f) continue;
+                    if (normal.sqrMagnitude > 1e-12f && Mathf.Abs(Vector3.Dot(normal.normalized, opening.Outward)) < 0.7f) continue;
+                    float midR = Vector3.Dot(mid, opening.Right), midU = Vector3.Dot(mid, opening.Up);
+                    if (Mathf.Abs(midR) > width * 0.5f + 0.05f || Mathf.Abs(midU) > height * 0.5f + 0.05f) continue;
+                    r0 = Mathf.Max(r0, -width * 0.5f); r1 = Mathf.Min(r1, width * 0.5f);
+                    u0 = Mathf.Max(u0, -height * 0.5f - 0.05f); u1 = Mathf.Min(u1, height * 0.5f);
                     // Glass that runs on behind the wall below the frame (see CoverRect) is cut off.
                     if (u0 < bottom - 0.02f) u0 = bottom;
                     if (u1 - u0 < 0.05f || r1 - r0 < 0.05f) continue;
@@ -440,17 +484,260 @@ namespace SeamlessInteriors
                     if (!seen) panes.Add(new[] { r0, r1, u0, u1, 0f });
                 }
             }
+            MergeTouchingPanes(panes);
+            float barLow, barHigh;
+            if (TryMeasureRoomBar(opening, center, width, height, out barLow, out barHigh)) SplitPanesAtBar(panes, barLow, barHigh);
+            SplitPanesAtPosts(panes, MeasureRoomPosts(opening, center, width, height));
+            MarkBarsAbove(panes);
+            return panes;
+        }
+
+        // One sheet of glass modelled as a grid of quads (Trapper's) is one pane: rectangles that share
+        // a whole edge are joined. Panes split by a bar leave a gap and stay apart.
+        private static void MergeTouchingPanes(List<float[]> panes)
+        {
+            const float tol = 0.01f;
+            bool merged = true;
+            while (merged)
+            {
+                merged = false;
+                for (int i = 0; i < panes.Count && !merged; i++)
+                    for (int j = i + 1; j < panes.Count && !merged; j++)
+                    {
+                        float[] a = panes[i], b = panes[j];
+                        bool sameRows = Mathf.Abs(a[2] - b[2]) < tol && Mathf.Abs(a[3] - b[3]) < tol;
+                        bool sameColumns = Mathf.Abs(a[0] - b[0]) < tol && Mathf.Abs(a[1] - b[1]) < tol;
+                        bool sideBySide = sameRows && (Mathf.Abs(a[1] - b[0]) < tol || Mathf.Abs(b[1] - a[0]) < tol);
+                        bool stacked = sameColumns && (Mathf.Abs(a[3] - b[2]) < tol || Mathf.Abs(b[3] - a[2]) < tol);
+                        // The two triangles of one slightly skewed pane give two rectangles over each other
+                        // (Barn's: 0.06 and 0.10 to 0.38); two banks then stood inside each other and flickered.
+                        float overlapX = Mathf.Min(a[1], b[1]) - Mathf.Max(a[0], b[0]), overlapY = Mathf.Min(a[3], b[3]) - Mathf.Max(a[2], b[2]);
+                        float smaller = Mathf.Min((a[1] - a[0]) * (a[3] - a[2]), (b[1] - b[0]) * (b[3] - b[2]));
+                        bool overlapping = overlapX > 0f && overlapY > 0f && overlapX * overlapY > smaller * 0.5f;
+                        if (!sideBySide && !stacked && !overlapping) continue;
+                        a[0] = Mathf.Min(a[0], b[0]); a[1] = Mathf.Max(a[1], b[1]);
+                        a[2] = Mathf.Min(a[2], b[2]); a[3] = Mathf.Max(a[3], b[3]);
+                        panes.RemoveAt(j);
+                        merged = true;
+                    }
+            }
+        }
+
+        // Glass running on behind a bar is two panes, one under it and one over it.
+        private static void SplitPanesAtBar(List<float[]> panes, float barLow, float barHigh)
+        {
+            for (int i = panes.Count - 1; i >= 0; i--)
+            {
+                var p = panes[i];
+                if (p[2] > barLow - 0.02f || p[3] < barHigh + 0.02f) continue;
+                panes.Add(new[] { p[0], p[1], barHigh, p[3], 0f });
+                p[3] = barLow;
+            }
+        }
+
+        // UPRIGHT POSTS. The side faces of a frame that run most of the glass's height, inside its width, as
+        // places along `right` from `center`. A sheet of glass behind a post is two panes (Thompson's Store, 2026-10-13).
+        private static void CollectPostSides(Vector3[] world, int[] triangles, Vector3 center, Vector3 right, Vector3 up, Vector3 outward,
+                                             float left, float rightEdge, float bottom, float top, List<float> sides)
+        {
+            float height = top - bottom, midUp = (top + bottom) * 0.5f;
+            for (int t = 0; t + 2 < triangles.Length; t += 3)
+            {
+                Vector3 p0 = world[triangles[t]] - center, p1 = world[triangles[t + 1]] - center, p2 = world[triangles[t + 2]] - center;
+                Vector3 middle = (p0 + p1 + p2) / 3f;
+                if (Mathf.Abs(Vector3.Dot(middle, outward)) > 0.1f) continue;
+                float across = Vector3.Dot(middle, right);
+                if (across < left + 0.03f || across > rightEdge - 0.03f) continue;
+                if (Mathf.Abs(Vector3.Dot(middle, up) - midUp) > height * 0.5f) continue;
+                Vector3 normal = Vector3.Cross(p1 - p0, p2 - p0);
+                if (normal.sqrMagnitude < 1e-10f || Mathf.Abs(Vector3.Dot(normal.normalized, right)) < 0.95f) continue;
+                float longest = Mathf.Max((p0 - p1).magnitude, Mathf.Max((p1 - p2).magnitude, (p0 - p2).magnitude));
+                if (longest < height * 0.5f) continue;
+                sides.Add(across);
+            }
+        }
+
+        // Side faces close together are one post: its two sides, or two chamfers of one side.
+        private static List<Vector2> ClusterPosts(List<float> sides)
+        {
+            sides.Sort();
+            var posts = new List<Vector2>();
+            for (int i = 0; i < sides.Count; )
+            {
+                int j = i;
+                while (j + 1 < sides.Count && sides[j + 1] - sides[i] <= 0.2f) j++;
+                if (j > i && sides[j] - sides[i] >= 0.01f) posts.Add(new Vector2(sides[i], sides[j]));
+                i = j + 1;
+            }
+            return posts;
+        }
+
+        // A pane running on behind a post is two panes, meeting behind its middle: cut at its sides, the
+        // gap behind the post showed dark from the side (owner, 2026-10-13).
+        private static void SplitPanesAtPosts(List<float[]> panes, List<Vector2> posts)
+        {
+            foreach (var post in posts)
+            {
+                float middle = (post.x + post.y) * 0.5f;
+                for (int i = panes.Count - 1; i >= 0; i--)
+                {
+                    var p = panes[i];
+                    if (p[0] > post.x - 0.02f || p[1] < post.y + 0.02f) continue;
+                    panes.Add(new[] { middle + 0.001f, p[1], p[2], p[3], p[4] });
+                    p[1] = middle - 0.001f;
+                }
+            }
+        }
+
+        // How far the posts' front faces stand out from the glass (the nearest of them), or 0 when none is found.
+        private static float PostFront(Vector3[] world, int[] triangles, Vector3 center, Vector3 right, Vector3 outward, List<Vector2> posts)
+        {
+            float front = float.MaxValue;
+            foreach (var post in posts)
+            {
+                float best = 0f;
+                for (int t = 0; t + 2 < triangles.Length; t += 3)
+                {
+                    Vector3 p0 = world[triangles[t]] - center, p1 = world[triangles[t + 1]] - center, p2 = world[triangles[t + 2]] - center;
+                    Vector3 middle = (p0 + p1 + p2) / 3f;
+                    float across = Vector3.Dot(middle, right);
+                    if (across < post.x || across > post.y) continue;
+                    Vector3 normal = Vector3.Cross(p1 - p0, p2 - p0);
+                    if (normal.sqrMagnitude < 1e-10f || Vector3.Dot(normal.normalized, outward) < 0.7f) continue;
+                    float proud = Vector3.Dot(middle, outward);
+                    if (proud > best && proud < 0.15f) best = proud;
+                }
+                if (best > 0f && best < front) front = best;
+            }
+            return front < float.MaxValue ? front : 0f;
+        }
+
+        // The room frame's posts, from the frame meshes under the pane (glass and slabs left out).
+        private static List<Vector2> MeasureRoomPosts(InteriorWindowOpening opening, Vector3 center, float width, float height)
+        {
+            var sides = new List<float>();
+            if (opening.PaneRoot != null)
+                foreach (var filter in opening.PaneRoot.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    var mesh = filter != null ? filter.sharedMesh : null;
+                    if (mesh == null || !mesh.isReadable) continue;
+                    var renderer = filter.GetComponent<Renderer>();
+                    if (renderer != null && (opening.Glass.Contains(renderer) || (opening.Frost != null && opening.Frost.Contains(renderer)))) continue;
+                    var local = mesh.vertices;
+                    var world = new Vector3[local.Length];
+                    for (int i = 0; i < local.Length; i++) world[i] = filter.transform.TransformPoint(local[i]);
+                    CollectPostSides(world, mesh.triangles, center, opening.Right, opening.Up, opening.Outward,
+                                     -width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, sides);
+                }
+            return ClusterPosts(sides);
+        }
+
+        // The room frame's horizontal bar across the glass, as heights from center: the frame's flat
+        // top and underside faces that run most of the glass's width (Trapper's frame, 2026-10-13).
+        private static bool TryMeasureRoomBar(InteriorWindowOpening opening, Vector3 center, float width, float height, out float low, out float high)
+        {
+            low = float.MaxValue; high = float.MinValue;
+            if (opening.PaneRoot == null) return false;
+            int faces = 0;
+            foreach (var filter in opening.PaneRoot.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var mesh = filter != null ? filter.sharedMesh : null;
+                if (mesh == null || !mesh.isReadable) continue;
+                var renderer = filter.GetComponent<Renderer>();
+                if (renderer != null && (opening.Glass.Contains(renderer) || (opening.Frost != null && opening.Frost.Contains(renderer)))) continue;
+                var vertices = mesh.vertices;
+                var triangles = mesh.triangles;
+                var t = filter.transform;
+                for (int k = 0; k + 2 < triangles.Length; k += 3)
+                {
+                    Vector3 p0 = t.TransformPoint(vertices[triangles[k]]) - center;
+                    Vector3 p1 = t.TransformPoint(vertices[triangles[k + 1]]) - center;
+                    Vector3 p2 = t.TransformPoint(vertices[triangles[k + 2]]) - center;
+                    Vector3 middle = (p0 + p1 + p2) / 3f;
+                    if (Mathf.Abs(Vector3.Dot(middle, opening.Outward)) > 0.1f) continue;
+                    if (Mathf.Abs(Vector3.Dot(middle, opening.Right)) > width * 0.5f) continue;
+                    float h = Vector3.Dot(middle, opening.Up);
+                    if (Mathf.Abs(h) > height * 0.5f - 0.05f) continue;
+                    Vector3 normal = Vector3.Cross(p1 - p0, p2 - p0);
+                    if (normal.sqrMagnitude < 1e-10f || Mathf.Abs(Vector3.Dot(normal.normalized, opening.Up)) < 0.95f) continue;
+                    float longest = Mathf.Max((p0 - p1).magnitude, Mathf.Max((p1 - p2).magnitude, (p0 - p2).magnitude));
+                    if (longest < width * 0.5f) continue;
+                    faces++;
+                    if (h < low) low = h;
+                    if (h > high) high = h;
+                }
+            }
+            return faces >= 2 && high - low >= 0.01f && high - low <= 0.2f;
+        }
+
+        private static Material s_FrameSnowHiddenMaterial;
+
+        // Snow modelled into the frame itself (Trapper's Obj_WindowCabinSnowA, a second material on the frame):
+        // the bank stands in for it, and a slot of a renderer can only be hidden by a see-through material.
+        private static void HideFrameSnowSlots(Transform paneRoot)
+        {
+            if (!WindowCoverLayers || paneRoot == null) return;
+            foreach (var renderer in paneRoot.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (renderer == null) continue;
+                var materials = renderer.sharedMaterials;
+                if (materials.Length < 2) continue;
+                bool changed = false;
+                for (int k = 0; k < materials.Length; k++)
+                {
+                    var m = materials[k];
+                    if (m == null || m.name.IndexOf("Snow", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    if (s_FrameSnowHiddenMaterial == null)
+                    {
+                        Shader shader = Shader.Find(OUTSIDE_IN_FROST_SHADER);
+                        if (shader == null) return;
+                        s_FrameSnowHiddenMaterial = new Material(shader) { name = "SeamlessInteriors_HiddenFrameSnow", color = new Color(0f, 0f, 0f, 0f) };
+                        s_FrameSnowHiddenMaterial.hideFlags = HideFlags.DontUnloadUnusedAsset;
+                    }
+                    materials[k] = s_FrameSnowHiddenMaterial;
+                    changed = true;
+                }
+                if (changed) renderer.sharedMaterials = materials;
+            }
+        }
+
+        // A pane with another pane just above it has a bar over its top.
+        private static void MarkBarsAbove(List<float[]> panes)
+        {
             foreach (var pane in panes)
+            {
+                pane[4] = 0f;
                 foreach (var other in panes)
                     if (other != pane && other[2] >= pane[3] - 0.01f && other[2] - pane[3] < 0.2f && other[0] < pane[1] && other[1] > pane[0]) pane[4] = 1f;
-            return panes;
+            }
         }
 
         // The game's own window snow (TRN_GroundSnowPaintyA on the frame's slab), lit like the rest of the scene.
         private static Material s_CoverBankMaterial;
 
+        // The look the owner picked (2026-10-13, Community Hall): the snow modelled on the buildings themselves,
+        // sills, chimneys and stairs alike, where the painted ground snow showed big blots. Kept as a copy of our
+        // own once seen, so a region without it still has it.
+        private const string COVER_BANK_PREFERRED = "TRN_Snow_A07";
+        private static Material s_CoverBankPreferred;
+        private static float s_CoverBankSearchAt;
+
         private static Material CoverBankMaterial(InteriorWindowOpening opening)
         {
+            // Looked for at most every half minute: the search walks every material loaded.
+            if (s_CoverBankPreferred == null && Time.realtimeSinceStartup >= s_CoverBankSearchAt)
+            {
+                s_CoverBankSearchAt = Time.realtimeSinceStartup + 30f;
+                foreach (var m in Resources.FindObjectsOfTypeAll<Material>())
+                    if (m != null && m.name == COVER_BANK_PREFERRED)
+                    {
+                        s_CoverBankPreferred = new Material(m) { name = COVER_BANK_PREFERRED + "_SeamlessInteriors" };
+                        s_CoverBankPreferred.hideFlags = HideFlags.DontUnloadUnusedAsset;
+                        break;
+                    }
+            }
+            if (s_CoverBankPreferred != null) return s_CoverBankPreferred;
+
             if (opening.Frost != null)
                 for (int i = 0; i < opening.Frost.Count; i++)
                     if (opening.Frost[i] != null && opening.Frost[i].sharedMaterial != null) return s_CoverBankMaterial = opening.Frost[i].sharedMaterial;
@@ -507,8 +794,8 @@ namespace SeamlessInteriors
                 for (int i = 0; i <= nx; i++)
                 {
                     float xr = x0 + pw * i / nx;
-                    verts.Add(CoverPoint(layer, xr, hb, 0.004f)); uvs.Add(new Vector2(xr * BANK_UV, hb * BANK_UV));
-                    verts.Add(CoverPoint(layer, xr, tops[i], 0.004f)); uvs.Add(new Vector2(xr * BANK_UV, tops[i] * BANK_UV));
+                    verts.Add(CoverPoint(layer, xr, hb, layer.BankStandOff)); uvs.Add(BankUv(seed, xr, hb));
+                    verts.Add(CoverPoint(layer, xr, tops[i], layer.BankStandOff)); uvs.Add(BankUv(seed, xr, tops[i]));
                 }
                 for (int i = 0; i < nx; i++)
                 {
@@ -525,7 +812,7 @@ namespace SeamlessInteriors
                     {
                         float xr = x0 + pw * i / nx, h, oz;
                         BankProfile(layer, tops[i], hb, xr, j, seed, out h, out oz);
-                        verts.Add(CoverPoint(layer, xr, h, oz)); uvs.Add(new Vector2(xr * BANK_UV, (oz - h) * BANK_UV + 3f));
+                        verts.Add(CoverPoint(layer, xr, h, oz)); uvs.Add(BankUv(seed, xr, oz - h + 1.5f));
                     }
                 for (int j = 0; j < rows; j++)
                     for (int i = 0; i < nx; i++)
@@ -540,12 +827,12 @@ namespace SeamlessInteriors
                     int i = e == 0 ? 0 : nx;
                     float xr = x0 + pw * i / nx;
                     int cap = verts.Count;
-                    verts.Add(CoverPoint(layer, xr, hb, 0.004f)); uvs.Add(new Vector2(0f, hb * BANK_UV));
+                    verts.Add(CoverPoint(layer, xr, hb, layer.BankStandOff)); uvs.Add(BankUv(seed, 0f, hb));
                     for (int j = 0; j <= rows; j++)
                     {
                         float h, oz;
                         BankProfile(layer, tops[i], hb, xr, j, seed, out h, out oz);
-                        verts.Add(CoverPoint(layer, xr, h, oz)); uvs.Add(new Vector2(oz * BANK_UV, h * BANK_UV));
+                        verts.Add(CoverPoint(layer, xr, h, oz)); uvs.Add(BankUv(seed, oz, h));
                     }
                     for (int j = 1; j <= rows; j++)
                     {
@@ -565,6 +852,17 @@ namespace SeamlessInteriors
             layer.SnowShown = snow;
         }
 
+        // Where the snow texture is read for a point of the bank. Laid straight on, it tiled twice a metre and
+        // a long window showed the same blots five times over (owner, Thompson's Store, 2026-10-13): each pane
+        // starts somewhere of its own, and a slow noise bends the lines it is read along.
+        private static Vector2 BankUv(int seed, float across, float up)
+        {
+            float u = across * BANK_UV + CoverHash(seed, 11) * 7f + (CoverFbm(across * 0.5f + seed, up * 0.5f, 2) - 0.5f) * 0.02f;
+            float v = up * BANK_UV + CoverHash(seed, 12) * 7f + (CoverFbm(across * 0.5f + 31f, up * 0.5f + seed, 2) - 0.5f) * 0.02f;
+            var uv = default(Vector2);
+            uv.x = u; uv.y = v;
+            return uv;
+        }
         // One point of the bank's cross-section: the top, lower the further it lies out from the glass,
         // then a quarter ellipse from its outer edge down to the sill.
         private static void BankProfile(WindowCoverLayer layer, float top, float bottom, float right, int row, int seed, out float height, out float outward)
@@ -572,7 +870,7 @@ namespace SeamlessInteriors
             int edgeRow = row < BANK_ROWS ? row : BANK_ROWS;
             float zl = (float)edgeRow / BANK_ROWS;
             height = bottom + (top - bottom) * (1f - BANK_SLUMP * zl * zl + (CoverFbm(right * 6f + seed, zl * 3f, 2) - 0.5f) * 0.2f * zl);
-            outward = 0.004f + layer.BankDepth * zl;
+            outward = layer.BankStandOff + layer.BankDepth * zl;
             if (row <= BANK_ROWS) return;
             float rise = height - bottom;
             float angle = 1.5708f * (row - BANK_ROWS) / BANK_ROUND_ROWS;
@@ -586,9 +884,49 @@ namespace SeamlessInteriors
             Color fog = RenderSettings.fogColor;
             Color ambient = RenderSettings.ambientLight;
             float level = (ambient.r + ambient.g + ambient.b) / 3f;
+            // Under a skybox ambient the flat colour is not the light (Trapper's read 0.04 at 15:00, 2026-10-13):
+            // the day's level is taken from the fog then.
+            if (RenderSettings.ambientMode == UnityEngine.Rendering.AmbientMode.Skybox)
+                level = Mathf.Max(level, (fog.r + fog.g + fog.b) / 3f * 0.8f);
             Color c = Color.Lerp(fog, Color.white, 0.55f) * Mathf.Clamp(level * 1.35f, 0.05f, 1.1f);
             c.a = 1f;
             return c;
+        }
+
+        // Inside, the frost and the bank take the outdoor ambient the window views are drawn with (owner,
+        // 2026-10-13). Read off the views themselves first, it jumped with what each view happened to show:
+        // 0.17 to 0.7 within a tenth of a second at Community Hall, the frost flickering with every step.
+        private const float COVER_OUTDOOR_FROST = 0.85f, COVER_OUTDOOR_BANK = 1.7f;
+        // The last light, for layers made between two reads.
+        private static Color s_CoverLight = new Color(0.3f, 0.3f, 0.3f, 1f), s_CoverBankLight = Color.white;
+        private static string s_CoverLightRoom;
+        // Share of the way to a new reading taken each second.
+        private const float COVER_LIGHT_FOLLOW = 0.1f;
+        private static readonly MaterialPropertyBlock s_CoverBankTint = new MaterialPropertyBlock();
+
+        // The frost's colour and the bank's tint for this second's light.
+        private static void CoverRoomLight(out Color frost, out Color bank)
+        {
+            Color outdoor;
+            if (!ClonedInteriorLightingGuard.TryGetExteriorLight(out outdoor)) { frost = CoverSnowLight(); bank = Color.white; return; }
+            float level = (outdoor.r + outdoor.g + outdoor.b) / 3f;
+            float k = Mathf.Clamp(level * COVER_OUTDOOR_FROST, 0.02f, 1.1f) / Mathf.Max(level, 0.0001f);
+            frost = new Color(outdoor.r * k, outdoor.g * k, outdoor.b * k, 1f);
+            float b = Mathf.Clamp(level * COVER_OUTDOOR_BANK, 0.05f, 1f);
+            bank = new Color(b, b, b, 1f);
+        }
+
+        // The rock-snow material has no _Color: its snow colour is what is darkened.
+        private static void TintCoverBank(WindowCoverLayer layer, Color tint)
+        {
+            if (layer == null || layer.BankGo == null) return;
+            var renderer = layer.BankGo.GetComponent<MeshRenderer>();
+            var material = renderer != null ? renderer.sharedMaterial : null;
+            if (material == null) return;
+            s_CoverBankTint.Clear();
+            if (material.HasProperty("_SnowColor")) s_CoverBankTint.SetColor("_SnowColor", material.GetColor("_SnowColor") * tint);
+            else s_CoverBankTint.SetColor("_Color", tint);
+            renderer.SetPropertyBlock(s_CoverBankTint);
         }
 
         // Anything that changed a pane's record asks for a look on the next frame.
@@ -641,12 +979,23 @@ namespace SeamlessInteriors
                 s_CoverDirty = false;
                 s_CoverNextTick = real + 1f;
 
-                Color light = CoverSnowLight();
+                Color light, bankTint;
+                CoverRoomLight(out light, out bankTint);
+                // Which views are drawn, and how large, changes as the player walks: the light moved with
+                // every step (owner, Community Hall, 2026-10-13). It follows slowly; a new room starts on its own.
+                if (s_CoverLightRoom == id)
+                {
+                    light = Color.Lerp(s_CoverLight, light, COVER_LIGHT_FOLLOW);
+                    bankTint = Color.Lerp(s_CoverBankLight, bankTint, COVER_LIGHT_FOLLOW);
+                }
+                s_CoverLightRoom = id;
+                s_CoverLight = light; s_CoverBankLight = bankTint;
                 int fills = 0;
                 for (int i = 0; i < s_CoverLayers.Count; i++)
                 {
                     var layer = s_CoverLayers[i];
                     if (layer != null && layer.FrostMat.color != light) layer.FrostMat.color = light;
+                    TintCoverBank(layer, bankTint);
                     // At most two fills a tick; the rest catch up on the next.
                     if (fills < 2 && UpdateCoverLayer(i, false)) fills++;
                 }
@@ -692,7 +1041,7 @@ namespace SeamlessInteriors
             // Always: the clean glass is drawn by it too.
             layer.FrostGo.SetActive(true);
             if (bank) layer.BankGo.SetActive(bankSnow > 0f);
-            if (force) layer.FrostMat.color = CoverSnowLight();
+            if (force) { layer.FrostMat.color = s_CoverLight; TintCoverBank(layer, s_CoverBankLight); }
             return filled;
         }
 

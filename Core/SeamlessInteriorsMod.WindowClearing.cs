@@ -89,6 +89,8 @@ namespace SeamlessInteriors
                     if (key != null) BuildCleanTargets();
                 }
 
+                GuardCleanTargetFromDoor();
+
                 for (int i = 0; i < s_CleanTargets.Count; i++)
                 {
                     var t = s_CleanTargets[i];
@@ -130,6 +132,45 @@ namespace SeamlessInteriors
             }
         }
 
+        // A DOOR'S TRIGGER BEHIND THE WALL WINS THE CROSSHAIR. Trapper's door trigger is a 2 x 3 x 2 m box
+        // that takes in the window beside the door, and the game chose it over the nearer target: a click
+        // on the window went in (owner, 2026-10-13). While the crosshair rests on a target, a door trigger
+        // further along the same line is switched off, and on again as soon as it does not.
+        private const float CLEAN_DOOR_GUARD_REACH = 4f;
+        private static Collider s_CleanDoorSuppressed;
+
+        private static void GuardCleanTargetFromDoor()
+        {
+            Collider door = null;
+            bool onTarget = false;
+            Camera main = GameManager.GetMainCamera();
+            if (main != null && s_CleanTargets.Count > 0)
+            {
+                var hits = Physics.RaycastAll(main.transform.position, main.transform.forward, CLEAN_DOOR_GUARD_REACH, ~0, QueryTriggerInteraction.Collide);
+                float target = float.MaxValue, solid = float.MaxValue;
+                foreach (var hit in hits)
+                {
+                    var c = hit.collider;
+                    if (c == null) continue;
+                    if (c.name.StartsWith("SI_CleanWindow_")) { if (hit.distance < target) target = hit.distance; }
+                    else if (!c.isTrigger && c.gameObject.layer != vp_Layer.Player && hit.distance < solid) solid = hit.distance;
+                }
+                onTarget = target < solid;
+                if (onTarget && s_CleanDoorSuppressed == null)
+                    foreach (var hit in hits)
+                        if (hit.collider != null && hit.collider.isTrigger && hit.distance > target && hit.collider.GetComponent<LoadScene>() != null) { door = hit.collider; break; }
+            }
+
+            if (s_CleanDoorSuppressed != null && !onTarget) ReleaseCleanDoor();
+            if (door != null) { door.enabled = false; s_CleanDoorSuppressed = door; }
+        }
+
+        private static void ReleaseCleanDoor()
+        {
+            if (s_CleanDoorSuppressed != null) s_CleanDoorSuppressed.enabled = true;
+            s_CleanDoorSuppressed = null;
+        }
+
         // What the targets are built for: null when there is nothing to clean or the setting is off.
         private static string CleanTargetsKey()
         {
@@ -165,7 +206,7 @@ namespace SeamlessInteriors
                 for (int i = 0; i < s_OutsideInApertures.Count; i++)
                 {
                     var ap = s_OutsideInApertures[i];
-                    AddCleanTarget(false, i, ap.Center + ap.Outward * CLEAN_TARGET_PROUD, ap.Outward, ap.Up, ap.Width, ap.Height);
+                    AddCleanTarget(false, i, ap.Center + ap.Outward * CleanTargetProudOutside(ap), ap.Outward, ap.Up, ap.Width, ap.Height);
                 }
             }
 
@@ -173,6 +214,28 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[PENCERE-TEMIZLE] {s_CleanTargetsKey}: {s_CleanTargets.Count} hedef.",
                                 $"[WINDOW-CLEAN] {s_CleanTargetsKey}: {s_CleanTargets.Count} clean-window targets.");
         }
+
+        // The farmhouse's collider runs flat over its windows 10 cm out from the glass, and the target behind
+        // it was never reached by the game's ray (owner, 2026-10-13). A solid face in front of the glass puts
+        // the target just in front of it.
+        private const float CLEAN_TARGET_PROBE = 0.5f, CLEAN_TARGET_WALL_REACH = 0.2f;
+
+        private static float CleanTargetProud(Vector3 glass, Vector3 outward)
+        {
+            float proud = CLEAN_TARGET_PROUD;
+            foreach (var hit in Physics.RaycastAll(glass + outward * CLEAN_TARGET_PROBE, -outward, CLEAN_TARGET_PROBE + 0.01f, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (hit.collider == null || hit.collider.name.StartsWith("SI_CleanWindow_")) continue;
+                if (hit.collider.gameObject.layer == vp_Layer.Player) continue;
+                float front = CLEAN_TARGET_PROBE - hit.distance;
+                // Further out it is a porch post or a rail, not the wall over the glass.
+                if (front > CLEAN_TARGET_WALL_REACH) continue;
+                if (front + CLEAN_TARGET_DEPTH * 0.5f + 0.005f > proud) proud = front + CLEAN_TARGET_DEPTH * 0.5f + 0.005f;
+            }
+            return proud;
+        }
+
+        private static float CleanTargetProudOutside(ShellAperture ap) { return CleanTargetProud(ap.Center, ap.Outward); }
 
         private static void AddCleanTarget(bool inside, int index, Vector3 center, Vector3 outward, Vector3 up, float width, float height)
         {
@@ -277,6 +340,7 @@ namespace SeamlessInteriors
 
         private static void DestroyCleanTargets()
         {
+            ReleaseCleanDoor();
             for (int i = 0; i < s_CleanTargets.Count; i++)
             {
                 StopCleanSound(s_CleanTargets[i]);

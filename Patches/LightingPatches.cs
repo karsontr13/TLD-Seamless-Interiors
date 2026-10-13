@@ -25,6 +25,13 @@ namespace SeamlessInteriors
         private static bool s_HasExteriorAmbient;
         private static AmbientState s_ExteriorAmbient;
 
+        // The outdoor ambient light, for what outdoor light falls on inside a room (the window frost).
+        public static bool TryGetExteriorLight(out Color light)
+        {
+            light = s_HasExteriorAmbient ? s_ExteriorAmbient.Light : Color.black;
+            return s_HasExteriorAmbient;
+        }
+
         // The owner's "write window": open while a lighting manager's ambient call is in
         // progress. The Utils.SetAmbientLight* patch inspects this window to tell
         // whether a call came from the owner or from some other writer.

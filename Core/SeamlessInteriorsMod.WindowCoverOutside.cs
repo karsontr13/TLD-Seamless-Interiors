@@ -16,6 +16,8 @@ namespace SeamlessInteriors
         private const float OUTSIDE_BANK_BEHIND_FRAME = 0.004f;
         // The bars in front of the glass hide about this much of a pane's top.
         private const float OUTSIDE_BANK_UNDER_BAR = 0.04f;
+        // A bar standing less than this in front of the frost is drawn over by it, so the frost is cut there.
+        private const float OUTSIDE_SHALLOW_BAR = 0.01f;
 
         // Built with the building's dressing, after its glass has been measured.
         private static void BuildOutsideCovers(SeamlessInteriorInstance instance)
@@ -52,7 +54,31 @@ namespace SeamlessInteriors
                 layer.BankDepth = room * 0.55f; layer.BankReach = room * 0.45f;
                 layer.BankTuck = 0f; layer.BankUnderBar = OUTSIDE_BANK_UNDER_BAR;
                 layer.Center = pane.Center + pane.Outward * pane.Toward; layer.Right = across; layer.Up = pane.Up; layer.Outward = pane.Outward;
-                layer.Panes = ShellPanes(a, pane, glass);
+
+                // Trapper's bar is a single sheet of glass behind a bar 1 cm proud (2026-10-13): the frost
+                // and the bank stood in front of it. They are cut at the bar instead of going behind it.
+                float barLow = 0f, barHigh = 0f;
+                bool bar = shellWorld != null && TryMeasureShellBar(pane, shellTriangles, shellWorld, out barLow, out barHigh);
+                bool shallowBar = bar && relief < pane.Toward + OUTSIDE_IN_FROST_PROUD_OF_QUAD + OUTSIDE_SHALLOW_BAR;
+                if (shallowBar)
+                {
+                    layer.BankUnderBar = 0f;
+                    layer.FrostMask = BarFrostMask(layer.FrostSize, glass, barLow, barHigh);
+                }
+                layer.Panes = ShellPanes(a, pane, glass, bar, barLow, barHigh);
+                if (shellWorld != null)
+                {
+                    var posts = MeasureShellPosts(pane, glass, shellWorld, shellTriangles);
+                    SplitPanesAtPosts(layer.Panes, posts);
+                    // The bank stays behind the posts' front, as it does behind the frame's.
+                    float front = PostFront(shellWorld, shellTriangles, pane.Center, -pane.Right, pane.Outward, posts);
+                    float reaches = pane.Toward + 0.004f + layer.BankDepth + layer.BankReach, allowed = front - OUTSIDE_BANK_BEHIND_FRAME;
+                    if (front > 0f && reaches > allowed)
+                    {
+                        float scale = Mathf.Max(allowed - pane.Toward - 0.004f, 0.004f) / (layer.BankDepth + layer.BankReach);
+                        layer.BankDepth *= scale; layer.BankReach *= scale;
+                    }
+                }
                 var opening = a < s_OI.ApertureOpenings.Count ? s_OI.ApertureOpenings[a] : default(InteriorWindowOpening);
                 MakeCoverBank(layer, CoverBankMaterial(opening), "SeamlessInteriors_OutsideSnow_" + a);
                 FollowOutsideBank(layer, a);
@@ -64,7 +90,7 @@ namespace SeamlessInteriors
         // The building's own panes: the rectangles of its glass triangles (the frost overlay was cut from
         // them), in the cover's across. The room's panes laid onto the building put the middle bar on the
         // wrong side on half the Camp Office's windows.
-        private static List<float[]> ShellPanes(int aperture, ShellAperture pane, Vector4 glass)
+        private static List<float[]> ShellPanes(int aperture, ShellAperture pane, Vector4 glass, bool bar, float barLow, float barHigh)
         {
             var panes = new List<float[]>();
             var overlay = aperture < s_OutsideInFrostOverlays.Count ? s_OutsideInFrostOverlays[aperture] : null;
@@ -90,10 +116,34 @@ namespace SeamlessInteriors
                 }
             }
             if (panes.Count == 0) panes.Add(new[] { -glass.y, -glass.x, glass.z, glass.w, 0f });
-            foreach (var p in panes)
-                foreach (var other in panes)
-                    if (other != p && other[2] >= p[3] - 0.01f && other[2] - p[3] < 0.2f && other[0] < p[1] && other[1] > p[0]) p[4] = 1f;
+            MergeTouchingPanes(panes);
+            if (bar) SplitPanesAtBar(panes, barLow, barHigh);
+            MarkBarsAbove(panes);
             return panes;
+        }
+
+        // The shell's upright posts across one window, as spans in the cover's across (-Right): the side faces
+        // that run most of the glass's height inside its width. Thompson's Store's long window is one sheet
+        // of glass behind a post, and the bank stood in front of the post's lower half (2026-10-13).
+        private static List<Vector2> MeasureShellPosts(ShellAperture pane, Vector4 glass, Vector3[] world, int[] triangles)
+        {
+            var sides = new List<float>();
+            CollectPostSides(world, triangles, pane.Center, -pane.Right, pane.Up, pane.Outward, -glass.y, -glass.x, glass.z, glass.w, sides);
+            return ClusterPosts(sides);
+        }
+
+        // The frost texture's rows behind the bar, left out (row 0 is the glass's bottom).
+        private static float[] BarFrostMask(int size, Vector4 glass, float barLow, float barHigh)
+        {
+            var mask = new float[size * size];
+            float height = glass.w - glass.z;
+            for (int y = 0; y < size; y++)
+            {
+                float up = glass.z + (y + 0.5f) / size * height;
+                float m = up > barLow && up < barHigh ? 0f : 1f;
+                for (int x = 0; x < size; x++) mask[y * size + x] = m;
+            }
+            return mask;
         }
 
         // Whether this window's frost is drawn by the cover rather than the old overlay.

@@ -1230,6 +1230,7 @@ namespace SeamlessInteriors
                 opening.Backdrop = backdropRenderer;
                 opening.Glass = CollectRoleRenderers(paneRoot, 0);
                 opening.Frost = CollectRoleRenderers(paneRoot, 1);
+                HideFrameSnowSlots(paneRoot);
                 opening.PortalOffsetLocal = sign * (chosen - glassPlane);
                 opening.ClampedIn = clampedIn;
                 opening.ClampedOut = clampedOut;
