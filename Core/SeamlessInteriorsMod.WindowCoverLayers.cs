@@ -16,26 +16,31 @@ namespace SeamlessInteriors
         private const float COVER_SNOW_STEP = 1f / 256f;
 
         // The snow bank outside each pane (owner's reference photo, 2026-10-13): metres and shape factors.
-        private const int BANK_COLUMNS = 48, BANK_ROWS = 8;
-        private const float BANK_DEPTH = 0.10f, BANK_SLUMP = 0.45f, BANK_UV = 2f;
+        private const int BANK_COLUMNS = 48, BANK_ROWS = 8, BANK_ROUND_ROWS = 5;
+        // How far at most the rounded outer face bulges past the top's edge.
+        private const float BANK_ROUND_REACH = 0.016f;
+        private const float BANK_DEPTH = 0.018f, BANK_SLUMP = 0.45f, BANK_UV = 2f;
         private const float BANK_SIDE_WIDTH = 0.15f, BANK_SIDE_RISE = 0.35f, BANK_TOP_GAPS = 0.08f, BANK_DRIFT = 2.5f;
         // The pane bottom tucks this far under its bar, and a pane under another one hides this much of its top behind the bar.
         private const float BANK_TUCK = 0.03f, BANK_UNDER_BAR = 0.10f;
 
         private class WindowCoverLayer
         {
-            public int Opening;
+            public int Opening, Seed;
+            public int FrostSize = COVER_FROST_SIZE;
             public GameObject FrostGo, BankGo;
             public Material FrostMat;
             public Texture2D FrostTex;
             public Mesh BankMesh;
             public Color32[] FrostPixels;
             // Per pixel, worked out once for the window's own shape.
-            public float[] VeinTime, Vein, Glow, HazeTime, Grain;
+            public float[] VeinTime, Vein, Glow, HazeTime, Grain, GlassAlpha, GlassWhite;
             // Panes in metres from Center along Right and Up: left, right, bottom, top, 1 when a bar sits above.
             public List<float[]> Panes;
             public Vector3 Center, Right, Up, Outward;
             public float FrostShown = -1f, SnowShown = -1f;
+            // The bank's depth out from the glass, its rounded face, and how it meets the bars.
+            public float BankDepth = BANK_DEPTH, BankReach = BANK_ROUND_REACH, BankTuck = BANK_TUCK, BankUnderBar = BANK_UNDER_BAR;
             // Set by the worker thread once the per-pixel tables are done.
             public volatile bool Ready;
             public bool Shown;
@@ -48,7 +53,8 @@ namespace SeamlessInteriors
         private static int s_CoverLayersBuilt;
         private static float s_CoverNextTick;
         private static bool s_CoverDirty;
-        private static bool s_CoverFailed;
+        // The room the layers failed in; another room or save tries again.
+        private static string s_CoverFailedIn;
 
         // Plain managed math: Mathf and Color calls cross into the game per call and are far too slow per pixel.
         private static float C01(float x) { return x < 0f ? 0f : (x > 1f ? 1f : x); }
@@ -143,46 +149,58 @@ namespace SeamlessInteriors
             Vector3 center; float width, height;
             if (!CoverRect(opening, out center, out width, out height)) return null;
 
-            var layer = new WindowCoverLayer { Opening = index };
-            // Both lit by the day outside, as frost and snow on a window are (dark mode showed the room-lit frost dark).
-            Shader unlit = Shader.Find("Sprites/Default");
-            if (unlit == null) return null;
-
-            layer.FrostTex = new Texture2D(COVER_FROST_SIZE, COVER_FROST_SIZE, TextureFormat.RGBA32, true) { wrapMode = TextureWrapMode.Clamp, name = "SeamlessInteriors_WindowFrost" };
-            layer.FrostMat = new Material(unlit) { mainTexture = layer.FrostTex, renderQueue = WINDOW_VIEW_OUT_FROST_QUEUE + 2, name = "SeamlessInteriors_WindowFrost" };
-
-            Vector3 inward = -opening.Outward;
-            layer.FrostGo = CoverQuad("SeamlessInteriors_WindowFrost_" + index, layer.FrostMat, center + inward * 0.008f, opening.Right, opening.Up, inward, width, height);
-            layer.FrostGo.SetActive(false);
-            layer.FrostPixels = new Color32[COVER_FROST_SIZE * COVER_FROST_SIZE];
+            // Seeded by the building's window where there is one, so the outside shows the same frost and snow.
+            int window = index < s_WindowPortalSpot.Count ? s_WindowPortalSpot[index] : -1;
+            var layer = new WindowCoverLayer { Opening = index, Seed = window >= 0 ? window : 100 + index };
+            if (!MakeCoverFrost(layer, "SeamlessInteriors_WindowFrost_" + index, center - opening.Outward * 0.008f, opening.Right, opening.Up, -opening.Outward,
+                                width, height, WINDOW_VIEW_OUT_FROST_QUEUE + 2)) return null;
 
             // Snow is a real bank outside the glass in the game's own window snow; drawn flat on the glass
             // it looked like a cut-out from the side (owner, 2026-10-13).
             layer.Center = center; layer.Right = opening.Right; layer.Up = opening.Up; layer.Outward = opening.Outward;
             layer.Panes = CoverPanes(opening, center, height);
-            var bankMaterial = CoverBankMaterial(opening);
-            if (bankMaterial != null && layer.Panes.Count > 0)
-            {
-                layer.BankGo = new GameObject("SeamlessInteriors_WindowSnow_" + index);
-                layer.BankMesh = new Mesh { name = "SeamlessInteriors_WindowSnow" };
-                layer.BankGo.AddComponent<MeshFilter>().sharedMesh = layer.BankMesh;
-                var renderer = layer.BankGo.AddComponent<MeshRenderer>();
-                renderer.sharedMaterial = bankMaterial;
-                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                layer.BankGo.SetActive(false);
-            }
+            MakeCoverBank(layer, CoverBankMaterial(opening), "SeamlessInteriors_WindowSnow_" + index);
+            StartCoverTables(layer, width / height);
+            return layer;
+        }
 
-            // The tables take a tenth of a second or more a window; worked out on the main thread they stalled the entry.
-            float aspect = width / height;
+        // Both lit by the day outside, as frost and snow on a window are (dark mode showed the room-lit frost dark).
+        private static bool MakeCoverFrost(WindowCoverLayer layer, string name, Vector3 center, Vector3 right, Vector3 up, Vector3 facing, float width, float height, int queue)
+        {
+            Shader unlit = Shader.Find("Sprites/Default");
+            if (unlit == null) return false;
+            int n = layer.FrostSize;
+            layer.FrostTex = new Texture2D(n, n, TextureFormat.RGBA32, true) { wrapMode = TextureWrapMode.Clamp, name = "SeamlessInteriors_WindowFrost" };
+            layer.FrostMat = new Material(unlit) { mainTexture = layer.FrostTex, renderQueue = queue, name = "SeamlessInteriors_WindowFrost" };
+            layer.FrostGo = CoverQuad(name, layer.FrostMat, center, right, up, facing, width, height);
+            layer.FrostGo.SetActive(false);
+            layer.FrostPixels = new Color32[n * n];
+            return true;
+        }
+
+        private static void MakeCoverBank(WindowCoverLayer layer, Material material, string name)
+        {
+            if (material == null || layer.Panes == null || layer.Panes.Count == 0) return;
+            layer.BankGo = new GameObject(name);
+            layer.BankMesh = new Mesh { name = "SeamlessInteriors_WindowSnow" };
+            layer.BankGo.AddComponent<MeshFilter>().sharedMesh = layer.BankMesh;
+            var renderer = layer.BankGo.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            layer.BankGo.SetActive(false);
+        }
+
+        // The tables take a tenth of a second or more a window; worked out on the main thread they stalled the entry.
+        private static void StartCoverTables(WindowCoverLayer layer, float aspect)
+        {
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
                 var watch = System.Diagnostics.Stopwatch.StartNew();
-                try { PrepareCoverPixels(layer, aspect, index); }
+                try { PrepareCoverPixels(layer, aspect, layer.Seed); }
                 catch (System.Exception ex) { layer.Error = ex.Message; }
                 layer.PrepareMs = watch.ElapsedMilliseconds;
                 layer.Ready = true;
             });
-            return layer;
         }
 
         // Frost ferns: stems grow in from every edge with side branches, each pixel noting when growth reaches it.
@@ -289,8 +307,7 @@ namespace SeamlessInteriors
         // Everything that does not change with the cover, so a fill is a few sums a pixel.
         private static void PrepareCoverPixels(WindowCoverLayer layer, float aspect, int seed)
         {
-
-            int n = COVER_FROST_SIZE;
+            int n = layer.FrostSize;
             var sketch = new FrostSketch { N = n, Aspect = aspect, Rng = new System.Random(seed * 7919 + 13), Time = new float[n * n], Vein = new float[n * n] };
             for (int i = 0; i < n * n; i++) sketch.Time[i] = 9f;
             sketch.Grow();
@@ -309,6 +326,56 @@ namespace SeamlessInteriors
                     layer.HazeTime[i] = edge * 0.85f + (CoverFbm(ua * 3f + seed * 3.1f, v * 3f + seed * 1.7f, 4) - 0.5f) * 0.4f + 0.02f - layer.Glow[i] * 0.5f;
                     layer.Grain[i] = 0.5f + (CoverHash(x + seed * 977, y) - 0.5f) * 0.45f + (CoverFbm(ua * 28f + seed, v * 28f, 2) - 0.5f) * 0.7f;
                 }
+            PrepareCoverGlass(layer, aspect, seed);
+        }
+
+        // The glass itself under the frost, so a wiped window still reads as glass and not as an empty
+        // hole (owner, 2026-10-13): a faint tint, a damp ring at the frame, a reflection band, a few
+        // sweeping wipe marks spread over the pane, and specks of dust.
+        private const int COVER_GLASS_WIPES = 5;
+
+        private static void PrepareCoverGlass(WindowCoverLayer layer, float aspect, int seed)
+        {
+            int n = layer.FrostSize;
+            layer.GlassAlpha = new float[n * n]; layer.GlassWhite = new float[n * n];
+            var rng = new System.Random(seed * 31 + 7);
+            var wx = new float[COVER_GLASS_WIPES]; var wy = new float[COVER_GLASS_WIPES]; var wr = new float[COVER_GLASS_WIPES];
+            // One hand's sweep per slice across, so the marks do not bunch up (owner: they were too tight).
+            for (int k = 0; k < COVER_GLASS_WIPES; k++)
+            {
+                wx[k] = (k + 0.2f + (float)rng.NextDouble() * 0.6f) / COVER_GLASS_WIPES * aspect;
+                wy[k] = 0.15f + (float)rng.NextDouble() * 0.7f;
+                wr[k] = 0.10f + (float)rng.NextDouble() * 0.06f;
+            }
+            for (int y = 0; y < n; y++)
+                for (int x = 0; x < n; x++)
+                {
+                    float u = (x + 0.5f) / n, v = (y + 0.5f) / n, ua = u * aspect;
+                    float eu = (u < 1f - u ? u : 1f - u) * aspect, ev = v < 1f - v ? v : 1f - v;
+                    float e = (eu < ev ? eu : ev) + (CoverFbm(ua * 9f + seed, v * 9f, 3) - 0.5f) * 0.06f;
+                    float damp = C01(1f - e / 0.08f); damp *= damp;
+
+                    // Thin arcs far apart, and only parts of each circle: a hand sweeps, it does not draw rings.
+                    float wipe = 0f;
+                    for (int k = 0; k < COVER_GLASS_WIPES; k++)
+                    {
+                        float dx = ua - wx[k], dy = v - wy[k];
+                        float d = (float)System.Math.Sqrt(dx * dx + dy * dy);
+                        float ring = (float)System.Math.Sin(d / wr[k] * 6.283f + CoverFbm(ua * 3f + k * 5, v * 3f, 2) * 2.5f) * 0.5f + 0.5f;
+                        ring *= ring; ring = ring * ring * ring;
+                        float arc = C01((CoverFbm((float)System.Math.Atan2(dy, dx) * 1.2f + k * 7.3f, d * 2f, 2) - 0.45f) * 4f);
+                        wipe += ring * arc * C01(1f - d / 0.35f);
+                    }
+                    wipe = C01(wipe);
+
+                    float diag = u * 0.6f + v * 0.4f;
+                    float b1 = (diag - 0.62f) / 0.08f, b2 = (diag - 0.80f) / 0.03f;
+                    float shine = (float)System.Math.Exp(-b1 * b1) + 0.6f * (float)System.Math.Exp(-b2 * b2);
+                    float dust = CoverHash(x * 3 + seed * 17, y * 5) > 0.997f ? 1f : 0f;
+                    int i = y * n + x;
+                    layer.GlassAlpha[i] = C01(0.055f + damp * 0.28f + wipe * 0.05f + shine * 0.10f + dust * 0.2f + (CoverFbm(ua * 2f + seed, v * 2f, 3) - 0.5f) * 0.03f);
+                    layer.GlassWhite[i] = 0.86f + shine * 0.14f + damp * 0.08f;
+                }
         }
 
         private static Color32 CoverPixel(float r, float g, float b, float a)
@@ -324,13 +391,17 @@ namespace SeamlessInteriors
             int count = layer.Vein.Length;
             float reach = frost * 1.15f, haze0 = frost * 0.06f;
             var veinTime = layer.VeinTime; var vein = layer.Vein; var hazeTime = layer.HazeTime; var grain = layer.Grain; var glow = layer.Glow; var pixels = layer.FrostPixels;
+            var glassAlpha = layer.GlassAlpha; var glassWhite = layer.GlassWhite;
             for (int i = 0; i < count; i++)
             {
                 float v = vein[i] * C01((reach - veinTime[i]) * 12f);
                 float haze = C01((reach - hazeTime[i]) * 2.5f);
-                float a = haze0 + haze * (0.36f + 0.22f * grain[i]) + v * 0.7f + glow[i] * haze * 0.3f;
+                float a = C01(haze0 + haze * (0.36f + 0.22f * grain[i]) + v * 0.7f + glow[i] * haze * 0.3f);
                 float w = C01(0.80f + 0.20f * v + 0.05f * grain[i]);
-                pixels[i] = CoverPixel(w * 0.90f, w * 0.95f, w, a);
+                // The frost laid over the glass.
+                float ga = glassAlpha[i] * (1f - a), gw = glassWhite[i], all = a + ga;
+                float k = all > 0.0001f ? 1f / all : 0f;
+                pixels[i] = CoverPixel((w * 0.90f * a + gw * 0.88f * ga) * k, (w * 0.95f * a + gw * 0.93f * ga) * k, (w * a + gw * 0.98f * ga) * k, all);
             }
             layer.FrostTex.SetPixels32(pixels);
             layer.FrostTex.Apply(true);
@@ -413,9 +484,10 @@ namespace SeamlessInteriors
             for (int p = 0; p < layer.Panes.Count && snow > 0f; p++)
             {
                 var pane = layer.Panes[p];
-                int seed = layer.Opening * 13 + p * 7;
-                float x0 = pane[0], pw = pane[1] - pane[0], hb = pane[2] - BANK_TUCK, ph = pane[3] - hb;
-                float fullTop = pane[4] > 0f ? 1f - BANK_UNDER_BAR / ph : 1f;
+                int seed = layer.Seed * 13 + p * 7;
+                float x0 = pane[0], pw = pane[1] - pane[0], hb = pane[2] - layer.BankTuck, ph = pane[3] - hb;
+                if (pw < 0.05f) continue;
+                float fullTop = pane[4] > 0f ? 1f - layer.BankUnderBar / ph : 1f;
                 float sideLeft = CoverHash(seed, 1) > 0.45f ? 1f : -0.6f, sideRight = CoverHash(seed, 2) > 0.45f ? 1f : -0.6f;
                 for (int i = 0; i <= nx; i++)
                 {
@@ -444,14 +516,18 @@ namespace SeamlessInteriors
                     tris.Add(a); tris.Add(a + 1); tris.Add(a + 2); tris.Add(a + 1); tris.Add(a + 3); tris.Add(a + 2);
                 }
 
+                // The top slumps away from the glass, then rolls over in a rounded face down to the sill:
+                // the face seen from outside (owner, 2026-10-13).
+                const int rows = nz + BANK_ROUND_ROWS;
                 int top = verts.Count;
-                for (int j = 0; j <= nz; j++)
+                for (int j = 0; j <= rows; j++)
                     for (int i = 0; i <= nx; i++)
                     {
-                        float xr = x0 + pw * i / nx, oz = 0.004f + BANK_DEPTH * j / nz;
-                        verts.Add(CoverPoint(layer, xr, BankHeight(tops[i], hb, xr, j, seed), oz)); uvs.Add(new Vector2(xr * BANK_UV, oz * BANK_UV + 3f));
+                        float xr = x0 + pw * i / nx, h, oz;
+                        BankProfile(layer, tops[i], hb, xr, j, seed, out h, out oz);
+                        verts.Add(CoverPoint(layer, xr, h, oz)); uvs.Add(new Vector2(xr * BANK_UV, (oz - h) * BANK_UV + 3f));
                     }
-                for (int j = 0; j < nz; j++)
+                for (int j = 0; j < rows; j++)
                     for (int i = 0; i < nx; i++)
                     {
                         int a = top + j * (nx + 1) + i, b = a + nx + 1;
@@ -465,13 +541,13 @@ namespace SeamlessInteriors
                     float xr = x0 + pw * i / nx;
                     int cap = verts.Count;
                     verts.Add(CoverPoint(layer, xr, hb, 0.004f)); uvs.Add(new Vector2(0f, hb * BANK_UV));
-                    for (int j = 0; j <= nz; j++)
+                    for (int j = 0; j <= rows; j++)
                     {
-                        float oz = 0.004f + BANK_DEPTH * j / nz, h = BankHeight(tops[i], hb, xr, j, seed);
+                        float h, oz;
+                        BankProfile(layer, tops[i], hb, xr, j, seed, out h, out oz);
                         verts.Add(CoverPoint(layer, xr, h, oz)); uvs.Add(new Vector2(oz * BANK_UV, h * BANK_UV));
                     }
-                    verts.Add(CoverPoint(layer, xr, hb, 0.004f + BANK_DEPTH)); uvs.Add(new Vector2(BANK_DEPTH * BANK_UV, hb * BANK_UV));
-                    for (int j = 1; j <= nz + 1; j++)
+                    for (int j = 1; j <= rows; j++)
                     {
                         tris.Add(cap); tris.Add(cap + j + 1); tris.Add(cap + j);
                         tris.Add(cap); tris.Add(cap + j); tris.Add(cap + j + 1);
@@ -489,11 +565,19 @@ namespace SeamlessInteriors
             layer.SnowShown = snow;
         }
 
-        // The bank's top, lower the further it lies out from the glass.
-        private static float BankHeight(float top, float bottom, float right, int row, int seed)
+        // One point of the bank's cross-section: the top, lower the further it lies out from the glass,
+        // then a quarter ellipse from its outer edge down to the sill.
+        private static void BankProfile(WindowCoverLayer layer, float top, float bottom, float right, int row, int seed, out float height, out float outward)
         {
-            float zl = (float)row / BANK_ROWS;
-            return bottom + (top - bottom) * (1f - BANK_SLUMP * zl * zl + (CoverFbm(right * 6f + seed, zl * 3f, 2) - 0.5f) * 0.2f * zl);
+            int edgeRow = row < BANK_ROWS ? row : BANK_ROWS;
+            float zl = (float)edgeRow / BANK_ROWS;
+            height = bottom + (top - bottom) * (1f - BANK_SLUMP * zl * zl + (CoverFbm(right * 6f + seed, zl * 3f, 2) - 0.5f) * 0.2f * zl);
+            outward = 0.004f + layer.BankDepth * zl;
+            if (row <= BANK_ROWS) return;
+            float rise = height - bottom;
+            float angle = 1.5708f * (row - BANK_ROWS) / BANK_ROUND_ROWS;
+            outward += Mathf.Min(layer.BankReach, rise * 0.6f + 0.005f) * (float)System.Math.Sin(angle);
+            height = bottom + rise * (float)System.Math.Cos(angle);
         }
 
         // Frost is lit by the day outside, not by the room: lit by the room it read as a white wall.
@@ -513,7 +597,9 @@ namespace SeamlessInteriors
         // Every frame from OnUpdate: builds one window a frame after entering, then follows the cover once a second.
         private static void TickWindowCoverLayers()
         {
-            if (s_CoverFailed) return;
+            string failedCheck = WindowCoverLayers ? s_WindowPortalInstanceId : null;
+            if (s_CoverFailedIn != null && s_CoverFailedIn == failedCheck) return;
+            s_CoverFailedIn = null;
             try
             {
                 string id = WindowCoverLayers ? s_WindowPortalInstanceId : null;
@@ -526,6 +612,9 @@ namespace SeamlessInteriors
                     s_CoverLayersBuilt = 0;
                 }
                 if (s_CoverLayersInstance == null) return;
+                // Gone with their scene (a save loaded while they stood): built again next frame.
+                foreach (var built in s_CoverLayers)
+                    if (built != null && (built.FrostGo == null || built.FrostMat == null)) { TeardownWindowCoverLayers(); return; }
 
                 if (s_CoverLayersBuilt < s_CoverLayers.Count)
                 {
@@ -564,7 +653,7 @@ namespace SeamlessInteriors
             }
             catch (System.Exception ex)
             {
-                s_CoverFailed = true;
+                s_CoverFailedIn = s_WindowPortalInstanceId ?? "";
                 try { TeardownWindowCoverLayers(); } catch { }
                 MelonLogger.Warning($"[PENCERE-ORTU] Kapatildi: {ex.Message}", $"[WINDOW-COVER] Turned off after an error: {ex.Message}");
             }
@@ -600,7 +689,8 @@ namespace SeamlessInteriors
                 BuildCoverBank(layer, bankSnow);
                 filled = true;
             }
-            layer.FrostGo.SetActive(frost > 0f);
+            // Always: the clean glass is drawn by it too.
+            layer.FrostGo.SetActive(true);
             if (bank) layer.BankGo.SetActive(bankSnow > 0f);
             if (force) layer.FrostMat.color = CoverSnowLight();
             return filled;
@@ -608,19 +698,21 @@ namespace SeamlessInteriors
 
         private static void TeardownWindowCoverLayers()
         {
-            for (int i = 0; i < s_CoverLayers.Count; i++)
-            {
-                var layer = s_CoverLayers[i];
-                if (layer == null) continue;
-                if (layer.FrostGo != null) Object.Destroy(layer.FrostGo);
-                if (layer.BankGo != null) Object.Destroy(layer.BankGo);
-                if (layer.BankMesh != null) Object.Destroy(layer.BankMesh);
-                if (layer.FrostMat != null) Object.Destroy(layer.FrostMat);
-                if (layer.FrostTex != null) Object.Destroy(layer.FrostTex);
-            }
+            for (int i = 0; i < s_CoverLayers.Count; i++) DestroyCoverLayer(s_CoverLayers[i]);
             s_CoverLayers.Clear();
             s_CoverLayersInstance = null;
             s_CoverLayersBuilt = 0;
+        }
+
+        // The bank's material is the game's own and is left alone.
+        private static void DestroyCoverLayer(WindowCoverLayer layer)
+        {
+            if (layer == null) return;
+            if (layer.FrostGo != null) Object.Destroy(layer.FrostGo);
+            if (layer.BankGo != null) Object.Destroy(layer.BankGo);
+            if (layer.BankMesh != null) Object.Destroy(layer.BankMesh);
+            if (layer.FrostMat != null) Object.Destroy(layer.FrostMat);
+            if (layer.FrostTex != null) Object.Destroy(layer.FrostTex);
         }
     }
 }

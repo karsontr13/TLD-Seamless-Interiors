@@ -1148,6 +1148,7 @@ namespace SeamlessInteriors
             double msFrost = stepTimer.Elapsed.TotalMilliseconds;
             BuildOutsideInRecessObjects(instance);
             BuildCopiedShellDrifts(instance);
+            BuildOutsideCovers(instance);
             double msRecess = stepTimer.Elapsed.TotalMilliseconds;
 
             int driftSlabs = 0;
@@ -1716,7 +1717,7 @@ namespace SeamlessInteriors
                 var overlay = s_OutsideInFrostOverlays[i];
                 if (overlay == null) continue;
 
-                bool show = live && OutsideInFrostedPane && !IsWindowCleaned(s_OutsideInInstanceId, i);
+                bool show = live && OutsideInFrostedPane && OutsideOldDressingShows(i, true);
 
                 var overlayRenderer = overlay.GetComponent<MeshRenderer>();
                 if (overlayRenderer != null && overlayRenderer.enabled != show) overlayRenderer.enabled = show;
@@ -1736,10 +1737,12 @@ namespace SeamlessInteriors
             {
                 var drifts = s_OutsideInLedgeDrifts[i];
                 if (drifts == null) continue;
-                bool showDrift = InsideOutShowSnowSlab && !IsWindowCleaned(s_OutsideInInstanceId, i);
+                bool showDrift = InsideOutShowSnowSlab && OutsideOldDressingShows(i, false);
                 for (int k = 0; k < drifts.Count; k++)
                     if (drifts[k] != null && drifts[k].activeSelf != showDrift) drifts[k].SetActive(showDrift);
             }
+
+            TickOutsideCovers(live);
         }
 
         // Draws one pane into one slot. Returns false when the pane turns out not to be worth
@@ -4409,6 +4412,7 @@ namespace SeamlessInteriors
 
             if (s_OutsideInFrostMaterial != null) Object.Destroy(s_OutsideInFrostMaterial);
             s_OutsideInFrostMaterial = null;
+            DestroyOutsideCovers();
         }
 
 

@@ -1184,7 +1184,8 @@ namespace SeamlessInteriors
         {
             if (openingIndex < 0 || openingIndex >= s_WindowPortalOpenings.Count) return;
             if (openingIndex >= s_WindowPaneCleared.Count) return;
-            if (s_WindowPaneCleared[openingIndex] == cleared) return;
+            // With the cover layers a cleaned pane frosts over again, and wiping it again restarts its clock.
+            if (s_WindowPaneCleared[openingIndex] == cleared && !(cleared && WindowCoverLayers)) return;
 
             // Through the shared state when this opening has a shell window, so the outside of the
             // same window follows. SetWindowCleaned comes back here through ApplyWindowPane.

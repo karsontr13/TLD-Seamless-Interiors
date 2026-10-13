@@ -96,6 +96,8 @@ namespace SeamlessInteriors
                     bool frosted = t.Inside ? !IsWindowPaneCleared(t.Index) : !IsWindowCleaned(s_OutsideInInstanceId, t.Index);
                     // A window frosting over again can be wiped before it is full.
                     if (t.Inside && WindowCoverLayers && !frosted) { float f, s; GetRoomPaneCover(t.Index, out f, out s); frosted = f >= 0.2f; }
+                    // Outside, a window wiped from inside still has its snow to wipe.
+                    if (!t.Inside && WindowCoverLayers && !frosted) { float f, s; GetWindowCover(s_OutsideInInstanceId, t.Index, false, out f, out s); frosted = f >= 0.2f || s > 0.02f; }
                     if (t.Go.activeSelf != frosted) t.Go.SetActive(frosted);
 
                     // LETTING GO STOPS IT. The game's hold does not cancel on release by itself (its

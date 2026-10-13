@@ -113,6 +113,10 @@ namespace SeamlessInteriors
             public List<MeshFilter> ResizedFrames = new List<MeshFilter>();
             public List<Mesh> ResizedFrameOriginals = new List<Mesh>();
             public List<List<GameObject>> LedgeDrifts = new List<List<GameObject>>();
+            // The frost and snow seen from outside, by aperture (WindowCoverOutside.cs).
+            public List<WindowCoverLayer> Covers = new List<WindowCoverLayer>();
+            public float CoversNextTick;
+            public bool CoversLive;
             public int PairedCount;
             public float RetryAt;
             public List<ShellAperture> Apertures = new List<ShellAperture>();
