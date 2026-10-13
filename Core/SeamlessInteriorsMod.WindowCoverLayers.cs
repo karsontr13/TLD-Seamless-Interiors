@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using MelonLoader;
 using UnityEngine;
 
@@ -39,7 +41,8 @@ namespace SeamlessInteriors
             public Material FrostMat;
             public Texture2D FrostTex;
             public Mesh BankMesh;
-            public Color32[] FrostPixels;
+            // The texture's RGBA32 bytes, mips included.
+            public byte[] FrostBytes;
             // Per pixel, worked out once for the window's own shape.
             public float[] VeinTime, Vein, Glow, HazeTime, Grain, GlassAlpha, GlassWhite;
             // Zero where a bar barely proud of the glass would be drawn over; null for none.
@@ -68,14 +71,22 @@ namespace SeamlessInteriors
         private static string s_CoverFailedIn;
 
         // Plain managed math: Mathf and Color calls cross into the game per call and are far too slow per pixel.
+        // MethodImplOptions.AggressiveOptimization (512): this project builds against a framework that does not
+        // name it, while the game's .NET 6 runtime honours it.
+        internal const MethodImplOptions CoverOptimised = (MethodImplOptions)512;
+
         private static float C01(float x) { return x < 0f ? 0f : (x > 1f ? 1f : x); }
         private static float CLerp(float a, float b, float t) { return a + (b - a) * t; }
         private static int CFloor(float x) { int i = (int)x; return x < i ? i - 1 : i; }
+
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
 
         private static float CoverHash(int x, int y)
         {
             unchecked { int h = x * 374761393 + y * 668265263; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) & 0xffff) / 65535f; }
         }
+
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
 
         private static float CoverNoise(float x, float y)
         {
@@ -84,6 +95,8 @@ namespace SeamlessInteriors
             fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
             return CLerp(CLerp(CoverHash(xi, yi), CoverHash(xi + 1, yi), fx), CLerp(CoverHash(xi, yi + 1), CoverHash(xi + 1, yi + 1), fx), fy);
         }
+
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
 
         private static float CoverFbm(float x, float y, int octaves)
         {
@@ -164,6 +177,12 @@ namespace SeamlessInteriors
 
         private static WindowCoverLayer BuildCoverLayer(int index)
         {
+            long perf = PerfProbe.Begin();
+            try { return BuildCoverLayerTimed(index); } finally { PerfProbe.End(PerfProbe.Section.CoverBuild, perf); }
+        }
+
+        private static WindowCoverLayer BuildCoverLayerTimed(int index)
+        {
             var opening = s_WindowPortalOpenings[index];
             Vector3 center; float width, height;
             if (!CoverRect(opening, out center, out width, out height)) return null;
@@ -198,17 +217,39 @@ namespace SeamlessInteriors
             return layer;
         }
 
+        // Looked up once: a search by name each window, and the first one in a session took 387 ms (2026-10-14).
+        private static Shader s_CoverFrostShader;
+
+        internal static Shader CoverFrostShader()
+        {
+            if (s_CoverFrostShader == null) s_CoverFrostShader = Shader.Find("Sprites/Default");
+            return s_CoverFrostShader;
+        }
+
         // Both lit by the day outside, as frost and snow on a window are (dark mode showed the room-lit frost dark).
         private static bool MakeCoverFrost(WindowCoverLayer layer, string name, Vector3 center, Vector3 right, Vector3 up, Vector3 facing, float width, float height, int queue)
         {
-            Shader unlit = Shader.Find("Sprites/Default");
+            Shader unlit = CoverFrostShader();
             if (unlit == null) return false;
             int n = layer.FrostSize;
-            layer.FrostTex = new Texture2D(n, n, TextureFormat.RGBA32, true) { wrapMode = TextureWrapMode.Clamp, name = "SeamlessInteriors_WindowFrost" };
-            layer.FrostMat = new Material(unlit) { mainTexture = layer.FrostTex, renderQueue = queue, name = "SeamlessInteriors_WindowFrost" };
+            // Taken from the pool when a building before left some: making them was 2 ms a window.
+            layer.FrostTex = TakePooled(s_FrostTexPool, n);
+            if (layer.FrostTex == null)
+            {
+                layer.FrostTex = new Texture2D(n, n, TextureFormat.RGBA32, true) { wrapMode = TextureWrapMode.Clamp, name = "SeamlessInteriors_WindowFrost" };
+                layer.FrostTex.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            }
+            layer.FrostMat = TakePooled(s_FrostMatPool, 0);
+            if (layer.FrostMat == null)
+            {
+                layer.FrostMat = new Material(unlit) { name = "SeamlessInteriors_WindowFrost" };
+                layer.FrostMat.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            }
+            layer.FrostMat.mainTexture = layer.FrostTex;
+            layer.FrostMat.renderQueue = queue;
             layer.FrostGo = CoverQuad(name, layer.FrostMat, center, right, up, facing, width, height);
             layer.FrostGo.SetActive(false);
-            layer.FrostPixels = new Color32[n * n];
+            layer.FrostBytes = TakePooled(s_FrostBytesPool, n) ?? new byte[CoverMipBytes(n)];
             return true;
         }
 
@@ -422,10 +463,22 @@ namespace SeamlessInteriors
 
         private static void FillCoverFrost(WindowCoverLayer layer, float frost)
         {
+            long perf = PerfProbe.Begin();
+            PerfProbe.Count(PerfProbe.Hit.CoverFills);
+            try { FillCoverFrostTimed(layer, frost); } finally { PerfProbe.End(PerfProbe.Section.CoverFill, perf); }
+        }
+
+        // Optimised from the first call: .NET runs a method's first calls unoptimised, and a fill comes seldom
+        // enough to stay that way (16 ms first, 5 ms from the tenth on, 2026-10-14). The pixels go straight into
+        // the texture's own bytes, mips made here: SetPixels32 copied a whole array into the game each fill.
+        [MethodImpl(CoverOptimised)]
+        private static void FillCoverFrostTimed(WindowCoverLayer layer, float frost)
+        {
             int count = layer.Vein.Length;
             float reach = frost * 1.15f, haze0 = frost * 0.06f;
-            var veinTime = layer.VeinTime; var vein = layer.Vein; var hazeTime = layer.HazeTime; var grain = layer.Grain; var glow = layer.Glow; var pixels = layer.FrostPixels;
+            var veinTime = layer.VeinTime; var vein = layer.Vein; var hazeTime = layer.HazeTime; var grain = layer.Grain; var glow = layer.Glow;
             var glassAlpha = layer.GlassAlpha; var glassWhite = layer.GlassWhite; var mask = layer.FrostMask;
+            var bytes = layer.FrostBytes;
             for (int i = 0; i < count; i++)
             {
                 float v = vein[i] * C01((reach - veinTime[i]) * 12f);
@@ -435,14 +488,48 @@ namespace SeamlessInteriors
                 // The frost laid over the glass.
                 float ga = glassAlpha[i] * (1f - a), gw = glassWhite[i], all = a + ga;
                 float k = all > 0.0001f ? 1f / all : 0f;
-                pixels[i] = CoverPixel((w * 0.90f * a + gw * 0.88f * ga) * k, (w * 0.95f * a + gw * 0.93f * ga) * k, (w * a + gw * 0.98f * ga) * k, mask != null ? all * mask[i] : all);
+                int o = i * 4;
+                bytes[o] = (byte)(C01((w * 0.90f * a + gw * 0.88f * ga) * k) * 255f);
+                bytes[o + 1] = (byte)(C01((w * 0.95f * a + gw * 0.93f * ga) * k) * 255f);
+                bytes[o + 2] = (byte)(C01((w * a + gw * 0.98f * ga) * k) * 255f);
+                bytes[o + 3] = (byte)(C01(mask != null ? all * mask[i] : all) * 255f);
             }
-            layer.FrostTex.SetPixels32(pixels);
-            layer.FrostTex.Apply(true);
+            CoverMips(bytes, layer.FrostSize);
+            var pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+            try { layer.FrostTex.LoadRawTextureData(pin.AddrOfPinnedObject(), bytes.Length); }
+            finally { pin.Free(); }
+            layer.FrostTex.Apply(false);
             layer.FrostShown = frost;
         }
 
+        // The RGBA32 mip chain after the first level, each a 2x2 average of the one before.
+        private static int CoverMipBytes(int size)
+        {
+            int total = 0;
+            for (int s = size; ; s >>= 1) { total += s * s * 4; if (s == 1) break; }
+            return total;
+        }
+
+        [MethodImpl(CoverOptimised)]
+        private static void CoverMips(byte[] bytes, int size)
+        {
+            int src = 0;
+            for (int s = size; s > 1; s >>= 1)
+            {
+                int half = s >> 1, dst = src + s * s * 4, row = s * 4;
+                for (int y = 0; y < half; y++)
+                    for (int x = 0; x < half; x++)
+                    {
+                        int a = src + (y * 2) * row + x * 8, d = dst + (y * half + x) * 4;
+                        for (int c = 0; c < 4; c++)
+                            bytes[d + c] = (byte)((bytes[a + c] + bytes[a + 4 + c] + bytes[a + row + c] + bytes[a + row + 4 + c] + 2) >> 2);
+                    }
+                src = dst;
+            }
+        }
+
         // The panes are the glass mesh's own rectangles (a sash window has one per sash).
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
         private static List<float[]> CoverPanes(InteriorWindowOpening opening, Vector3 center, float width, float height)
         {
             var panes = new List<float[]>();
@@ -453,16 +540,16 @@ namespace SeamlessInteriors
                 var filter = renderer != null ? renderer.GetComponent<MeshFilter>() : null;
                 var mesh = filter != null ? filter.sharedMesh : null;
                 if (mesh == null || !mesh.isReadable) continue;
-                var vertices = mesh.vertices;
-                var triangles = mesh.triangles;
-                var t = renderer.transform;
+                // Managed copies, once: indexing the game's arrays and TransformPoint were a call per vertex.
+                int[] triangles = mesh.triangles;
+                Vector3[] world = CoverToWorld(renderer.transform, mesh.vertices);
                 for (int k = 0; k + 2 < triangles.Length; k += 3)
                 {
                     float r0 = float.MaxValue, r1 = float.MinValue, u0 = float.MaxValue, u1 = float.MinValue;
                     Vector3 a0 = Vector3.zero, a1 = Vector3.zero, a2 = Vector3.zero;
                     for (int j = 0; j < 3; j++)
                     {
-                        var p = t.TransformPoint(vertices[triangles[k + j]]) - center;
+                        var p = world[triangles[k + j]] - center;
                         if (j == 0) a0 = p; else if (j == 1) a1 = p; else a2 = p;
                         float r = Vector3.Dot(p, opening.Right), u = Vector3.Dot(p, opening.Up);
                         r0 = Mathf.Min(r0, r); r1 = Mathf.Max(r1, r); u0 = Mathf.Min(u0, u); u1 = Mathf.Max(u1, u);
@@ -494,6 +581,7 @@ namespace SeamlessInteriors
 
         // One sheet of glass modelled as a grid of quads (Trapper's) is one pane: rectangles that share
         // a whole edge are joined. Panes split by a bar leave a gap and stay apart.
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
         private static void MergeTouchingPanes(List<float[]> panes)
         {
             const float tol = 0.01f;
@@ -535,8 +623,26 @@ namespace SeamlessInteriors
             }
         }
 
+        // A mesh's vertices in world space, from the transform's matrix read once.
+        [MethodImpl(CoverOptimised)]
+        private static Vector3[] CoverToWorld(Transform t, Vector3[] local)
+        {
+            Matrix4x4 m = t.localToWorldMatrix;
+            var world = new Vector3[local.Length];
+            for (int i = 0; i < local.Length; i++)
+            {
+                Vector3 p = local[i];
+                var w = default(Vector3);
+                w.x = m.m00 * p.x + m.m01 * p.y + m.m02 * p.z + m.m03;
+                w.y = m.m10 * p.x + m.m11 * p.y + m.m12 * p.z + m.m13;
+                w.z = m.m20 * p.x + m.m21 * p.y + m.m22 * p.z + m.m23;
+                world[i] = w;
+            }
+            return world;
+        }
         // UPRIGHT POSTS. The side faces of a frame that run most of the glass's height, inside its width, as
         // places along `right` from `center`. A sheet of glass behind a post is two panes (Thompson's Store, 2026-10-13).
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
         private static void CollectPostSides(Vector3[] world, int[] triangles, Vector3 center, Vector3 right, Vector3 up, Vector3 outward,
                                              float left, float rightEdge, float bottom, float top, List<float> sides)
         {
@@ -590,6 +696,7 @@ namespace SeamlessInteriors
         }
 
         // How far the posts' front faces stand out from the glass (the nearest of them), or 0 when none is found.
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
         private static float PostFront(Vector3[] world, int[] triangles, Vector3 center, Vector3 right, Vector3 outward, List<Vector2> posts)
         {
             float front = float.MaxValue;
@@ -613,6 +720,7 @@ namespace SeamlessInteriors
         }
 
         // The room frame's posts, from the frame meshes under the pane (glass and slabs left out).
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
         private static List<Vector2> MeasureRoomPosts(InteriorWindowOpening opening, Vector3 center, float width, float height)
         {
             var sides = new List<float>();
@@ -624,9 +732,8 @@ namespace SeamlessInteriors
                     var renderer = filter.GetComponent<Renderer>();
                     if (renderer != null && (opening.Glass.Contains(renderer) || (opening.Frost != null && opening.Frost.Contains(renderer)))) continue;
                     var local = mesh.vertices;
-                    var world = new Vector3[local.Length];
-                    for (int i = 0; i < local.Length; i++) world[i] = filter.transform.TransformPoint(local[i]);
-                    CollectPostSides(world, mesh.triangles, center, opening.Right, opening.Up, opening.Outward,
+                    var world = CoverToWorld(filter.transform, local);
+                    CollectPostSides(world, (int[])mesh.triangles, center, opening.Right, opening.Up, opening.Outward,
                                      -width * 0.5f, width * 0.5f, -height * 0.5f, height * 0.5f, sides);
                 }
             return ClusterPosts(sides);
@@ -634,6 +741,7 @@ namespace SeamlessInteriors
 
         // The room frame's horizontal bar across the glass, as heights from center: the frame's flat
         // top and underside faces that run most of the glass's width (Trapper's frame, 2026-10-13).
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
         private static bool TryMeasureRoomBar(InteriorWindowOpening opening, Vector3 center, float width, float height, out float low, out float high)
         {
             low = float.MaxValue; high = float.MinValue;
@@ -645,14 +753,13 @@ namespace SeamlessInteriors
                 if (mesh == null || !mesh.isReadable) continue;
                 var renderer = filter.GetComponent<Renderer>();
                 if (renderer != null && (opening.Glass.Contains(renderer) || (opening.Frost != null && opening.Frost.Contains(renderer)))) continue;
-                var vertices = mesh.vertices;
-                var triangles = mesh.triangles;
-                var t = filter.transform;
+                int[] triangles = mesh.triangles;
+                Vector3[] world = CoverToWorld(filter.transform, mesh.vertices);
                 for (int k = 0; k + 2 < triangles.Length; k += 3)
                 {
-                    Vector3 p0 = t.TransformPoint(vertices[triangles[k]]) - center;
-                    Vector3 p1 = t.TransformPoint(vertices[triangles[k + 1]]) - center;
-                    Vector3 p2 = t.TransformPoint(vertices[triangles[k + 2]]) - center;
+                    Vector3 p0 = world[triangles[k]] - center;
+                    Vector3 p1 = world[triangles[k + 1]] - center;
+                    Vector3 p2 = world[triangles[k + 2]] - center;
                     Vector3 middle = (p0 + p1 + p2) / 3f;
                     if (Mathf.Abs(Vector3.Dot(middle, opening.Outward)) > 0.1f) continue;
                     if (Mathf.Abs(Vector3.Dot(middle, opening.Right)) > width * 0.5f) continue;
@@ -749,6 +856,8 @@ namespace SeamlessInteriors
 
         private static float CoverSmooth(float x) { x = C01(x); return x * x * (3f - 2f * x); }
 
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
+
         private static Vector3 CoverPoint(WindowCoverLayer layer, float right, float up, float outward)
         {
             // Field by field, as for Color32: Vector3 sums are calls into the game here.
@@ -762,6 +871,15 @@ namespace SeamlessInteriors
 
         // Each pane's bank: a face against the glass, a top that slumps away outside, and closed ends.
         private static void BuildCoverBank(WindowCoverLayer layer, float snow)
+        {
+            long perf = PerfProbe.Begin();
+            PerfProbe.Count(PerfProbe.Hit.CoverBanks);
+            try { BuildCoverBankTimed(layer, snow); } finally { PerfProbe.End(PerfProbe.Section.CoverBank, perf); }
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
+
+        private static void BuildCoverBankTimed(WindowCoverLayer layer, float snow)
         {
             var verts = new List<Vector3>(); var uvs = new List<Vector2>(); var tris = new List<int>();
             const int nx = BANK_COLUMNS, nz = BANK_ROWS;
@@ -855,16 +973,18 @@ namespace SeamlessInteriors
         // Where the snow texture is read for a point of the bank. Laid straight on, it tiled twice a metre and
         // a long window showed the same blots five times over (owner, Thompson's Store, 2026-10-13): each pane
         // starts somewhere of its own, and a slow noise bends the lines it is read along.
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
         private static Vector2 BankUv(int seed, float across, float up)
         {
-            float u = across * BANK_UV + CoverHash(seed, 11) * 7f + (CoverFbm(across * 0.5f + seed, up * 0.5f, 2) - 0.5f) * 0.02f;
-            float v = up * BANK_UV + CoverHash(seed, 12) * 7f + (CoverFbm(across * 0.5f + 31f, up * 0.5f + seed, 2) - 0.5f) * 0.02f;
+            float u = across * BANK_UV + CoverHash(seed, 11) * 7f;
+            float v = up * BANK_UV + CoverHash(seed, 12) * 7f;
             var uv = default(Vector2);
             uv.x = u; uv.y = v;
             return uv;
         }
         // One point of the bank's cross-section: the top, lower the further it lies out from the glass,
         // then a quarter ellipse from its outer edge down to the sill.
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
         private static void BankProfile(WindowCoverLayer layer, float top, float bottom, float right, int row, int seed, out float height, out float outward)
         {
             int edgeRow = row < BANK_ROWS ? row : BANK_ROWS;
@@ -907,6 +1027,12 @@ namespace SeamlessInteriors
         // The frost's colour and the bank's tint for this second's light.
         private static void CoverRoomLight(out Color frost, out Color bank)
         {
+            long perf = PerfProbe.Begin();
+            try { CoverRoomLightTimed(out frost, out bank); } finally { PerfProbe.End(PerfProbe.Section.CoverLight, perf); }
+        }
+
+        private static void CoverRoomLightTimed(out Color frost, out Color bank)
+        {
             Color outdoor;
             if (!ClonedInteriorLightingGuard.TryGetExteriorLight(out outdoor)) { frost = CoverSnowLight(); bank = Color.white; return; }
             float level = (outdoor.r + outdoor.g + outdoor.b) / 3f;
@@ -935,6 +1061,12 @@ namespace SeamlessInteriors
 
         // Every frame from OnUpdate: builds one window a frame after entering, then follows the cover once a second.
         private static void TickWindowCoverLayers()
+        {
+            long perf = PerfProbe.Begin();
+            try { TickWindowCoverLayersTimed(); } finally { PerfProbe.End(PerfProbe.Section.CoverInside, perf); }
+        }
+
+        private static void TickWindowCoverLayersTimed()
         {
             string failedCheck = WindowCoverLayers ? s_WindowPortalInstanceId : null;
             if (s_CoverFailedIn != null && s_CoverFailedIn == failedCheck) return;
@@ -1061,8 +1193,64 @@ namespace SeamlessInteriors
             if (layer.FrostGo != null) Object.Destroy(layer.FrostGo);
             if (layer.BankGo != null) Object.Destroy(layer.BankGo);
             if (layer.BankMesh != null) Object.Destroy(layer.BankMesh);
-            if (layer.FrostMat != null) Object.Destroy(layer.FrostMat);
-            if (layer.FrostTex != null) Object.Destroy(layer.FrostTex);
+            // The texture, material and bytes go back to the pool for the next building.
+            if (layer.FrostMat != null) GiveBack(s_FrostMatPool, 0, layer.FrostMat);
+            if (layer.FrostTex != null) GiveBack(s_FrostTexPool, layer.FrostSize, layer.FrostTex);
+            if (layer.FrostBytes != null) GiveBack(s_FrostBytesPool, layer.FrostSize, layer.FrostBytes);
+            layer.FrostMat = null; layer.FrostTex = null; layer.FrostBytes = null;
+        }
+
+        private const int COVER_POOL_KEEP = 32;
+        private static readonly Dictionary<int, Stack<Texture2D>> s_FrostTexPool = new Dictionary<int, Stack<Texture2D>>();
+        private static readonly Dictionary<int, Stack<Material>> s_FrostMatPool = new Dictionary<int, Stack<Material>>();
+        private static readonly Dictionary<int, Stack<byte[]>> s_FrostBytesPool = new Dictionary<int, Stack<byte[]>>();
+
+        private static T TakePooled<T>(Dictionary<int, Stack<T>> pool, int size) where T : class
+        {
+            Stack<T> stack;
+            if (!pool.TryGetValue(size, out stack)) return null;
+            while (stack.Count > 0)
+            {
+                var item = stack.Pop();
+                // A Unity object can still have been destroyed in between (Unity's == says so; plain null does not).
+                var unity = item as Object;
+                bool alive = ReferenceEquals(unity, null) ? item != null : unity != null;
+                if (alive) return item;
+            }
+            return null;
+        }
+
+        private static void GiveBack<T>(Dictionary<int, Stack<T>> pool, int size, T item) where T : class
+        {
+            Stack<T> stack;
+            if (!pool.TryGetValue(size, out stack)) { stack = new Stack<T>(); pool[size] = stack; }
+            if (stack.Count < COVER_POOL_KEEP) { stack.Push(item); return; }
+            var unity = item as Object;
+            if (unity != null) Object.Destroy(unity);
+        }
+
+        // Once a session, while a region loads: the first frost a session makes took 387 ms (2026-10-14), so a
+        // layer of each size is made and handed back to the pool behind the loading screen.
+        private static bool s_CoverPrewarmed;
+
+        internal static void PrewarmWindowCovers()
+        {
+            if (s_CoverPrewarmed || !WindowCoverLayers) return;
+            s_CoverPrewarmed = true;
+            try
+            {
+                foreach (int size in new[] { COVER_FROST_SIZE, COVER_OUTSIDE_FROST_SIZE })
+                {
+                    var layer = new WindowCoverLayer { FrostSize = size };
+                    if (MakeCoverFrost(layer, "SeamlessInteriors_CoverPrewarm", Vector3.zero, Vector3.right, Vector3.up, Vector3.forward, 0.1f, 0.1f, 3000))
+                        DestroyCoverLayer(layer);
+                }
+                CoverBankMaterial(default(InteriorWindowOpening));
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[WINDOW-COVER] prewarm: {ex.Message}");
+            }
         }
     }
 }

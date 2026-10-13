@@ -68,15 +68,27 @@ namespace SeamlessInteriors
             public bool Cancelled;  // this hold was let go of; its end must not clean
             public uint SoundId;    // the playing sound, 0 when silent
             public bool SoundFading;
+            public bool Frosted = true;
+            public Vector3 Position;
         }
 
         private static readonly List<CleanTarget> s_CleanTargets = new List<CleanTarget>();
+        private const float CLEAN_STATE_SECONDS = 0.25f;
+        private static float s_CleanStateNextAt;
+        // The target whose hold is running, if any.
+        private static CleanTarget s_CleanHeldTarget;
         private static string s_CleanTargetsKey;
         private static bool s_CleanTargetsFailed;
 
         // Every frame from OnUpdate. Rebuilds only when what is dressed changes; otherwise it is one
         // bool per window.
         private static void TickWindowClearing()
+        {
+            long perf = PerfProbe.Begin();
+            try { TickWindowClearingTimed(); } finally { PerfProbe.End(PerfProbe.Section.CoverClean, perf); }
+        }
+
+        private static void TickWindowClearingTimed()
         {
             if (s_CleanTargetsFailed) return;
             try
@@ -91,16 +103,32 @@ namespace SeamlessInteriors
 
                 GuardCleanTargetFromDoor();
 
-                for (int i = 0; i < s_CleanTargets.Count; i++)
+                // Which windows can be wiped changes slowly: asked four times a second, not every frame
+                // for every window (27 at the farmhouse; the walk was the feature's largest steady cost).
+                float now = Time.realtimeSinceStartup;
+                if (now >= s_CleanStateNextAt)
                 {
-                    var t = s_CleanTargets[i];
-                    if (t.Go == null) { s_CleanTargetsKey = null; return; }   // gone with its scene: rebuild next frame
-                    bool frosted = t.Inside ? !IsWindowPaneCleared(t.Index) : !IsWindowCleaned(s_OutsideInInstanceId, t.Index);
-                    // A window frosting over again can be wiped before it is full.
-                    if (t.Inside && WindowCoverLayers && !frosted) { float f, s; GetRoomPaneCover(t.Index, out f, out s); frosted = f >= 0.2f; }
-                    // Outside, a window wiped from inside still has its snow to wipe.
-                    if (!t.Inside && WindowCoverLayers && !frosted) { float f, s; GetWindowCover(s_OutsideInInstanceId, t.Index, false, out f, out s); frosted = f >= 0.2f || s > 0.02f; }
-                    if (t.Go.activeSelf != frosted) t.Go.SetActive(frosted);
+                    s_CleanStateNextAt = now + CLEAN_STATE_SECONDS;
+                    for (int i = 0; i < s_CleanTargets.Count; i++)
+                    {
+                        var t = s_CleanTargets[i];
+                        if (t.Go == null) { s_CleanTargetsKey = null; return; }   // gone with its scene: rebuild next frame
+                        bool frosted = t.Inside ? !IsWindowPaneCleared(t.Index) : !IsWindowCleaned(s_OutsideInInstanceId, t.Index);
+                        // A window frosting over again can be wiped before it is full.
+                        if (t.Inside && WindowCoverLayers && !frosted) { float f, s; GetRoomPaneCover(t.Index, out f, out s); frosted = f >= 0.2f; }
+                        // Outside, a window wiped from inside still has its snow to wipe.
+                        if (!t.Inside && WindowCoverLayers && !frosted) { float f, s; GetWindowCover(s_OutsideInInstanceId, t.Index, false, out f, out s); frosted = f >= 0.2f || s > 0.02f; }
+                        if (t.Frosted != frosted || t.Go.activeSelf != frosted) t.Go.SetActive(frosted);
+                        t.Frosted = frosted;
+                    }
+                }
+
+                // Every frame, only the window being wiped.
+                var held = s_CleanHeldTarget;
+                if (held != null && held.Go != null)
+                {
+                    var t = held;
+                    bool frosted = t.Frosted;
 
                     // LETTING GO STOPS IT. The game's hold does not cancel on release by itself (its
                     // CanCancel answered true from a patch did nothing either); the lantern's does, so
@@ -144,7 +172,20 @@ namespace SeamlessInteriors
             Collider door = null;
             bool onTarget = false;
             Camera main = GameManager.GetMainCamera();
-            if (main != null && s_CleanTargets.Count > 0)
+            // No wipeable window within reach: no ray (plain float math, from where each target was put).
+            bool near = false;
+            if (main != null)
+            {
+                Vector3 eye = main.transform.position;
+                float reach = CLEAN_DOOR_GUARD_REACH * CLEAN_DOOR_GUARD_REACH;
+                foreach (var t in s_CleanTargets)
+                {
+                    if (!t.Frosted) continue;
+                    float dx = t.Position.x - eye.x, dy = t.Position.y - eye.y, dz = t.Position.z - eye.z;
+                    if (dx * dx + dy * dy + dz * dz < reach) { near = true; break; }
+                }
+            }
+            if (main != null && near)
             {
                 var hits = Physics.RaycastAll(main.transform.position, main.transform.forward, CLEAN_DOOR_GUARD_REACH, ~0, QueryTriggerInteraction.Collide);
                 float target = float.MaxValue, solid = float.MaxValue;
@@ -260,10 +301,10 @@ namespace SeamlessInteriors
             hold.m_DefaultHoldText = new LocalizedString { m_LocalizationID = CLEAN_WINDOW_HOLD };
             hold.m_DefaultHoldTime = CLEAN_WINDOW_HOLD_SECONDS;
 
-            var target = new CleanTarget { Go = go, Inside = inside, Index = index, Hold = hold };
-            System.Action<BaseInteraction> begin = (bi) => { target.Cancelled = false; StartCleanSound(target); };
-            System.Action<BaseInteraction> cancelled = (bi) => { target.Cancelled = true; StopCleanSound(target); };
-            System.Action<BaseInteraction> done = (bi) => { StopCleanSound(target); OnWindowCleanedByHand(target); };
+            var target = new CleanTarget { Go = go, Inside = inside, Index = index, Hold = hold, Position = center };
+            System.Action<BaseInteraction> begin = (bi) => { target.Cancelled = false; s_CleanHeldTarget = target; StartCleanSound(target); };
+            System.Action<BaseInteraction> cancelled = (bi) => { target.Cancelled = true; StopCleanSound(target); if (s_CleanHeldTarget == target) s_CleanHeldTarget = null; };
+            System.Action<BaseInteraction> done = (bi) => { StopCleanSound(target); OnWindowCleanedByHand(target); if (s_CleanHeldTarget == target) s_CleanHeldTarget = null; s_CleanStateNextAt = 0f; };
             hold.AddEventCallback(InteractionEventType.HoldBegin, begin);
             hold.AddEventCallback(InteractionEventType.HoldCancelled, cancelled);
             hold.AddEventCallback(InteractionEventType.HoldEnd, done);
@@ -341,6 +382,8 @@ namespace SeamlessInteriors
         private static void DestroyCleanTargets()
         {
             ReleaseCleanDoor();
+            s_CleanHeldTarget = null;
+            s_CleanStateNextAt = 0f;
             for (int i = 0; i < s_CleanTargets.Count; i++)
             {
                 StopCleanSound(s_CleanTargets[i]);

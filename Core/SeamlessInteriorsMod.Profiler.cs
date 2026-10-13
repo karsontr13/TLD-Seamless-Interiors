@@ -27,12 +27,13 @@ namespace SeamlessInteriors
                 PortalHydrate, PortalActivate, PortalForceRenderers, PortalColliders, PortalHideSync,
                 PortalItemsVisible, PortalMarkInside, ExitItems, ExitAudio, ExitDeactivate, ExitAdopt, ExitPurge,
                 SaveGear, SavePlaceables, SaveContainers, SaveState, SaveJunk,
-                ModLoad, ModFirstBuild, Count
+                ModLoad, ModFirstBuild,
+                CoverInside, CoverOutside, CoverFill, CoverBank, CoverBuild, CoverClean, CoverLight, Count
             }
 
             internal enum Hit
             {
-                LightOwnerLookup, CustomizableSafehouse, DecorationInside, PlacementChecks, Count
+                LightOwnerLookup, CustomizableSafehouse, DecorationInside, PlacementChecks, CoverFills, CoverBanks, Count
             }
 
             // Object searches, by what they walk. These are what scales with how full a
@@ -54,12 +55,13 @@ namespace SeamlessInteriors
                 "giris-dolum", "giris-acma", "giris-renderer", "giris-collider", "giris-gizleme",
                 "giris-esya", "giris-konum", "cikis-esya", "cikis-ses", "cikis-kapatma", "cikis-sahiplenme", "cikis-kopya",
                 "kayit-esya", "kayit-mobilya", "kayit-konteyner", "kayit-durum", "kayit-cop",
-                "mod-yukleme", "mod-ilk-kurulum"
+                "mod-yukleme", "mod-ilk-kurulum",
+                "ortu-ic", "ortu-dis", "ortu-buz", "ortu-kar", "ortu-kurulum", "ortu-silme", "ortu-isik"
             };
 
             private static readonly string[] s_HitNames =
             {
-                "isik-yamasi", "safehouse-hud", "dekor-icinde", "yerlestirme-kontrol"
+                "isik-yamasi", "safehouse-hud", "dekor-icinde", "yerlestirme-kontrol", "ortu-buz-dolum", "ortu-kar-kurulum"
             };
 
             private static readonly string[] s_ScanNames =
@@ -317,7 +319,7 @@ namespace SeamlessInteriors
                 {
                     if (s_Hits[i] == 0) continue;
                     double perFrame = (double)s_Hits[i] / s_Frames;
-                    hits.Append(' ').Append(s_HitNames[i]).Append('=').Append(perFrame.ToString("F1", CultureInfo.InvariantCulture));
+                    hits.Append(' ').Append(s_HitNames[i]).Append('=').Append(perFrame.ToString(perFrame < 0.1 ? "F3" : "F1", CultureInfo.InvariantCulture));
                 }
 
                 float fps = s_Frames / s_FrameSeconds;

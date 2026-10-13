@@ -105,6 +105,7 @@ namespace SeamlessInteriors
             RevalidateExteriorShells();
             FixPlaceableManagerSerializeInventoryPatch.PruneCloneEntries("yukleme sonu");
             PurgeSavedCopiesOfUnopenedRooms();
+            PrewarmWindowCovers();
             DestroyPristineTemplates();
 
             // RELEASE THE SCREEN: all instances are ready.

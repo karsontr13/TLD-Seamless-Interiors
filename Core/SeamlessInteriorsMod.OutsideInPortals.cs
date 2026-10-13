@@ -1,4 +1,4 @@
-﻿using Il2Cpp;
+using Il2Cpp;
 using MelonLoader;
 using System.Collections.Generic;
 using UnityEngine;
@@ -3650,6 +3650,8 @@ namespace SeamlessInteriors
             return TryMeasureShellBar(pane, shellMesh.triangles, shellWorld, out low, out high);
         }
 
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
+
         private static bool TryMeasureShellBar(ShellAperture pane, int[] triangles, Vector3[] shellWorld, out float low, out float high)
         {
             low = float.MaxValue;
@@ -3944,6 +3946,7 @@ namespace SeamlessInteriors
         // How far proud of the glass the thing a drift must stay behind stands: the front of the
         // window's horizontal bar if it has one, otherwise the nearest face of its frame. Faces
         // looking out of the building, within a hand's width of this window's glass.
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
         private static bool TryMeasureWindowRelief(ShellAperture pane, Vector4 glass, Vector3[] world, int[] triangles, out float relief)
         {
             relief = 0f;
