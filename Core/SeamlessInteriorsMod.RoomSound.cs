@@ -839,13 +839,24 @@ namespace SeamlessInteriors
                 AkSoundEngine.ExecuteActionOnPlayingID(AkActionOnEventType.AkActionOnEventType_Resume, id, s_OutdoorsFadeInMs, AkCurveInterpolation.AkCurveInterpolation_Linear);
         }
 
+        // Set when GameAudioManager.UnPauseAudio really resumed. Focus comes back with no frame run in
+        // between (runInBackground is off), so the flag watch below can miss the pause (2026-10-13).
+        private static bool s_GameAudioResumeCalled = false;
+
+        internal static void OnGameAudioResumed()
+        {
+            s_GameAudioResumeCalled = true;
+            PutPausesBackAfterTheGameResumesAudio();
+        }
+
         private static void PutPausesBackAfterTheGameResumesAudio()
         {
             if (s_GameAudioWatchFailed) return;
             try
             {
                 bool paused = GameAudioManager.m_AudioPaused;
-                bool resumedNow = s_GameAudioWasPaused && !paused;
+                bool resumedNow = (s_GameAudioWasPaused && !paused) || s_GameAudioResumeCalled;
+                s_GameAudioResumeCalled = false;
                 s_GameAudioWasPaused = paused;
 
                 // The pause given on the frame the audio comes back does not always hold: the game
@@ -855,7 +866,9 @@ namespace SeamlessInteriors
                 // still heard the outdoor loop ("It's the outdoor valley loop"), and the same pause
                 // given by hand minutes later stopped it ("That fixed it"). So it is given twice
                 // more, a quarter of a second and a second later.
-                float now = Time.unscaledTime;
+                // Real time: after focus comes back unscaledTime jumps on the second frame, and timers
+                // set on the first one all ran at once, before the resume's fade-in (2026-10-13).
+                float now = Time.realtimeSinceStartup;
                 if (resumedNow)
                 {
                     s_PauseAgainAt1 = now + 0.25f;
@@ -914,6 +927,18 @@ namespace SeamlessInteriors
             uint count = 32;
             AkSoundEngine.GetPlayingIDsFromGameObject(go, ref count, s_PlayingIdBuffer);
             return (int)System.Math.Min(count, 32u);
+        }
+    }
+
+    // Every resume of the game's audio, menu or window focus; only a call that ended a pause counts.
+    [HarmonyLib.HarmonyPatch(typeof(GameAudioManager), nameof(GameAudioManager.UnPauseAudio))]
+    public class GameAudioUnpausePatch
+    {
+        public static void Prefix(out bool __state) => __state = GameAudioManager.m_AudioPaused;
+
+        public static void Postfix(bool __state)
+        {
+            if (__state) SeamlessInteriorsMod.OnGameAudioResumed();
         }
     }
 }
