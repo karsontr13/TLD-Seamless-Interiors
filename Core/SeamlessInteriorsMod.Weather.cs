@@ -392,9 +392,8 @@ namespace SeamlessInteriors
                 yield break;
             }
 
-            // Indoors: the indoor rule owns the loop (stopped outright by default, the way a
-            // loading-screen interior does it; left running and merely occluded if the player
-            // has turned SilenceOutdoorWindIndoors off).
+            // Indoors: make sure the loop is running. It is never stopped; the occlusion filter
+            // lowers it (see ApplyOutdoorWindForInsideState in Audio.cs).
             ApplyOutdoorWindForInsideState(true, "post-run");
 
             if (s_DebugBounds) MelonLogger.Msg($"[WIND-POST-RUN] Oyuncu icerde, dis ruzgar sesi ic mekan kuralina gore ayarlandi, id={wind.m_WindLoopAudioInstance}",

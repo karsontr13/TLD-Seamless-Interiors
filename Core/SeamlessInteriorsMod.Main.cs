@@ -90,14 +90,6 @@ namespace SeamlessInteriors
         private static MelonPreferences_Entry<bool> s_PrefEnableWindowGroundGlow;
         private static MelonPreferences_Entry<float> s_PrefWindowGroundGlowStrength;
 
-        // Outdoor weather audio while the player stands in a parked room. A vanilla
-        // loading-screen interior is a separate scene, so the outdoor wind loop simply does
-        // not exist in it. A parked room is in the outdoor scene, so the loop keeps playing
-        // and only the global occlusion filter stands between it and the player - which is
-        // not enough in a blizzard. See StopOutdoorWindWhileInside in Audio.cs.
-        // UserData\MelonPreferences.cfg -> [SeamlessInteriors] SilenceOutdoorWindIndoors
-        private static MelonPreferences_Entry<bool> s_PrefSilenceOutdoorWindIndoors;
-
         private static MelonPreferences_Entry<bool> s_PrefEnableWindowPortals;
         private static MelonPreferences_Entry<int> s_PrefWindowPortalLimit;
         private static MelonPreferences_Entry<float> s_PrefWindowPortalResolutionScale;
@@ -109,7 +101,6 @@ namespace SeamlessInteriors
         public static bool IsWindowGlowFlickerEnabled => s_PrefWindowGlowFlicker?.Value ?? true;
         public static float WindowGlowStrength => s_PrefWindowGlowStrength?.Value ?? 1f;
         public static bool IsWindowGroundGlowEnabled => s_PrefEnableWindowGroundGlow?.Value ?? true;
-        public static bool IsOutdoorWindSilencedIndoors => s_PrefSilenceOutdoorWindIndoors?.Value ?? false;
         public static float WindowGroundGlowStrength => s_PrefWindowGroundGlowStrength?.Value ?? 1f;
 
         // VERBOSE LOGGING.
@@ -209,13 +200,6 @@ namespace SeamlessInteriors
                 true,
                 "Apply Removed Objects From Pre-Mod Save",
                 "Switches off scene furniture the pre-mod save records as removed, so a stripped interior is imported stripped. Turn off if furniture that should be there is coming in dark."
-            );
-
-            s_PrefSilenceOutdoorWindIndoors = s_PrefCategory.CreateEntry<bool>(
-                "SilenceOutdoorWindIndoors",
-                false,
-                "Silence Outdoor Wind Indoors",
-                "Stops the outdoor wind loop while you are inside, the way the game's own loading-screen interiors do, leaving the room's own sounds. Turn off to keep hearing the weather through the walls."
             );
 
             s_PrefEnableChimneySmoke = s_PrefCategory.CreateEntry<bool>(
@@ -485,7 +469,6 @@ namespace SeamlessInteriors
             MelonLogger.Msg($"[SETTINGS] Window Glow: {(IsWindowGlowEnabled ? "ON" : "OFF")} " +
                             $"(flicker {(IsWindowGlowFlickerEnabled ? "ON" : "OFF")}, strength {WindowGlowStrength:F2}) (Shift+F9 onizleme)");
             MelonLogger.Msg($"[SETTINGS] Window Ground Glow: {(IsWindowGroundGlowEnabled ? "ON" : "OFF")} (strength {WindowGroundGlowStrength:F2})");
-            MelonLogger.Msg($"[SETTINGS] Silence Outdoor Wind Indoors: {(IsOutdoorWindSilencedIndoors ? "ON" : "OFF")}");
             MelonLogger.Msg($"[SETTINGS] Verbose Logging: {(s_DebugBounds ? "ON" : "OFF")} (F7)");
             MelonLogger.Msg($"[SETTINGS] Fast Door Transitions: {(IsFastInteriorToggleEnabled ? "ON" : "OFF")}");
             MelonLogger.Msg($"[SETTINGS] Fade Doors Through Black: {(IsDoorFadeEnabled ? "ON" : "OFF")}");
@@ -735,6 +718,11 @@ namespace SeamlessInteriors
             // releases the registration on the same tick rather than the next one.
             // (see SeamlessInteriorsMod.IndoorState.cs)
             TickIndoorSpaceRegistration();
+
+            // Keep the sound engine's scene and interior states at the region's own values, and
+            // play the room's own sounds while the player is in it. Once a second.
+            // (see SeamlessInteriorsMod.RoomSound.cs)
+            TickRoomSound();
 
             // In a parked room the player still has the OUTDOOR body, 100 cm wide with a 45 degree
             // slope limit, in a room the game built for its indoor one, 60 cm and 60 degrees. Give

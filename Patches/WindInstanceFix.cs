@@ -75,10 +75,8 @@ namespace SeamlessInteriors
                 yield break;
             }
 
-            // Indoors: hand the loop to the indoor rule. With SilenceOutdoorWindIndoors on
-            // (the default) that stops it outright, the way a loading-screen interior does;
-            // with it off the old behaviour returns - the loop runs and the global occlusion
-            // filter is the only thing lowering it.
+            // Indoors: make sure the loop is running. It is never stopped; the occlusion filter
+            // lowers it (see ApplyOutdoorWindForInsideState in Audio.cs).
             SeamlessInteriorsMod.ApplyOutdoorWindForInsideState(true, "wind-start-postfix");
 
             if (SeamlessInteriorsMod.s_DebugBounds)

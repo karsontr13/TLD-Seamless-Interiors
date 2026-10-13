@@ -16,7 +16,8 @@ namespace SeamlessInteriors
         // record WHICH building and tell other mods (see SeamlessInteriorsMod.PlayerLocation.cs).
         public static bool s_IsPlayerInsideClone { get; private set; }
 
-        // Muffles outside audio while the player is inside a clone.
+        // Called on every way in and out of a room. The name is historical: it also makes sure the
+        // right wind loop is playing (see the note at the end).
         public static void SetAudioOcclusion(bool occlude)
         {
             if (GameAudioManager.Instance == null)
@@ -35,21 +36,55 @@ namespace SeamlessInteriors
             // must follow the player on every call, or a second Enter while already inside would
             // leave the loop running.
             ApplyOutdoorWindForInsideState(occlude, occlude ? "enter" : "exit");
+            try { MakeWindLoopFollowThePlayer(occlude); }
+            catch (System.Exception e) { MelonLogger.Msg($"[ROOM-SOUND] ruzgar dongusu: {e.Message}", $"[ROOM-SOUND] wind loop: {e.Message}"); }
+            // The room's own sounds and the outdoor pause follow on the next frame, not up to a
+            // second later: on the way out the room must not be heard outdoors.
+            s_NextRoomSoundCheckTime = 0f;
             LogRoomSoundscape(occlude ? "enter" : "exit");
 
-            // Guarded by the flag so Enter/Exit stay balanced (see the counter note below).
-            if (occlude && !s_IsGlobalAudioOccluded)
-            {
-                GameAudioManager.Instance.EnterOcclusionTrigger(Il2Cpp.AudioOcclusionLevel.HeavyOcclusion);
-                s_IsGlobalAudioOccluded = true;
-                if (s_DebugBounds) MelonLogger.Msg($"[AUDIO] Global Audio Occlusion ENABLED (kapidan giris).");
-            }
-            else if (!occlude && s_IsGlobalAudioOccluded)
-            {
-                GameAudioManager.Instance.ExitOcclusionTrigger(Il2Cpp.AudioOcclusionLevel.HeavyOcclusion);
-                s_IsGlobalAudioOccluded = false;
-                if (s_DebugBounds) MelonLogger.Msg($"[AUDIO] Global Audio Occlusion DISABLED (kapidan cikis).");
-            }
+            // THE GAME'S OWN FILTER AGAIN, AT A LEVEL THAT CAN BE SET. Up to 2.2.0 this applied the
+            // game's Heavy occlusion on the way in and lifted it on the way out. It was taken out on
+            // 2026-10-11 when the room got the indoor wind loop, and the outdoor sounds were paused
+            // one by one instead. That pause chased every animal sound a second late, and with no
+            // filter at all a flag 150 m off was loud in the Airfield hangar. The owner's rule since
+            // 2026-10-12: the room sounds like the real interior, and the outdoor sounds other than
+            // the wind stay, turned down. By his ear the filter leaves the room's own sounds alone
+            // ("Room's own sounds stayed the same"), and Heavy hides everything under the indoor wind.
+            ApplyInsideOcclusion(occlude);
+        }
+
+        // How far the outdoors is turned down while the player is in a room: 0 none, 1 mild,
+        // 2 medium, 3 heavy, the game's own levels (measured 2026-10-12 at about 2, 5 and 10 dB,
+        // Heavy also cutting hard above 2 kHz). The game's hand-made in-world buildings use Medium
+        // for a leaky hut and Heavy for a sealed one. Mild is the owner's choice (2026-10-12, in the
+        // Airfield hangar on the first build that had this at Medium: "Medium is too much").
+        // Not a constant, so it can be set by ear.
+        private static int s_InsideOcclusionLevel = 1;
+        // The level this mod has entered and not yet left, so Enter and Exit stay paired.
+        private static int s_InsideOcclusionEntered = 0;
+
+        private static Il2Cpp.AudioOcclusionLevel OcclusionLevelOf(int level)
+        {
+            if (level >= 3) return Il2Cpp.AudioOcclusionLevel.HeavyOcclusion;
+            if (level == 2) return Il2Cpp.AudioOcclusionLevel.MediumOcclusion;
+            return Il2Cpp.AudioOcclusionLevel.MildOcclusion;
+        }
+
+        private static void ApplyInsideOcclusion(bool inside)
+        {
+            var gam = GameAudioManager.Instance;
+            if (gam == null) return;
+
+            int want = inside ? Mathf.Clamp(s_InsideOcclusionLevel, 0, 3) : 0;
+            if (want == s_InsideOcclusionEntered) return;
+
+            if (s_InsideOcclusionEntered != 0) gam.ExitOcclusionTrigger(OcclusionLevelOf(s_InsideOcclusionEntered));
+            if (want != 0) gam.EnterOcclusionTrigger(OcclusionLevelOf(want));
+            s_InsideOcclusionEntered = want;
+            s_IsGlobalAudioOccluded = want != 0;
+            MelonLogger.Msg($"[ROOM-SOUND] Dis sesler icin oyunun kendi bogma seviyesi: {want} (0 yok, 1 hafif, 2 orta, 3 agir).",
+                            $"[ROOM-SOUND] The game's own muffling of the outdoors is now at level {want} (0 none, 1 mild, 2 medium, 3 heavy).");
         }
 
         // WHAT DOES THE ROOM ITSELF SOUND LIKE?
@@ -106,28 +141,22 @@ namespace SeamlessInteriors
             }
         }
 
-        // ─── Outdoor wind audio while the player is inside a parked room ───
+        // ─── The wind loop while the player is inside a parked room ───
         //
-        // A vanilla loading-screen interior is its OWN SCENE, so the outdoor wind loop does not
-        // exist in it at all - that is why a hut in a blizzard is a low background. A parked room
-        // is in the outdoor scene, so the loop keeps playing and the only thing between it and the
-        // player is the global occlusion filter. Measured 2026-09-22 in the Airfield hangar: the
-        // engine was still being told WINDACTUALSPEED 33.4 and WINDINTENSITYBLEND 62.9, the full
-        // outdoor values, with HeavyOcclusion applied over the top. Occlusion is a fixed cut and
-        // the wind parameters are not, so a blizzard wins.
+        // Up to 2.2.0 the outdoor wind loop kept playing in a parked room and the game's Heavy
+        // occlusion filter lowered it. The room now gets the indoor wind loop and no filter, as a
+        // real interior does: see MakeWindLoopFollowThePlayer in SeamlessInteriorsMod.RoomSound.cs.
         //
-        // The game's own mechanism for this is m_WindAudioForceStopped, which it sets on entering
-        // an interior scene. This does the same for a parked room.
+        // This used to stop the loop outright behind a setting, SilenceOutdoorWindIndoors, on the
+        // belief that the game stops its wind loop in a loading-screen interior. It does not.
+        // Measured 2026-10-11 in the real Airfield hangar with this mod not loaded: the loop slot
+        // holds Play_WindIndoors, not force-stopped, with the full wind speed. Stopping the loop
+        // left a room with no wind at all and froze WINDACTUALSPEED and WINDINTENSITYBLEND at
+        // whatever they were at the door. The setting is gone; the loop is never stopped here.
         //
-        // Measured the same day in two hand-authored in-world buildings (Mountaineer's Hut,
-        // Timberwolf Mountain; an Emergency Shelter cabin, Sundered Pass): NEITHER reduces the
-        // wind parameters either - they only raise the occlusion level, Medium in the leaky hut
-        // and Heavy in the sealed cabin. So there is no in-world building to copy here; the
-        // loading-screen interiors are the thing a parked room is standing in for.
+        // What is left: make sure a loop exists. The inside argument is kept for the call sites.
         public static void ApplyOutdoorWindForInsideState(bool inside, string tag)
         {
-            bool silence = inside && IsOutdoorWindSilencedIndoors;
-
             Il2Cpp.Wind[] winds;
             try { winds = UnityEngine.Object.FindObjectsOfType<Il2Cpp.Wind>(); }
             catch { return; }
@@ -137,32 +166,14 @@ namespace SeamlessInteriors
             {
                 if (wind == null) continue;
 
-                if (silence)
-                {
-                    if (wind.m_WindAudioForceStopped && wind.m_WindLoopAudioInstance == 0) continue;
+                wind.m_WindAudioForceStopped = false;
+                if (wind.m_WindLoopAudioInstance != 0) continue;
 
-                    uint before = wind.m_WindLoopAudioInstance;
-                    wind.ForceStopAudioLoop();
-                    // ForceStopAudioLoop does not reliably leave the flag set, and a stale id
-                    // makes the restart path below think a live loop is already running.
-                    wind.m_WindAudioForceStopped = true;
-                    wind.m_WindLoopAudioInstance = 0;
+                wind.m_WindLoopAudioInstance = wind.PlayProceduralWindAudio();
 
-                    if (s_DebugBounds)
-                        MelonLogger.Msg($"[WIND-INDOOR:{tag}] Ic mekan: dis ruzgar sesi durduruldu (id {before} -> 0).",
-                                        $"[WIND-INDOOR:{tag}] Inside: the outdoor wind loop was stopped (id {before} -> 0).");
-                }
-                else
-                {
-                    wind.m_WindAudioForceStopped = false;
-                    if (wind.m_WindLoopAudioInstance != 0) continue;
-
-                    wind.m_WindLoopAudioInstance = wind.PlayProceduralWindAudio();
-
-                    if (s_DebugBounds)
-                        MelonLogger.Msg($"[WIND-INDOOR:{tag}] Disarisi: dis ruzgar sesi yeniden baslatildi (id {wind.m_WindLoopAudioInstance}).",
-                                        $"[WIND-INDOOR:{tag}] Outside: the outdoor wind loop was started again (id {wind.m_WindLoopAudioInstance}).");
-                }
+                if (s_DebugBounds)
+                    MelonLogger.Msg($"[WIND-INDOOR:{tag}] Ruzgar sesi dongusu yoktu, yeniden baslatildi (id {wind.m_WindLoopAudioInstance}).",
+                                    $"[WIND-INDOOR:{tag}] There was no wind loop; it was started again (id {wind.m_WindLoopAudioInstance}).");
             }
         }
 
@@ -179,6 +190,7 @@ namespace SeamlessInteriors
         public static void ResetAudioOcclusionCounters(string tag)
         {
             s_IsGlobalAudioOccluded = false;
+            s_InsideOcclusionEntered = 0;
 
             var gam = GameAudioManager.Instance;
             if (gam == null)

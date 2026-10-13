@@ -187,6 +187,7 @@
     <Compile Include="Compat\ModExceptions.cs" />
     <Compile Include="Compat\SeamlessInteriorsApi.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Audio.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.RoomSound.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.CarriedDecorations.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.DecorationState.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.LightingModeSwitch.cs" />

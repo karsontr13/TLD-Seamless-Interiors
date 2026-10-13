@@ -163,10 +163,6 @@ namespace SeamlessInteriors
             [ModSettings.Description("Smoke rises from a building's chimney while a stove or fireplace burns inside it.")]
             public bool ChimneySmoke = true;
 
-            [ModSettings.Name("Silence outdoor wind indoors")]
-            [ModSettings.Description("Stops the outdoor wind loop while you are inside, as the game's own interiors do.")]
-            public bool SilenceWindIndoors = true;
-
             [ModSettings.Section("Troubleshooting")]
             [ModSettings.Name("Verbose logging")]
             [ModSettings.Description("Writes a log line per object during save and load. Costs frame time; on only when reporting a problem (F7).")]
@@ -198,7 +194,6 @@ namespace SeamlessInteriors
                 GroundGlow = s_PrefEnableWindowGroundGlow?.Value ?? true;
                 GroundGlowStrength = Mathf.Clamp(s_PrefWindowGroundGlowStrength?.Value ?? 1f, 0f, 2f);
                 ChimneySmoke = s_PrefEnableChimneySmoke?.Value ?? true;
-                SilenceWindIndoors = s_PrefSilenceOutdoorWindIndoors?.Value ?? true;
                 VerboseLogging = s_DebugBounds;
                 PerformanceReport = PerfProbe.On;
                 RefreshGUI();
@@ -228,7 +223,6 @@ namespace SeamlessInteriors
                 Set(s_PrefEnableWindowGroundGlow, GroundGlow);
                 Set(s_PrefWindowGroundGlowStrength, GroundGlowStrength);
                 Set(s_PrefEnableChimneySmoke, ChimneySmoke);
-                Set(s_PrefSilenceOutdoorWindIndoors, SilenceWindIndoors);
 
                 // These two are held outside their entries while the game runs (F7, Shift+F6).
                 s_DebugBounds = VerboseLogging;
