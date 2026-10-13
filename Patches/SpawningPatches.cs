@@ -306,6 +306,14 @@ namespace SeamlessInteriors
         public static void Prefix()
         {
             SeamlessInteriorsMod.PruneDeadGearManagerEntries();
+            SeamlessInteriorsMod.KeepCloneGearOutOfGameSave();
+        }
+
+        // Always, even when the write throws: the room's items go back on the game's list.
+        public static System.Exception Finalizer(System.Exception __exception)
+        {
+            SeamlessInteriorsMod.PutCloneGearBack();
+            return __exception;
         }
     }
 

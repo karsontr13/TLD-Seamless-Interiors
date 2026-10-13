@@ -328,6 +328,85 @@ namespace SeamlessInteriors
             return purged;
         }
 
+        // OLD SAVES STILL HOLD THE COPIES of rooms the player has not opened since: the purge above waits for a
+        // room's content, and the copies were written before the game's save stopped taking it in. At the end of
+        // a load, each room not yet filled is checked against its own gear file instead: a loose item in the room
+        // with the guid, or the name and place, of one the file holds is the copy (owner, 2026-10-14). Once gone,
+        // the game no longer saves it, so with the mod removed later nothing is left hanging in the sky.
+        public static int PurgeSavedCopiesOfUnopenedRooms()
+        {
+            int total = 0;
+            try
+            {
+                var loose = new List<Il2Cpp.GearItem>();
+                foreach (var gear in SceneScan.GearAll())
+                {
+                    if (gear == null || gear.gameObject == null || !gear.gameObject.activeInHierarchy) continue;
+                    if (gear.m_InPlayerInventory || IsUnderAnyMasterInterior(gear.transform)) continue;
+                    if (IsPlayerOrInventory(gear.transform) || IsUnderPlacementRoot(gear.transform)) continue;
+                    if (gear.GetComponentInParent<Il2Cpp.Container>() != null) continue;
+                    loose.Add(gear);
+                }
+                if (loose.Count == 0) return 0;
+
+                float sqrRadius = LEAKED_GEAR_MATCH_RADIUS * LEAKED_GEAR_MATCH_RADIUS;
+                foreach (var instance in ActiveInteriors.Values)
+                {
+                    if (instance == null || instance.MasterInterior == null || !instance.RunCompleted || instance.ContentHydrated) continue;
+                    Bounds filter;
+                    if (!TryGetWorldFilterBounds(instance, out filter, 1.6f)) continue;
+                    string path = GetInactiveSceneGearSavePath(instance);
+                    if (path == null || !SaveFiles.Exists(path)) continue;
+
+                    Transform interiorT = instance.MasterInterior.transform;
+                    var guids = new HashSet<string>();
+                    var cells = new Dictionary<long, List<DedupEntry>>();
+                    foreach (var e in ParseGearFile(SaveFiles.Read(path)))
+                    {
+                        if (e == null || string.IsNullOrEmpty(e.name)) continue;
+                        if (!string.IsNullOrEmpty(e.guid)) guids.Add(e.guid);
+                        DedupEntry entry;
+                        entry.name = CleanGearName(e.name);
+                        entry.pos = interiorT.TransformPoint(e.position);
+                        long cell = LeakCellKey(entry.pos);
+                        List<DedupEntry> bucket;
+                        if (!cells.TryGetValue(cell, out bucket)) { bucket = new List<DedupEntry>(2); cells[cell] = bucket; }
+                        bucket.Add(entry);
+                    }
+                    if (guids.Count == 0 && cells.Count == 0) continue;
+
+                    int purged = 0;
+                    for (int i = loose.Count - 1; i >= 0; i--)
+                    {
+                        var gear = loose[i];
+                        if (gear == null || gear.gameObject == null) { loose.RemoveAt(i); continue; }
+                        Vector3 pos = gear.transform.position;
+                        if (!filter.Contains(pos)) continue;
+                        var guid = gear.GetComponent<Il2Cpp.ObjectGuid>();
+                        bool copy = (guid != null && !string.IsNullOrEmpty(guid.m_Guid) && guids.Contains(guid.m_Guid))
+                                    || HasOwnedCopyNear(cells, CleanGearName(gear.gameObject.name), pos, sqrRadius);
+                        if (!copy) continue;
+                        if (purged < 10)
+                            MelonLogger.Msg($"[GEAR-LEAK] {instance.Config.ResolvedInstanceId}: '{gear.gameObject.name}' eski kayit kopyasi silindi (oda henuz acilmadi).",
+                                            $"[GEAR-LEAK] {instance.Config.ResolvedInstanceId}: '{gear.gameObject.name}' old save copy removed (room not opened yet).");
+                        UnityEngine.Object.DestroyImmediate(gear.gameObject);
+                        loose.RemoveAt(i);
+                        purged++;
+                    }
+                    if (purged > 0)
+                        MelonLogger.Msg($"[GEAR-LEAK] {instance.Config.ResolvedInstanceId}: oyunun kaydindan {purged} eski kopya temizlendi.",
+                                        $"[GEAR-LEAK] {instance.Config.ResolvedInstanceId}: {purged} old copies from the game's save removed.");
+                    total += purged;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[GEAR-LEAK] {ex.Message}");
+            }
+            if (total > 0) SceneScan.InvalidateVolatile();
+            return total;
+        }
+
         private struct LeakCandidate
         {
             public Il2Cpp.GearItem Gear;
@@ -413,6 +492,56 @@ namespace SeamlessInteriors
         // Pruning first cannot lose anything: an entry that answers null has no object
         // behind it any more.
         // ─────────────────────────────────────────────────────────────────
+        // THE GAME'S SAVE MUST NOT HOLD A ROOM'S ITEMS AT ALL. Purging the copies on load (above) only works
+        // while the mod is installed: with it removed, the copies stayed in the game's save and hung in the
+        // sky where parked rooms stand (player report and owner's repro, 2026-10-14). So while the game writes
+        // its gear, the room's items are taken off its list, and put back right after.
+        private static readonly List<Il2Cpp.GearItem> s_GearKeptFromGameSave = new List<Il2Cpp.GearItem>();
+
+        public static void KeepCloneGearOutOfGameSave()
+        {
+            s_GearKeptFromGameSave.Clear();
+            if (!IsGearSaveFilterEnabled) return;
+            try
+            {
+                var list = Il2Cpp.GearManager.m_Gear;
+                if (list == null) return;
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    var gear = list[i];
+                    if (gear == null || gear.m_InPlayerInventory) continue;
+                    if (!IsUnderAnyMasterInterior(gear.transform)) continue;
+                    s_GearKeptFromGameSave.Add(gear);
+                    list.RemoveAt(i);
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[GEAR-SAVE] {ex.Message}");
+                PutCloneGearBack();
+            }
+        }
+
+        public static void PutCloneGearBack()
+        {
+            if (s_GearKeptFromGameSave.Count == 0) return;
+            try
+            {
+                var list = Il2Cpp.GearManager.m_Gear;
+                if (list != null)
+                {
+                    foreach (var gear in s_GearKeptFromGameSave)
+                        if (gear != null) list.Add(gear);
+                    Il2Cpp.GearManager.m_CurrentIndex = 0;
+                }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[GEAR-SAVE] {ex.Message}");
+            }
+            s_GearKeptFromGameSave.Clear();
+        }
+
         public static int PruneDeadGearManagerEntries()
         {
             try

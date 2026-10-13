@@ -104,6 +104,7 @@ namespace SeamlessInteriors
             // After the load window, so the scans are fresh and the variant groups are settled.
             RevalidateExteriorShells();
             FixPlaceableManagerSerializeInventoryPatch.PruneCloneEntries("yukleme sonu");
+            PurgeSavedCopiesOfUnopenedRooms();
             DestroyPristineTemplates();
 
             // RELEASE THE SCREEN: all instances are ready.
