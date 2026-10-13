@@ -975,10 +975,13 @@ namespace SeamlessInteriors
             }
             // ---------------------------------------------------
 
-            // A camera left in the interior scene (HuntingLodgeA's Root/Art/Geo/Camera) takes over
-            // the screen once the clone is active and the player's own FPSCamera switches off.
+            // A stray scene camera (HuntingLodgeA's Root/Art/Geo/Camera) takes over the screen. A RenderTextureGrabber's
+            // camera draws into a texture and stays: without it the trader radio's "Trade" and "End Call" are blank.
+            var textureCameras = new HashSet<int>();
+            foreach (var grabber in instance.MasterInterior.GetComponentsInChildren<RenderTextureGrabber>(true))
+                if (grabber != null && grabber.m_Camera != null) textureCameras.Add(grabber.m_Camera.GetInstanceID());
             foreach (var cam in instance.MasterInterior.GetComponentsInChildren<Camera>(true))
-                if (cam != null) UnityEngine.Object.Destroy(cam);
+                if (cam != null && !textureCameras.Contains(cam.GetInstanceID())) UnityEngine.Object.Destroy(cam);
             foreach (var listener in instance.MasterInterior.GetComponentsInChildren<AudioListener>(true))
                 if (listener != null) UnityEngine.Object.Destroy(listener);
 
