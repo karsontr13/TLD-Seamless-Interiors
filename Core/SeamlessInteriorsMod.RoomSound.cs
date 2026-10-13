@@ -660,6 +660,8 @@ namespace SeamlessInteriors
             int count = trackers.Count;
             if (ReferenceEquals(wanted, s_RoomSoundInstance) && count == s_RoomSoundTrackerCount && region == s_RoomSoundRegion) return;
 
+            if (s_RoomSoundInstance != null && !ReferenceEquals(wanted, s_RoomSoundInstance))
+                StopRoomMusicTriggers(s_RoomSoundInstance);
             s_RoomSoundInstance = wanted;
             s_RoomSoundTrackerCount = count;
             s_RoomSoundRegion = region;
@@ -709,6 +711,28 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[ROOM-SOUND] oda sesleri: icerideki oda {room}; {broughtIn} ses kaynagi yerine getirildi, {sentAway} tanesi uzaga gonderildi ({count} kayit, {ms:F1} ms).",
                                 $"[ROOM-SOUND] room sounds: occupied room {room}; {broughtIn} sound trackers put at their objects, {sentAway} sent away ({count} trackers looked at, {ms:F1} ms).");
             }
+        }
+
+        // A room's music trigger (AUDIO_MusicHopeTrigger, Play_musicMood_Hope) plays on its own object, which a
+        // real interior destroys at the door. A parked room is kept, so its music is stopped on the way out.
+        private static int s_RoomMusicFadeOutMs = 1500;
+
+        private static void StopRoomMusicTriggers(SeamlessInteriorInstance room)
+        {
+            if (room.MasterInterior == null) return;
+            int stopped = 0;
+            foreach (var trigger in room.MasterInterior.GetComponentsInChildren<PlayAudioTrigger>(true))
+            {
+                if (trigger == null || trigger.m_AudioID == 0) continue;
+                bool music = (trigger.m_AudioFirstTime ?? "").IndexOf("music", System.StringComparison.OrdinalIgnoreCase) >= 0
+                          || (trigger.m_AudioSubsequentTimes ?? "").IndexOf("music", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!music || AkSoundEngine.GetEventIDFromPlayingID(trigger.m_AudioID) == 0) continue;
+                AkSoundEngine.StopPlayingID(trigger.m_AudioID, s_RoomMusicFadeOutMs, AkCurveInterpolation.AkCurveInterpolation_Linear);
+                stopped++;
+            }
+            if (stopped > 0)
+                MelonLogger.Msg($"[ROOM-SOUND] {room.Config.ResolvedInstanceId}: odadan cikildi, odanin muzigi {s_RoomMusicFadeOutMs} ms icinde durduruluyor ({stopped}).",
+                                $"[ROOM-SOUND] {room.Config.ResolvedInstanceId}: the player left the room; its music fades out over {s_RoomMusicFadeOutMs} ms ({stopped}).");
         }
 
         // ─── THE OUTDOORS IS NOT HEARD IN A ROOM ───
