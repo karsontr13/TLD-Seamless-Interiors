@@ -18,7 +18,7 @@ namespace SeamlessInteriors
         private const float OUTSIDE_BANK_UNDER_BAR = 0.04f;
         // A bar standing less than this in front of the frost is drawn over by it, so the frost is cut there.
         private const float OUTSIDE_SHALLOW_BAR = 0.01f;
-        private const int OUTSIDE_BANKS_PER_FRAME = 2;
+        private const int OUTSIDE_BANKS_PER_FRAME = 1;
 
         // Built with the building's dressing, after its glass has been measured.
         private static void BuildOutsideCovers(SeamlessInteriorInstance instance)
@@ -32,10 +32,8 @@ namespace SeamlessInteriors
             DestroyOutsideCovers();
             if (!WindowCoverLayers || instance == null) return;
             var trace = PerfProbe.Trace.Start();
-            trace?.Begin();
-            Vector3[] shellWorld; int[] shellTriangles;
-            TryGetShellWorldMesh(instance, out shellWorld, out shellTriangles);
-            trace?.End("model");
+            // The shell is read only when a window has not been measured yet this session.
+            Vector3[] shellWorld = null; int[] shellTriangles = null; bool shellRead = false;
             double tMeasure = 0, tFrost = 0, tBank = 0; long t0;
             for (int a = 0; a < s_OutsideInApertures.Count; a++)
             {
@@ -58,45 +56,30 @@ namespace SeamlessInteriors
                                     width, height, WINDOW_VIEW_FADE_RENDER_QUEUE + 10)) continue;
                 tFrost += CoverMs(t0); t0 = System.Diagnostics.Stopwatch.GetTimestamp();
 
-                // In front of the picture of the room, and behind the frame's outer face: the frame then
-                // covers the bank's ends from any side. Further out, it stood past the frame and over the
-                // middle bar (owner, 2026-10-13; Camp Office frames stand 3.1 cm out from the glass).
-                int[] near = shellWorld != null ? TrianglesNearWindow(shellWorld, shellTriangles, pane, glass) : null;
-                float relief;
-                if (shellWorld == null || !TryMeasureWindowRelief(pane, glass, shellWorld, near, out relief)) relief = 0.03f;
-                float room = Mathf.Max(relief - pane.Toward - 0.004f - OUTSIDE_BANK_BEHIND_FRAME, 0.006f);
-                layer.BankDepth = room * 0.55f; layer.BankReach = room * 0.45f;
-                layer.BankTuck = 0f; layer.BankUnderBar = OUTSIDE_BANK_UNDER_BAR;
-                layer.Center = pane.Center + pane.Outward * pane.Toward; layer.Right = across; layer.Up = pane.Up; layer.Outward = pane.Outward;
-
-                // Trapper's bar is a single sheet of glass behind a bar 1 cm proud (2026-10-13): the frost
-                // and the bank stood in front of it. They are cut at the bar instead of going behind it.
-                float barLow = 0f, barHigh = 0f;
-                bool bar = shellWorld != null && TryMeasureShellBar(pane, near, shellWorld, out barLow, out barHigh);
-                bool shallowBar = bar && relief < pane.Toward + OUTSIDE_IN_FROST_PROUD_OF_QUAD + OUTSIDE_SHALLOW_BAR;
-                if (shallowBar)
+                string shapeKey = s_OutsideInInstanceId + ":" + a + ":" + glass.x.ToString("F3") + "," + glass.y.ToString("F3") + "," + glass.z.ToString("F3") + "," + glass.w.ToString("F3");
+                OutsideCoverShape shape;
+                if (!s_OutsideCoverShapes.TryGetValue(shapeKey, out shape))
                 {
-                    layer.BankUnderBar = 0f;
-                    layer.FrostMask = BarFrostMask(layer.FrostSize, glass, barLow, barHigh);
-                }
-                layer.Panes = ShellPanes(a, pane, glass, bar, barLow, barHigh);
-                if (shellWorld != null)
-                {
-                    var posts = MeasureShellPosts(pane, glass, shellWorld, near);
-                    SplitPanesAtPosts(layer.Panes, posts);
-                    // The bank stays behind the posts' front, as it does behind the frame's.
-                    float front = PostFront(shellWorld, near, pane.Center, -pane.Right, pane.Outward, posts);
-                    float reaches = pane.Toward + 0.004f + layer.BankDepth + layer.BankReach, allowed = front - OUTSIDE_BANK_BEHIND_FRAME;
-                    if (front > 0f && reaches > allowed)
+                    if (!shellRead)
                     {
-                        float scale = Mathf.Max(allowed - pane.Toward - 0.004f, 0.004f) / (layer.BankDepth + layer.BankReach);
-                        layer.BankDepth *= scale; layer.BankReach *= scale;
+                        shellRead = true;
+                        long tm = System.Diagnostics.Stopwatch.GetTimestamp();
+                        TryGetShellWorldMesh(instance, out shellWorld, out shellTriangles);
+                        trace?.Add("model", CoverMs(tm));
                     }
+                    shape = MeasureOutsideCoverShape(a, pane, glass, shellWorld, shellTriangles);
+                    s_OutsideCoverShapes[shapeKey] = shape;
                 }
+                layer.BankDepth = shape.BankDepth; layer.BankReach = shape.BankReach;
+                layer.BankTuck = 0f; layer.BankUnderBar = shape.BankUnderBar;
+                layer.FrostMask = shape.FrostMask;
+                layer.Panes = new List<float[]>();
+                foreach (var p in shape.Panes) layer.Panes.Add((float[])p.Clone());
+                layer.Center = pane.Center + pane.Outward * pane.Toward; layer.Right = across; layer.Up = pane.Up; layer.Outward = pane.Outward;
                 tMeasure += CoverMs(t0); t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 var opening = a < s_OI.ApertureOpenings.Count ? s_OI.ApertureOpenings[a] : default(InteriorWindowOpening);
                 MakeCoverBank(layer, CoverBankMaterial(opening), "SeamlessInteriors_OutsideSnow_" + a);
-                // Built a couple a frame from TickOutsideCovers: all at once they stalled the dressing.
+                // Built one a frame from TickOutsideCovers: all at once they stalled the dressing.
                 tBank += CoverMs(t0);
                 StartCoverTables(layer, width / height);
                 s_OI.Covers[a] = layer;
@@ -104,8 +87,59 @@ namespace SeamlessInteriors
             if (trace != null)
             {
                 trace.Add("olcum", tMeasure); trace.Add("buz", tFrost); trace.Add("kar", tBank);
-                trace.Log("PERF-ORTU-DIS", s_OutsideInInstanceId, (shellTriangles != null ? shellTriangles.Length / 3 : 0) + " ucgen, " + s_OutsideInApertures.Count + " pencere");
+                trace.Log("PERF-ORTU-DIS", s_OutsideInInstanceId, (shellRead ? (shellTriangles != null ? shellTriangles.Length / 3 : 0) + " ucgen olculdu, " : "olculer hazirdi, ") + s_OutsideInApertures.Count + " pencere");
             }
+        }
+
+        // What a building window's frame makes of the bank, measured once a session: the shell does not change,
+        // and its dressing is made again each time the player comes near (14 to 20 ms a building, 2026-10-14).
+        private sealed class OutsideCoverShape
+        {
+            public float BankDepth, BankReach, BankUnderBar;
+            public float[] FrostMask;
+            public List<float[]> Panes;
+        }
+
+        private static readonly Dictionary<string, OutsideCoverShape> s_OutsideCoverShapes = new Dictionary<string, OutsideCoverShape>();
+
+        private static OutsideCoverShape MeasureOutsideCoverShape(int a, ShellAperture pane, Vector4 glass, Vector3[] shellWorld, int[] shellTriangles)
+        {
+            var shape = new OutsideCoverShape { BankUnderBar = OUTSIDE_BANK_UNDER_BAR };
+
+            // In front of the picture of the room, and behind the frame's outer face: the frame then
+            // covers the bank's ends from any side. Further out, it stood past the frame and over the
+            // middle bar (owner, 2026-10-13; Camp Office frames stand 3.1 cm out from the glass).
+            int[] near = shellWorld != null ? TrianglesNearWindow(shellWorld, shellTriangles, pane, glass) : null;
+            float relief;
+            if (shellWorld == null || !TryMeasureWindowRelief(pane, glass, shellWorld, near, out relief)) relief = 0.03f;
+            float room = Mathf.Max(relief - pane.Toward - 0.004f - OUTSIDE_BANK_BEHIND_FRAME, 0.006f);
+            shape.BankDepth = room * 0.55f; shape.BankReach = room * 0.45f;
+
+            // Trapper's bar is a single sheet of glass behind a bar 1 cm proud (2026-10-13): the frost
+            // and the bank stood in front of it. They are cut at the bar instead of going behind it.
+            float barLow = 0f, barHigh = 0f;
+            bool bar = shellWorld != null && TryMeasureShellBar(pane, near, shellWorld, out barLow, out barHigh);
+            bool shallowBar = bar && relief < pane.Toward + OUTSIDE_IN_FROST_PROUD_OF_QUAD + OUTSIDE_SHALLOW_BAR;
+            if (shallowBar)
+            {
+                shape.BankUnderBar = 0f;
+                shape.FrostMask = BarFrostMask(COVER_OUTSIDE_FROST_SIZE, glass, barLow, barHigh);
+            }
+            shape.Panes = ShellPanes(a, pane, glass, bar, barLow, barHigh);
+            if (shellWorld != null)
+            {
+                var posts = MeasureShellPosts(pane, glass, shellWorld, near);
+                SplitPanesAtPosts(shape.Panes, posts);
+                // The bank stays behind the posts' front, as it does behind the frame's.
+                float front = PostFront(shellWorld, near, pane.Center, -pane.Right, pane.Outward, posts);
+                float reaches = pane.Toward + 0.004f + shape.BankDepth + shape.BankReach, allowed = front - OUTSIDE_BANK_BEHIND_FRAME;
+                if (front > 0f && reaches > allowed)
+                {
+                    float scale = Mathf.Max(allowed - pane.Toward - 0.004f, 0.004f) / (shape.BankDepth + shape.BankReach);
+                    shape.BankDepth *= scale; shape.BankReach *= scale;
+                }
+            }
+            return shape;
         }
 
         // The shell's triangles around one window, as a triangle list of its own. Every measure of a window
@@ -217,7 +251,7 @@ namespace SeamlessInteriors
             var layer = WindowCoverLayers && aperture < s_OI.Covers.Count ? s_OI.Covers[aperture] : null;
             if (layer == null) return !cleaned;
             if (!frost) return layer.BankGo == null && !cleaned;
-            if (layer.Shown) return false;
+            if (layer.Shown && layer.FrostShown >= 0f) return false;
             float frostCover, snowCover;
             GetWindowCover(s_OutsideInInstanceId, aperture, false, out frostCover, out snowCover);
             return frostCover >= 0.5f;
@@ -249,8 +283,9 @@ namespace SeamlessInteriors
         {
             var covers = s_OI.Covers;
             if (covers.Count == 0) return;
+            PumpCoverFills(covers);
 
-            // Banks not built yet: two a frame, every frame, so the snow is up a few frames after dressing.
+            // Banks not built yet: one a frame, every frame, so the snow is up a few frames after dressing.
             int banks = 0;
             for (int a = 0; a < covers.Count && banks < OUTSIDE_BANKS_PER_FRAME; a++)
             {

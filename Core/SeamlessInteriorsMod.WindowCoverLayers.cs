@@ -44,13 +44,16 @@ namespace SeamlessInteriors
             // The texture's RGBA32 bytes, mips included.
             public byte[] FrostBytes;
             // Per pixel, worked out once for the window's own shape.
-            public float[] VeinTime, Vein, Glow, HazeTime, Grain, GlassAlpha, GlassWhite;
+            public CoverTables Tables;
             // Zero where a bar barely proud of the glass would be drawn over; null for none.
             public float[] FrostMask;
             // Panes in metres from Center along Right and Up: left, right, bottom, top, 1 when a bar sits above.
             public List<float[]> Panes;
             public Vector3 Center, Right, Up, Outward;
             public float FrostShown = -1f, SnowShown = -1f;
+            // A fill under way: the cover it is for, and the next pixel to make (-1: none).
+            public float FillTarget = -1f;
+            public int FillNext = -1;
             // The bank's depth out from the glass, its rounded face, and how it meets the bars.
             public float BankDepth = BANK_DEPTH, BankReach = BANK_ROUND_REACH, BankTuck = BANK_TUCK, BankUnderBar = BANK_UNDER_BAR;
             // How far from the glass the bank's flat face stands.
@@ -265,13 +268,84 @@ namespace SeamlessInteriors
             layer.BankGo.SetActive(false);
         }
 
+        // A window's frost tables, packed: 9 bytes a pixel where seven floats took 28. Read only once made,
+        // so windows of the same size, seed and shape share one set.
+        private sealed class CoverTables
+        {
+            public byte[] Vein, Grain, HazeGain, GlassAlpha, GlassWhite;
+            public ushort[] VeinTime, HazeTime;
+
+            // How the stored numbers read back (stored = (value - base) / scale).
+            public const float UnitScale = 1f / 255f;
+            public const float TimeScale = 2f / 65535f;                              // vein time 0..2; later is "never"
+            public const float HazeBase = -1f, HazeScale = 3f / 65535f;              // haze time -1..2
+            public const float GrainBase = -0.2f, GrainScale = 1.4f / 255f;          // grain -0.2..1.2
+            public const float GainScale = 1.2f / 255f;                              // haze gain 0..1.2
+            public const float WhiteBase = 0.8f, WhiteScale = 0.4f / 255f;           // glass white 0.8..1.2
+
+            public static CoverTables Encode(int n, float[] veinTime, float[] vein, float[] glow, float[] hazeTime, float[] grain,
+                                             float[] glassAlpha, float[] glassWhite)
+            {
+                int count = n * n;
+                var t = new CoverTables
+                {
+                    Vein = new byte[count], Grain = new byte[count], HazeGain = new byte[count], GlassAlpha = new byte[count],
+                    GlassWhite = new byte[count], VeinTime = new ushort[count], HazeTime = new ushort[count]
+                };
+                for (int i = 0; i < count; i++)
+                {
+                    t.Vein[i] = (byte)(C01(vein[i]) * 255f + 0.5f);
+                    t.VeinTime[i] = (ushort)(C01(veinTime[i] / 2f) * 65535f + 0.5f);
+                    t.HazeTime[i] = (ushort)(C01((hazeTime[i] - HazeBase) / 3f) * 65535f + 0.5f);
+                    t.Grain[i] = (byte)(C01((grain[i] - GrainBase) / 1.4f) * 255f + 0.5f);
+                    // The haze's own strength, its grain and the glow round the ferns, folded into one.
+                    t.HazeGain[i] = (byte)(C01((0.36f + 0.22f * grain[i] + 0.3f * glow[i]) / 1.2f) * 255f + 0.5f);
+                    t.GlassAlpha[i] = (byte)(C01(glassAlpha[i]) * 255f + 0.5f);
+                    t.GlassWhite[i] = (byte)(C01((glassWhite[i] - WhiteBase) / 0.4f) * 255f + 0.5f);
+                }
+                return t;
+            }
+        }
+
+        // Made once a session per size, seed and shape: the same room's windows came back with every entry and
+        // were worked out again, 0.7 to 1 s each in the background and 8 MB of arrays a window (2026-10-14).
+        private const int COVER_TABLES_KEEP = 48;
+        private static readonly Dictionary<string, CoverTables> s_CoverTablesMade = new Dictionary<string, CoverTables>();
+        private static readonly Queue<string> s_CoverTablesOrder = new Queue<string>();
+        private static readonly object s_CoverTablesLock = new object();
+
+        private static string CoverTablesKey(int size, int seed, float aspect)
+        {
+            return size + ":" + seed + ":" + Mathf.RoundToInt(aspect * 1000f);
+        }
+
         // The tables take a tenth of a second or more a window; worked out on the main thread they stalled the entry.
         private static void StartCoverTables(WindowCoverLayer layer, float aspect)
         {
+            string key = CoverTablesKey(layer.FrostSize, layer.Seed, aspect);
+            lock (s_CoverTablesLock)
+            {
+                CoverTables made;
+                if (s_CoverTablesMade.TryGetValue(key, out made)) { layer.Tables = made; layer.Ready = true; return; }
+            }
+            int size = layer.FrostSize, seed = layer.Seed;
             System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
                 var watch = System.Diagnostics.Stopwatch.StartNew();
-                try { PrepareCoverPixels(layer, aspect, layer.Seed); }
+                try
+                {
+                    var tables = PrepareCoverPixels(size, aspect, seed);
+                    lock (s_CoverTablesLock)
+                    {
+                        if (!s_CoverTablesMade.ContainsKey(key))
+                        {
+                            s_CoverTablesMade[key] = tables;
+                            s_CoverTablesOrder.Enqueue(key);
+                            while (s_CoverTablesOrder.Count > COVER_TABLES_KEEP) s_CoverTablesMade.Remove(s_CoverTablesOrder.Dequeue());
+                        }
+                    }
+                    layer.Tables = tables;
+                }
                 catch (System.Exception ex) { layer.Error = ex.Message; }
                 layer.PrepareMs = watch.ElapsedMilliseconds;
                 layer.Ready = true;
@@ -380,15 +454,14 @@ namespace SeamlessInteriors
         }
 
         // Everything that does not change with the cover, so a fill is a few sums a pixel.
-        private static void PrepareCoverPixels(WindowCoverLayer layer, float aspect, int seed)
+        private static CoverTables PrepareCoverPixels(int n, float aspect, int seed)
         {
-            int n = layer.FrostSize;
             var sketch = new FrostSketch { N = n, Aspect = aspect, Rng = new System.Random(seed * 7919 + 13), Time = new float[n * n], Vein = new float[n * n] };
             for (int i = 0; i < n * n; i++) sketch.Time[i] = 9f;
             sketch.Grow();
-            layer.VeinTime = sketch.Time; layer.Vein = sketch.Vein;
-            layer.Glow = CoverBlur(sketch.Vein, n, 4);
-            layer.HazeTime = new float[n * n]; layer.Grain = new float[n * n];
+            float[] veinTime = sketch.Time, vein = sketch.Vein;
+            float[] glow = CoverBlur(sketch.Vein, n, 4);
+            float[] hazeTime = new float[n * n], grain = new float[n * n];
             float edgeScale = aspect < 1f ? aspect : 1f;
             for (int y = 0; y < n; y++)
                 for (int x = 0; x < n; x++)
@@ -398,10 +471,12 @@ namespace SeamlessInteriors
                     float edge = C01((eu < ev ? eu : ev) * 2f / edgeScale);
                     int i = y * n + x;
                     // The haze creeps in from the edges and gathers around the ferns first.
-                    layer.HazeTime[i] = edge * 0.85f + (CoverFbm(ua * 3f + seed * 3.1f, v * 3f + seed * 1.7f, 4) - 0.5f) * 0.4f + 0.02f - layer.Glow[i] * 0.5f;
-                    layer.Grain[i] = 0.5f + (CoverHash(x + seed * 977, y) - 0.5f) * 0.45f + (CoverFbm(ua * 28f + seed, v * 28f, 2) - 0.5f) * 0.7f;
+                    hazeTime[i] = edge * 0.85f + (CoverFbm(ua * 3f + seed * 3.1f, v * 3f + seed * 1.7f, 4) - 0.5f) * 0.4f + 0.02f - glow[i] * 0.5f;
+                    grain[i] = 0.5f + (CoverHash(x + seed * 977, y) - 0.5f) * 0.45f + (CoverFbm(ua * 28f + seed, v * 28f, 2) - 0.5f) * 0.7f;
                 }
-            PrepareCoverGlass(layer, aspect, seed);
+            float[] glassAlpha = new float[n * n], glassWhite = new float[n * n];
+            PrepareCoverGlass(n, aspect, seed, glassAlpha, glassWhite);
+            return CoverTables.Encode(n, veinTime, vein, glow, hazeTime, grain, glassAlpha, glassWhite);
         }
 
         // The glass itself under the frost, so a wiped window still reads as glass and not as an empty
@@ -409,10 +484,8 @@ namespace SeamlessInteriors
         // sweeping wipe marks spread over the pane, and specks of dust.
         private const int COVER_GLASS_WIPES = 5;
 
-        private static void PrepareCoverGlass(WindowCoverLayer layer, float aspect, int seed)
+        private static void PrepareCoverGlass(int n, float aspect, int seed, float[] glassAlpha, float[] glassWhite)
         {
-            int n = layer.FrostSize;
-            layer.GlassAlpha = new float[n * n]; layer.GlassWhite = new float[n * n];
             var rng = new System.Random(seed * 31 + 7);
             var wx = new float[COVER_GLASS_WIPES]; var wy = new float[COVER_GLASS_WIPES]; var wr = new float[COVER_GLASS_WIPES];
             // One hand's sweep per slice across, so the marks do not bunch up (owner: they were too tight).
@@ -448,8 +521,8 @@ namespace SeamlessInteriors
                     float shine = (float)System.Math.Exp(-b1 * b1) + 0.6f * (float)System.Math.Exp(-b2 * b2);
                     float dust = CoverHash(x * 3 + seed * 17, y * 5) > 0.997f ? 1f : 0f;
                     int i = y * n + x;
-                    layer.GlassAlpha[i] = C01(0.055f + damp * 0.28f + wipe * 0.05f + shine * 0.10f + dust * 0.2f + (CoverFbm(ua * 2f + seed, v * 2f, 3) - 0.5f) * 0.03f);
-                    layer.GlassWhite[i] = 0.86f + shine * 0.14f + damp * 0.08f;
+                    glassAlpha[i] = C01(0.055f + damp * 0.28f + wipe * 0.05f + shine * 0.10f + dust * 0.2f + (CoverFbm(ua * 2f + seed, v * 2f, 3) - 0.5f) * 0.03f);
+                    glassWhite[i] = 0.86f + shine * 0.14f + damp * 0.08f;
                 }
         }
 
@@ -463,30 +536,74 @@ namespace SeamlessInteriors
 
         private static void FillCoverFrost(WindowCoverLayer layer, float frost)
         {
-            long perf = PerfProbe.Begin();
-            PerfProbe.Count(PerfProbe.Hit.CoverFills);
-            try { FillCoverFrostTimed(layer, frost); } finally { PerfProbe.End(PerfProbe.Section.CoverFill, perf); }
+            // Asked for here, made a few rows a frame by PumpCoverFills: a room window's 512 x 512 in one go was
+            // 23 ms (2026-10-14). The texture keeps the old frost until the new one is whole.
+            if (layer == null || layer.Tables == null) return;
+            if (layer.FillNext >= 0 ? layer.FillTarget == frost : layer.FrostShown == frost) return;
+            layer.FillTarget = frost;
+            layer.FillNext = 0;
+        }
+
+        // Pixels made a frame, across all the windows waiting.
+        private const int COVER_FILL_PIXELS_PER_FRAME = 32768;
+
+        private static void PumpCoverFills(List<WindowCoverLayer> layers)
+        {
+            int budget = COVER_FILL_PIXELS_PER_FRAME;
+            for (int l = 0; l < layers.Count && budget > 0; l++)
+            {
+                var layer = layers[l];
+                if (layer == null || layer.FillNext < 0 || layer.Tables == null || layer.FrostTex == null) continue;
+                long perf = PerfProbe.Begin();
+                try
+                {
+                    int count = layer.Tables.Vein.Length;
+                    if (layer.FillNext < count)
+                    {
+                        int end = Mathf.Min(count, layer.FillNext + budget);
+                        FillCoverRange(layer, layer.FillTarget, layer.FillNext, end);
+                        budget -= end - layer.FillNext;
+                        layer.FillNext = end;
+                        // The mips and the upload on a frame of their own: with the last rows they made the worst frame.
+                        continue;
+                    }
+                    budget -= count / 4;
+
+                    CoverMips(layer.FrostBytes, layer.FrostSize);
+                    var pin = GCHandle.Alloc(layer.FrostBytes, GCHandleType.Pinned);
+                    try { layer.FrostTex.LoadRawTextureData(pin.AddrOfPinnedObject(), layer.FrostBytes.Length); }
+                    finally { pin.Free(); }
+                    layer.FrostTex.Apply(false);
+                    layer.FrostShown = layer.FillTarget;
+                    layer.FillNext = -1;
+                    PerfProbe.Count(PerfProbe.Hit.CoverFills);
+                    // Shown on the next frame, not the next once-a-second look.
+                    s_CoverDirty = true;
+                }
+                finally { PerfProbe.End(PerfProbe.Section.CoverFill, perf); }
+            }
         }
 
         // Optimised from the first call: .NET runs a method's first calls unoptimised, and a fill comes seldom
         // enough to stay that way (16 ms first, 5 ms from the tenth on, 2026-10-14). The pixels go straight into
         // the texture's own bytes, mips made here: SetPixels32 copied a whole array into the game each fill.
         [MethodImpl(CoverOptimised)]
-        private static void FillCoverFrostTimed(WindowCoverLayer layer, float frost)
+        private static void FillCoverRange(WindowCoverLayer layer, float frost, int from, int to)
         {
-            int count = layer.Vein.Length;
+            var tb = layer.Tables;
             float reach = frost * 1.15f, haze0 = frost * 0.06f;
-            var veinTime = layer.VeinTime; var vein = layer.Vein; var hazeTime = layer.HazeTime; var grain = layer.Grain; var glow = layer.Glow;
-            var glassAlpha = layer.GlassAlpha; var glassWhite = layer.GlassWhite; var mask = layer.FrostMask;
+            var veinTime = tb.VeinTime; var vein = tb.Vein; var hazeTime = tb.HazeTime; var grain = tb.Grain; var hazeGain = tb.HazeGain;
+            var glassAlpha = tb.GlassAlpha; var glassWhite = tb.GlassWhite; var mask = layer.FrostMask;
             var bytes = layer.FrostBytes;
-            for (int i = 0; i < count; i++)
+            for (int i = from; i < to; i++)
             {
-                float v = vein[i] * C01((reach - veinTime[i]) * 12f);
-                float haze = C01((reach - hazeTime[i]) * 2.5f);
-                float a = C01(haze0 + haze * (0.36f + 0.22f * grain[i]) + v * 0.7f + glow[i] * haze * 0.3f);
-                float w = C01(0.80f + 0.20f * v + 0.05f * grain[i]);
+                float g = grain[i] * CoverTables.GrainScale + CoverTables.GrainBase;
+                float v = vein[i] * CoverTables.UnitScale * C01((reach - veinTime[i] * CoverTables.TimeScale) * 12f);
+                float haze = C01((reach - (hazeTime[i] * CoverTables.HazeScale + CoverTables.HazeBase)) * 2.5f);
+                float a = C01(haze0 + haze * hazeGain[i] * CoverTables.GainScale + v * 0.7f);
+                float w = C01(0.80f + 0.20f * v + 0.05f * g);
                 // The frost laid over the glass.
-                float ga = glassAlpha[i] * (1f - a), gw = glassWhite[i], all = a + ga;
+                float ga = glassAlpha[i] * CoverTables.UnitScale * (1f - a), gw = glassWhite[i] * CoverTables.WhiteScale + CoverTables.WhiteBase, all = a + ga;
                 float k = all > 0.0001f ? 1f / all : 0f;
                 int o = i * 4;
                 bytes[o] = (byte)(C01((w * 0.90f * a + gw * 0.88f * ga) * k) * 255f);
@@ -494,12 +611,6 @@ namespace SeamlessInteriors
                 bytes[o + 2] = (byte)(C01((w * a + gw * 0.98f * ga) * k) * 255f);
                 bytes[o + 3] = (byte)(C01(mask != null ? all * mask[i] : all) * 255f);
             }
-            CoverMips(bytes, layer.FrostSize);
-            var pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-            try { layer.FrostTex.LoadRawTextureData(pin.AddrOfPinnedObject(), bytes.Length); }
-            finally { pin.Free(); }
-            layer.FrostTex.Apply(false);
-            layer.FrostShown = frost;
         }
 
         // The RGBA32 mip chain after the first level, each a 2x2 average of the one before.
@@ -1086,6 +1197,7 @@ namespace SeamlessInteriors
                 // Gone with their scene (a save loaded while they stood): built again next frame.
                 foreach (var built in s_CoverLayers)
                     if (built != null && (built.FrostGo == null || built.FrostMat == null)) { TeardownWindowCoverLayers(); return; }
+                PumpCoverFills(s_CoverLayers);
 
                 if (s_CoverLayersBuilt < s_CoverLayers.Count)
                 {
@@ -1153,7 +1265,8 @@ namespace SeamlessInteriors
             if (layer != null && !layer.Shown) { SetGlassShown(opening.Glass, true); return false; }
 
             // The game's painted frost and the frame's snow slab stay off; the bank stands in for the slab.
-            SetGlassShown(opening.Glass, false);
+            // The game's glass stays until our frost has been filled once, so the pane never shows bare.
+            SetGlassShown(opening.Glass, layer != null && layer.FrostShown < 0f);
             bool bank = layer != null && layer.BankGo != null;
             SetRenderersEnabled(opening.Frost, !bank && snow > 0f && InsideOutShowSnowSlab);
             if (layer == null) return false;
@@ -1171,8 +1284,8 @@ namespace SeamlessInteriors
                 BuildCoverBank(layer, bankSnow);
                 filled = true;
             }
-            // Always: the clean glass is drawn by it too.
-            layer.FrostGo.SetActive(true);
+            // Always once filled: the clean glass is drawn by it too. Before, it would show what the pooled texture held.
+            layer.FrostGo.SetActive(layer.FrostShown >= 0f);
             if (bank) layer.BankGo.SetActive(bankSnow > 0f);
             if (force) { layer.FrostMat.color = s_CoverLight; TintCoverBank(layer, s_CoverBankLight); }
             return filled;
