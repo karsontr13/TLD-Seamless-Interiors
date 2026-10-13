@@ -275,6 +275,7 @@ namespace SeamlessInteriors
         // building: the game's own save system cannot match them inside a clone.
         public static void SavePlaceablePositions(SeamlessInteriorInstance instance)
         {
+            instance.MovedContainers.Clear();
             if (instance.MasterInterior == null || !instance.RunCompleted) return;
             if (!CanPersistContent(instance)) return;
             if (instance.PlaceableSaveBlocked) return;
@@ -349,7 +350,7 @@ namespace SeamlessInteriors
                     continue;
                 }
 
-                AppendPlaceableEntry(p, interiorT, entries, savedGuids);
+                AppendPlaceableEntry(p, interiorT, entries, savedGuids, instance.MovedContainers);
                 movedCount++;
             }
 
@@ -364,7 +365,7 @@ namespace SeamlessInteriors
                     if (savedGuids.Contains(p.m_Guid)) continue;
                     if (!instance.IsPositionInsideRaycastOnly(p.transform.position, SeamlessInteriorInstance.ITEM_RAY_ORIGIN_LIFT)) continue;
 
-                    AppendPlaceableEntry(p, interiorT, entries, savedGuids);
+                    AppendPlaceableEntry(p, interiorT, entries, savedGuids, instance.MovedContainers);
                     movedCount++;
                 }
 
@@ -829,7 +830,8 @@ namespace SeamlessInteriors
 
         // Shared writer for the "moved placeable" paths above.
         private static void AppendPlaceableEntry(Il2CppTLD.Placement.Placeable p, Transform interiorT,
-                                                 List<string> entries, HashSet<string> savedGuids)
+                                                 List<string> entries, HashSet<string> savedGuids,
+                                                 List<Il2Cpp.Container> movedContainers = null)
         {
             Vector3 relPos = interiorT.InverseTransformPoint(p.transform.position);
             Quaternion relRot = Quaternion.Inverse(interiorT.rotation) * p.transform.rotation;
@@ -838,6 +840,11 @@ namespace SeamlessInteriors
 
             entries.Add($"{{\"g\":\"{p.m_Guid}\",\"px\":{relPos.x:R},\"py\":{relPos.y:R},\"pz\":{relPos.z:R},\"rx\":{relRot.x:R},\"ry\":{relRot.y:R},\"rz\":{relRot.z:R},\"rw\":{relRot.w:R},\"sx\":{scl.x:R},\"sy\":{scl.y:R},\"sz\":{scl.z:R},\"a\":{(active ? "true" : "false")}}}");
             savedGuids.Add(p.m_Guid);
+
+            // A moved trunk sits under the game's placement root; its contents are saved with the building's.
+            if (movedContainers != null)
+                foreach (var c in p.GetComponentsInChildren<Il2Cpp.Container>(true))
+                    if (c != null) movedContainers.Add(c);
 
             if (s_DebugBounds)
                 MelonLogger.Msg($"[PLACEABLE-SAVE] MOVED obje: guid={p.m_Guid} parent={p.transform.parent?.name ?? "ROOT"} relPos={relPos}");
@@ -2457,7 +2464,9 @@ namespace SeamlessInteriors
             if (path == null) return;
 
             Transform interiorT = instance.MasterInterior.transform;
-            var containers = instance.MasterInterior.GetComponentsInChildren<Il2Cpp.Container>(true);
+            var containers = new List<Il2Cpp.Container>(instance.MasterInterior.GetComponentsInChildren<Il2Cpp.Container>(true));
+            foreach (var moved in instance.MovedContainers)
+                if (moved != null && !containers.Contains(moved)) containers.Add(moved);
             var entries = new List<string>();
 
             // There can be several containers with the same name, so each gets an index.

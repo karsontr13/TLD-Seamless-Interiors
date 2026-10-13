@@ -319,6 +319,9 @@ namespace SeamlessInteriors
         public bool ContainerSaveBlocked = false;
         public bool PlaceableSaveBlocked = false;
 
+        // Containers on furniture moved out of the clone's hierarchy, found by the last placeable save.
+        public readonly List<Il2Cpp.Container> MovedContainers = new List<Il2Cpp.Container>();
+
         public void ClearOrphans()
         {
             OrphanGearEntries.Clear();
