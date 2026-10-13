@@ -47,6 +47,13 @@ namespace SeamlessInteriors
             MelonLogger.Msg($"[INTERIOR-PROBES] {sceneName}: {n} probes read.");
         }
 
+        // Does this room light its own objects from its baked probes (TickInteriorProbes)? Then the ambient
+        // probe in force is not theirs to lose (ClonedInteriorLightingGuard.KeepExteriorProbeInForce).
+        internal static bool RoomHasItsOwnProbes(SeamlessInteriorInstance inst)
+        {
+            return inst != null && inst.Config != null && s_InteriorProbes.ContainsKey(inst.Config.InteriorSceneBaseName ?? "");
+        }
+
         // Inverse-distance blend of the 4 nearest probes, plain managed math.
         private static void SampleProbes(ProbeSet set, Vector3 q, float[] outCoeffs)
         {

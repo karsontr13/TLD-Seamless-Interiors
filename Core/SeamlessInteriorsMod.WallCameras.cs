@@ -524,6 +524,7 @@ namespace SeamlessInteriors
             if (main == null) return;
 
             RestoreParkedRoomShadow();      // the backstops; a camera switched off between its callbacks
+            RestoreWindowViewAmbient();     // must not leave its switch in the player's own view
             RestoreWallShell();
 
             SeamlessInteriorInstance instance = null;

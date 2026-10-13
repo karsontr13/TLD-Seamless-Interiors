@@ -80,6 +80,7 @@ namespace SeamlessInteriors
             if (ReferenceEquals(next, s_Owner))
             {
                 MaybeApplyLateFallback();
+                KeepExteriorProbeInForce();
                 return;
             }
 
@@ -332,13 +333,49 @@ namespace SeamlessInteriors
         private static float s_ExteriorSampledAt = -1000f;
         private static AmbientState s_AmbientBeforeExteriorSample;
 
+        // ─── THE OUTDOOR PROBE STAYS IN FORCE FOR THE WHOLE FRAME ───
+        //
+        // The swap round a window camera reaches the flat ambient values and not the light an object takes
+        // from the ambient probe: that is fixed for the frame before any camera draws, from the probe in
+        // force then, which was the room's. Through the Airfield hangar's windows in Dark Atmosphere the
+        // helicopter, the far hangar, the tower and the shaded ground stood at 41 to 62 percent of their
+        // Outdoor Lighting brightness, nearly black on a dark entry, while every value the window camera
+        // was handed read the same in both modes (owner's matched pairs, 2026-10-12). Shown in the console:
+        // a camera drawn first with the same swap changed nothing (99 to 100 percent); the outdoor probe
+        // set once a frame did (98 to 104 percent of Outdoor Lighting; owner: "Pressed F8. Outdoor view
+        // stayed the same"), and the room stayed as dark as before.
+        //
+        // The room stays dark because its own objects do not use that probe: TickInteriorProbes hands each
+        // one the room's baked light by hand. So this is done only for a room that has such probes; another
+        // room keeps its own probe as before. Per-window cameras and wall cameras alike: it is the probe
+        // of the frame, not of a camera.
+        //
+        // A switch, so the two can be compared live from inside a room.
+        public static bool ExteriorProbeAllFrame = true;
+
+        private static bool KeepsExteriorProbe
+        {
+            get
+            {
+                return ExteriorProbeAllFrame && ExteriorAmbientForViewsOut && s_Owner != null && s_HasOwnerAmbient
+                       && s_HasExteriorAmbient && s_ExteriorAmbient.HasProbe && SeamlessInteriorsMod.RoomHasItsOwnProbes(s_Owner);
+            }
+        }
+
+        // Every frame, from Tick and from the LateUpdate backstop, and after each window camera.
+        private static void KeepExteriorProbeInForce()
+        {
+            if (s_ViewOutSwapped || !KeepsExteriorProbe) return;
+            try { AmbientState.SetProbe(s_ExteriorAmbient.Probe); } catch { }
+        }
+
         public static void BeginExteriorAmbientForViewOut()
         {
             if (s_ViewOutSwapped || !ExteriorAmbientForViewsOut) return;
             if (s_Owner == null || !s_HasOwnerAmbient || !s_HasExteriorAmbient) return;
             s_AmbientBeforeViewOut = AmbientState.Capture(false);
             // A room with no probe of its own on record (the dark fallback) has it read here, to be put back.
-            s_ViewOutRoomProbeSaved = s_ExteriorAmbient.HasProbe && !s_OwnerAmbient.HasProbe;
+            s_ViewOutRoomProbeSaved = s_ExteriorAmbient.HasProbe && !s_OwnerAmbient.HasProbe && !KeepsExteriorProbe;
             if (s_ViewOutRoomProbeSaved) s_ViewOutRoomProbe = RenderSettings.ambientProbe;
             s_ExteriorAmbient.Apply();
             s_ViewOutSwapped = true;
@@ -386,7 +423,12 @@ namespace SeamlessInteriors
             if (s_HasRoomAmbientForShaders)
                 for (int i = 0; i < 4; i++) Shader.SetGlobalVector(s_AmbientShaderIds[i], s_RoomAmbientForShaders[i]);
             s_AmbientBeforeViewOut.Apply();
-            if (s_ExteriorAmbient.HasProbe && s_HasOwnerAmbient && s_OwnerAmbient.HasProbe)
+            if (KeepsExteriorProbe)
+            {
+                // Set again under the room's intensity, which Apply has just put back.
+                try { AmbientState.SetProbe(s_ExteriorAmbient.Probe); } catch { }
+            }
+            else if (s_ExteriorAmbient.HasProbe && s_HasOwnerAmbient && s_OwnerAmbient.HasProbe)
             {
                 try { AmbientState.SetProbe(s_OwnerAmbient.Probe); } catch { }
             }
@@ -448,6 +490,7 @@ namespace SeamlessInteriors
 
         public static void EnforceOwnerAmbient()
         {
+            KeepExteriorProbeInForce();
             if (!EnforceOwnerAmbientEveryFrame) return;
             if (s_Owner == null || !s_HasOwnerAmbient) return;
             if (s_OwnerAmbient.MatchesCurrent()) return;
