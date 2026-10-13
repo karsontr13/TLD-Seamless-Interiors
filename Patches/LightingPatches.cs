@@ -336,19 +336,22 @@ namespace SeamlessInteriors
         // ─── THE OUTDOOR PROBE STAYS IN FORCE FOR THE WHOLE FRAME ───
         //
         // The swap round a window camera reaches the flat ambient values and not the light an object takes
-        // from the ambient probe: that is fixed for the frame before any camera draws, from the probe in
-        // force then, which was the room's. Through the Airfield hangar's windows in Dark Atmosphere the
+        // from the ambient probe. That light followed the probe in force OUTSIDE the window camera's own
+        // render, which was the room's. Through the Airfield hangar's windows in Dark Atmosphere the
         // helicopter, the far hangar, the tower and the shaded ground stood at 41 to 62 percent of their
         // Outdoor Lighting brightness, nearly black on a dark entry, while every value the window camera
         // was handed read the same in both modes (owner's matched pairs, 2026-10-12). Shown in the console:
         // a camera drawn first with the same swap changed nothing (99 to 100 percent); the outdoor probe
         // set once a frame did (98 to 104 percent of Outdoor Lighting; owner: "Pressed F8. Outdoor view
-        // stayed the same"), and the room stayed as dark as before.
+        // stayed the same"), and the room stayed as dark as before. Inferred from frames compared cell by
+        // cell; the light one object got cannot be read. When in the frame Unity takes the probe is not
+        // known: before the first camera fits, and so does the frame before.
         //
-        // The room stays dark because its own objects do not use that probe: TickInteriorProbes hands each
-        // one the room's baked light by hand. So this is done only for a room that has such probes; another
-        // room keeps its own probe as before. Per-window cameras and wall cameras alike: it is the probe
-        // of the frame, not of a camera.
+        // The room stayed dark, presumably because its own objects do not use that probe: TickInteriorProbes
+        // hands each one the room's baked light by hand. So this is done only for a room that has such
+        // probes; another room keeps its own probe as before and its views out may still darken (not
+        // looked at). Per-window cameras and wall cameras alike: the probe is held for the frame, not
+        // swapped for a camera.
         //
         // A switch, so the two can be compared live from inside a room.
         public static bool ExteriorProbeAllFrame = true;

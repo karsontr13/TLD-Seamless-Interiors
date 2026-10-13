@@ -392,8 +392,9 @@ namespace SeamlessInteriors
                 yield break;
             }
 
-            // Indoors: make sure the loop is running. It is never stopped; the occlusion filter
-            // lowers it (see ApplyOutdoorWindForInsideState in Audio.cs).
+            // Indoors: make sure a wind loop exists. This call never stops one. Which loop plays in a
+            // room, the outdoor one paused and the indoor one started, is decided in
+            // MakeWindLoopFollowThePlayer (SeamlessInteriorsMod.RoomSound.cs).
             ApplyOutdoorWindForInsideState(true, "post-run");
 
             if (s_DebugBounds) MelonLogger.Msg($"[WIND-POST-RUN] Oyuncu icerde, dis ruzgar sesi ic mekan kuralina gore ayarlandi, id={wind.m_WindLoopAudioInstance}",

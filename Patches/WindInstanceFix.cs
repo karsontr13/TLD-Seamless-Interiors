@@ -75,8 +75,9 @@ namespace SeamlessInteriors
                 yield break;
             }
 
-            // Indoors: make sure the loop is running. It is never stopped; the occlusion filter
-            // lowers it (see ApplyOutdoorWindForInsideState in Audio.cs).
+            // Indoors: make sure a wind loop exists. This call never stops one. Which loop plays in a
+            // room, the outdoor one paused and the indoor one started, is decided in
+            // MakeWindLoopFollowThePlayer (SeamlessInteriorsMod.RoomSound.cs).
             SeamlessInteriorsMod.ApplyOutdoorWindForInsideState(true, "wind-start-postfix");
 
             if (SeamlessInteriorsMod.s_DebugBounds)

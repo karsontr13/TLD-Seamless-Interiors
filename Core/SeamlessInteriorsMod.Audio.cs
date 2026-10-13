@@ -152,7 +152,8 @@ namespace SeamlessInteriors
         // Measured 2026-10-11 in the real Airfield hangar with this mod not loaded: the loop slot
         // holds Play_WindIndoors, not force-stopped, with the full wind speed. Stopping the loop
         // left a room with no wind at all and froze WINDACTUALSPEED and WINDINTENSITYBLEND at
-        // whatever they were at the door. The setting is gone; the loop is never stopped here.
+        // whatever they were at the door. The setting is gone; the loop is never stopped here. In a
+        // room it is paused, and the indoor loop plays in its place: MakeWindLoopFollowThePlayer.
         //
         // What is left: make sure a loop exists. The inside argument is kept for the call sites.
         public static void ApplyOutdoorWindForInsideState(bool inside, string tag)

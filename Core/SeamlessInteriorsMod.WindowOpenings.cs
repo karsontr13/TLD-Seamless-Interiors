@@ -730,9 +730,11 @@ namespace SeamlessInteriors
                 //
                 // NOR IS A PANE TURNED TO FACE THE MIDDLE OF THE ROOM. A sheet that is one stepped wall has its
                 // middle between the steps: each of the hangar's two side sheets is 11 windows on the wall and 6
-                // on the tier above, 7.3 m further in, so the upper 6 stood 4.7 m on the room side of their own
-                // sheet's middle and all 12 were turned to face in (read live 2026-10-12: 19.9 m from the room's
-                // middle, facing it). They then drew no view out and paired across the building from outside.
+                // on the tier above, 7.3 m further in, so the upper 6 stood on the room side of their own sheet's
+                // middle (about 4.7 m by that split) and all 12 were turned to face in (read live 2026-10-12:
+                // 19.9 m from the room's middle, facing it). They drew no view out. From outside the owner saw
+                // the wall going by in the side windows; that those 12 paired with the far side's panes is what
+                // the pairing rule would do with them and was not read before the fix.
                 Vector3 outwardSide = side > 0f ? lead.Normal : -lead.Normal;
                 {
                     Vector3 sheetMiddle = Vector3.zero;
