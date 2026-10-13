@@ -58,6 +58,11 @@ namespace SeamlessInteriors
             public float BankDepth = BANK_DEPTH, BankReach = BANK_ROUND_REACH, BankTuck = BANK_TUCK, BankUnderBar = BANK_UNDER_BAR;
             // How far from the glass the bank's flat face stands.
             public float BankStandOff = 0.004f;
+            // The bank's mesh arrays and the noise its shape takes, kept between rebuilds.
+            public float[] BankNoise;
+            public Vector3[] BankVerts;
+            public Vector2[] BankUvs;
+            public bool BankTrisSet;
             // Set by the worker thread once the per-pixel tables are done.
             public volatile bool Ready;
             public bool Shown;
@@ -992,19 +997,39 @@ namespace SeamlessInteriors
 
         private static void BuildCoverBankTimed(WindowCoverLayer layer, float snow)
         {
-            var verts = new List<Vector3>(); var uvs = new List<Vector2>(); var tris = new List<int>();
-            const int nx = BANK_COLUMNS, nz = BANK_ROWS;
+            const int nx = BANK_COLUMNS, rows = BANK_ROWS + BANK_ROUND_ROWS, cols = nx + 1;
+            // Per pane: the face on the glass, the top and rounded face as a grid, two end caps.
+            const int paneVerts = 2 * cols + (rows + 1) * cols + 2 * (rows + 2);
+            const int paneTris = (nx + rows * nx + 2 * rows) * 6;
+            if (layer.BankNoise == null) PrepareBankNoise(layer);
+            int panes = layer.Panes.Count;
+            if (snow <= 0f || panes == 0) { layer.SnowShown = snow; return; }
+
+            int vertexCount = panes * paneVerts;
+            if (layer.BankVerts == null || layer.BankVerts.Length != vertexCount)
+            {
+                layer.BankVerts = new Vector3[vertexCount];
+                layer.BankUvs = new Vector2[vertexCount];
+                layer.BankTrisSet = false;
+            }
+            var verts = layer.BankVerts; var uvs = layer.BankUvs;
+            int[] tris = layer.BankTrisSet ? null : new int[panes * paneTris];
+            int v = 0, t = 0;
+
             // The dunes roll while snow builds and settle into a full pane at the end.
             float roll = snow * (1f - snow * snow);
-            var tops = new float[nx + 1];
-            for (int p = 0; p < layer.Panes.Count && snow > 0f; p++)
+            var tops = s_BankTops;
+            for (int p = 0; p < panes; p++)
             {
                 var pane = layer.Panes[p];
                 int seed = layer.Seed * 13 + p * 7;
                 float x0 = pane[0], pw = pane[1] - pane[0], hb = pane[2] - layer.BankTuck, ph = pane[3] - hb;
-                if (pw < 0.05f) continue;
+                // A pane too narrow to hold snow still keeps its place in the mesh, folded flat.
+                bool flat = pw < 0.05f;
                 float fullTop = pane[4] > 0f ? 1f - layer.BankUnderBar / ph : 1f;
                 float sideLeft = CoverHash(seed, 1) > 0.45f ? 1f : -0.6f, sideRight = CoverHash(seed, 2) > 0.45f ? 1f : -0.6f;
+                float uOff = CoverHash(seed, 11) * 7f, vOff = CoverHash(seed, 12) * 7f;
+                int noiseBase = p * (cols * (rows + 2));
                 for (int i = 0; i <= nx; i++)
                 {
                     float xl = (float)i / nx, wx = xl * pw / ph;
@@ -1014,101 +1039,135 @@ namespace SeamlessInteriors
                                 + (CoverFbm(wx * 1.4f + seed, snow * BANK_DRIFT, 3) - 0.5f) * 1.8f
                                 + (CoverFbm(wx * 9f + seed, 3.5f + snow * BANK_DRIFT * 2f, 2) - 0.5f) * 0.15f;
                     // Even a full pane keeps small gaps along its top (owner, 2026-10-13).
-                    float gap = C01((CoverFbm(wx * 3f + seed * 1.7f, 7.5f, 3) - 0.45f) * 4f) * BANK_TOP_GAPS;
+                    float gap = layer.BankNoise[noiseBase + (rows + 1) * cols + i];
                     float level = snow * (fullTop + 0.03f - gap) + shape * roll;
-                    tops[i] = hb + C01(Mathf.Min(level, fullTop - gap * snow)) * ph;
+                    float cap = fullTop - gap * snow;
+                    tops[i] = flat ? hb : hb + C01(level < cap ? level : cap) * ph;
                 }
 
-                int front = verts.Count;
+                int front = v;
                 for (int i = 0; i <= nx; i++)
                 {
                     float xr = x0 + pw * i / nx;
-                    verts.Add(CoverPoint(layer, xr, hb, layer.BankStandOff)); uvs.Add(BankUv(seed, xr, hb));
-                    verts.Add(CoverPoint(layer, xr, tops[i], layer.BankStandOff)); uvs.Add(BankUv(seed, xr, tops[i]));
+                    verts[v] = CoverPoint(layer, xr, hb, layer.BankStandOff); uvs[v++] = BankUv(uOff, vOff, xr, hb);
+                    verts[v] = CoverPoint(layer, xr, tops[i], layer.BankStandOff); uvs[v++] = BankUv(uOff, vOff, xr, tops[i]);
                 }
-                for (int i = 0; i < nx; i++)
-                {
-                    int a = front + i * 2;
-                    tris.Add(a); tris.Add(a + 1); tris.Add(a + 2); tris.Add(a + 1); tris.Add(a + 3); tris.Add(a + 2);
-                }
+                if (tris != null)
+                    for (int i = 0; i < nx; i++)
+                    {
+                        int a = front + i * 2;
+                        tris[t++] = a; tris[t++] = a + 1; tris[t++] = a + 2; tris[t++] = a + 1; tris[t++] = a + 3; tris[t++] = a + 2;
+                    }
 
                 // The top slumps away from the glass, then rolls over in a rounded face down to the sill:
                 // the face seen from outside (owner, 2026-10-13).
-                const int rows = nz + BANK_ROUND_ROWS;
-                int top = verts.Count;
+                int top = v;
                 for (int j = 0; j <= rows; j++)
                     for (int i = 0; i <= nx; i++)
                     {
                         float xr = x0 + pw * i / nx, h, oz;
-                        BankProfile(layer, tops[i], hb, xr, j, seed, out h, out oz);
-                        verts.Add(CoverPoint(layer, xr, h, oz)); uvs.Add(BankUv(seed, xr, oz - h + 1.5f));
+                        BankProfile(layer, tops[i], hb, j, layer.BankNoise[noiseBase + j * cols + i], out h, out oz);
+                        verts[v] = CoverPoint(layer, xr, h, oz); uvs[v++] = BankUv(uOff, vOff, xr, oz - h + 1.5f);
                     }
-                for (int j = 0; j < rows; j++)
-                    for (int i = 0; i < nx; i++)
-                    {
-                        int a = top + j * (nx + 1) + i, b = a + nx + 1;
-                        tris.Add(a); tris.Add(b); tris.Add(a + 1); tris.Add(a + 1); tris.Add(b); tris.Add(b + 1);
-                    }
+                if (tris != null)
+                    for (int j = 0; j < rows; j++)
+                        for (int i = 0; i < nx; i++)
+                        {
+                            int a = top + j * cols + i, b = a + cols;
+                            tris[t++] = a; tris[t++] = b; tris[t++] = a + 1; tris[t++] = a + 1; tris[t++] = b; tris[t++] = b + 1;
+                        }
 
                 // End caps, both windings so they show from either side.
                 for (int e = 0; e < 2; e++)
                 {
                     int i = e == 0 ? 0 : nx;
                     float xr = x0 + pw * i / nx;
-                    int cap = verts.Count;
-                    verts.Add(CoverPoint(layer, xr, hb, layer.BankStandOff)); uvs.Add(BankUv(seed, 0f, hb));
+                    int capStart = v;
+                    verts[v] = CoverPoint(layer, xr, hb, layer.BankStandOff); uvs[v++] = BankUv(uOff, vOff, 0f, hb);
                     for (int j = 0; j <= rows; j++)
                     {
                         float h, oz;
-                        BankProfile(layer, tops[i], hb, xr, j, seed, out h, out oz);
-                        verts.Add(CoverPoint(layer, xr, h, oz)); uvs.Add(BankUv(seed, oz, h));
+                        BankProfile(layer, tops[i], hb, j, layer.BankNoise[noiseBase + j * cols + i], out h, out oz);
+                        verts[v] = CoverPoint(layer, xr, h, oz); uvs[v++] = BankUv(uOff, vOff, oz, h);
                     }
-                    for (int j = 1; j <= rows; j++)
-                    {
-                        tris.Add(cap); tris.Add(cap + j + 1); tris.Add(cap + j);
-                        tris.Add(cap); tris.Add(cap + j); tris.Add(cap + j + 1);
-                    }
+                    if (tris != null)
+                        for (int j = 1; j <= rows; j++)
+                        {
+                            tris[t++] = capStart; tris[t++] = capStart + j + 1; tris[t++] = capStart + j;
+                            tris[t++] = capStart; tris[t++] = capStart + j; tris[t++] = capStart + j + 1;
+                        }
                 }
+
+                // Folded to one point: nothing to draw.
+                if (flat)
+                    for (int k = front + 1; k < v; k++) { verts[k] = verts[front]; uvs[k] = uvs[front]; }
             }
 
+            // The mesh keeps its triangles: only the points move as the snow builds.
             var mesh = layer.BankMesh;
-            mesh.Clear();
-            mesh.vertices = verts.ToArray();
-            mesh.uv = uvs.ToArray();
-            mesh.triangles = tris.ToArray();
+            mesh.vertices = verts;
+            mesh.uv = uvs;
+            if (tris != null) { mesh.triangles = tris; layer.BankTrisSet = true; }
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             layer.SnowShown = snow;
         }
 
+        private static readonly float[] s_BankTops = new float[BANK_COLUMNS + 1];
+
+        // The parts of the bank's shape that do not change with the snow, once a window: the wobble of its top
+        // across each row and the gaps along a full pane's top. Worked out again on every rebuild, they made a
+        // wide window's bank 20 to 34 ms (2026-10-14).
+        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
+        private static void PrepareBankNoise(WindowCoverLayer layer)
+        {
+            const int nx = BANK_COLUMNS, rows = BANK_ROWS + BANK_ROUND_ROWS, cols = nx + 1;
+            var noise = new float[layer.Panes.Count * cols * (rows + 2)];
+            for (int p = 0; p < layer.Panes.Count; p++)
+            {
+                var pane = layer.Panes[p];
+                int seed = layer.Seed * 13 + p * 7, b = p * cols * (rows + 2);
+                float x0 = pane[0], pw = pane[1] - pane[0], ph = pane[3] - (pane[2] - layer.BankTuck);
+                for (int i = 0; i <= nx; i++)
+                {
+                    float xr = x0 + pw * i / nx, wx = (float)i / nx * pw / ph;
+                    for (int j = 0; j <= rows; j++)
+                    {
+                        int edgeRow = j < BANK_ROWS ? j : BANK_ROWS;
+                        float zl = (float)edgeRow / BANK_ROWS;
+                        noise[b + j * cols + i] = (CoverFbm(xr * 6f + seed, zl * 3f, 2) - 0.5f) * 0.2f * zl;
+                    }
+                    noise[b + (rows + 1) * cols + i] = C01((CoverFbm(wx * 3f + seed * 1.7f, 7.5f, 3) - 0.45f) * 4f) * BANK_TOP_GAPS;
+                }
+            }
+            layer.BankNoise = noise;
+        }
+
         // Where the snow texture is read for a point of the bank. Laid straight on, it tiled twice a metre and
         // a long window showed the same blots five times over (owner, Thompson's Store, 2026-10-13): each pane
-        // starts somewhere of its own, and a slow noise bends the lines it is read along.
-        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
-        private static Vector2 BankUv(int seed, float across, float up)
+        // starts somewhere of its own.
+        private static Vector2 BankUv(float uOff, float vOff, float across, float up)
         {
-            float u = across * BANK_UV + CoverHash(seed, 11) * 7f;
-            float v = up * BANK_UV + CoverHash(seed, 12) * 7f;
             var uv = default(Vector2);
-            uv.x = u; uv.y = v;
+            uv.x = across * BANK_UV + uOff; uv.y = up * BANK_UV + vOff;
             return uv;
         }
+
         // One point of the bank's cross-section: the top, lower the further it lies out from the glass,
         // then a quarter ellipse from its outer edge down to the sill.
-        [System.Runtime.CompilerServices.MethodImpl(CoverOptimised)]
-        private static void BankProfile(WindowCoverLayer layer, float top, float bottom, float right, int row, int seed, out float height, out float outward)
+        private static void BankProfile(WindowCoverLayer layer, float top, float bottom, int row, float wobble, out float height, out float outward)
         {
             int edgeRow = row < BANK_ROWS ? row : BANK_ROWS;
             float zl = (float)edgeRow / BANK_ROWS;
-            height = bottom + (top - bottom) * (1f - BANK_SLUMP * zl * zl + (CoverFbm(right * 6f + seed, zl * 3f, 2) - 0.5f) * 0.2f * zl);
+            height = bottom + (top - bottom) * (1f - BANK_SLUMP * zl * zl + wobble);
             outward = layer.BankStandOff + layer.BankDepth * zl;
             if (row <= BANK_ROWS) return;
             float rise = height - bottom;
             float angle = 1.5708f * (row - BANK_ROWS) / BANK_ROUND_ROWS;
-            outward += Mathf.Min(layer.BankReach, rise * 0.6f + 0.005f) * (float)System.Math.Sin(angle);
+            float reach = rise * 0.6f + 0.005f;
+            outward += (layer.BankReach < reach ? layer.BankReach : reach) * (float)System.Math.Sin(angle);
             height = bottom + rise * (float)System.Math.Cos(angle);
         }
-
         // Frost is lit by the day outside, not by the room: lit by the room it read as a white wall.
         private static Color CoverSnowLight()
         {
