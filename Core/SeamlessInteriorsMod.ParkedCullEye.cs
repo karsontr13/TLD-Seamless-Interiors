@@ -188,6 +188,11 @@ namespace SeamlessInteriors
             s_ParkedCullEyeObject.transform.SetPositionAndRotation(source.position - s_ParkedCullEyeOffset, source.rotation);
             s_ParkedCullEyeCamera.fieldOfView = main.fieldOfView;
             s_ParkedCullEyeCamera.aspect = main.aspect;
+            // The game moves FPSCamera's far plane with the weather (445 m in a blizzard, 15000 m clear, read
+            // in the Airfield hangar 2026-10-12). Copied only when the stand-in was made, a blizzard's short
+            // one stayed after the sky cleared, and the views out kept their far trees and rocks culled.
+            if (s_ParkedCullEyeCamera.farClipPlane != main.farClipPlane) s_ParkedCullEyeCamera.farClipPlane = main.farClipPlane;
+            if (s_ParkedCullEyeCamera.nearClipPlane != main.nearClipPlane) s_ParkedCullEyeCamera.nearClipPlane = main.nearClipPlane;
             if (s_ParkedCullEyeCamera.enabled) s_ParkedCullEyeCamera.enabled = false;
         }
 
