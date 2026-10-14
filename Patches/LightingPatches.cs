@@ -521,12 +521,28 @@ namespace SeamlessInteriors
             // The time of day may have changed when a save is loaded, so the old ambient
             // values are no longer correct. The managers will establish them again.
             s_AmbientByInstance.Clear();
+            s_RoomLightingStrength.Clear();
         }
 
         public static SeamlessInteriorInstance FindOwningInstance(Transform t)
         {
             SeamlessInteriorsMod.PerfProbe.Count(SeamlessInteriorsMod.PerfProbe.Hit.LightOwnerLookup);
             return SeamlessInteriorsMod.FindInstanceOwning(t);
+        }
+
+        // What each room's own lighting manager last wrote to _LightingStrength, for the views in from outside.
+        private static readonly System.Collections.Generic.Dictionary<SeamlessInteriorInstance, Vector4> s_RoomLightingStrength =
+            new System.Collections.Generic.Dictionary<SeamlessInteriorInstance, Vector4>();
+
+        public static void RecordRoomLightingStrength(SeamlessInteriorInstance instance, Vector4 strength)
+        {
+            if (instance != null) s_RoomLightingStrength[instance] = strength;
+        }
+
+        public static bool TryGetRoomLightingStrength(SeamlessInteriorInstance instance, out Vector4 strength)
+        {
+            strength = default(Vector4);
+            return instance != null && s_RoomLightingStrength.TryGetValue(instance, out strength);
         }
 
         // Avoids log spam: write once per component.
@@ -714,18 +730,39 @@ namespace SeamlessInteriors
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.DarkLightingManager), nameof(Il2Cpp.DarkLightingManager.UpdateLightmaps))]
     public class BlockClonedDarkLightingLightmapPatch
     {
+        private static readonly int s_LightingStrengthId = Shader.PropertyToID("_LightingStrength");
+        private static Vector4 s_Saved;
+        private static SeamlessInteriorInstance s_Running;
+
+        // A non-owner room still runs, so its tint is known for the views in; the global is put back after.
         public static bool Prefix(Il2Cpp.DarkLightingManager __instance)
         {
+            s_Running = null;
             if (__instance == null) return true;
 
             var instance = ClonedInteriorLightingGuard.FindOwningInstance(__instance.transform);
             if (instance == null) return true;
 
             if (ClonedInteriorLightingGuard.IsOwner(instance))
-                return !ClonedInteriorLightingGuard.BlockOwnerLightmapTint;
+            {
+                if (ClonedInteriorLightingGuard.BlockOwnerLightmapTint) return false;
+                s_Running = instance;
+                return true;
+            }
 
-            ClonedInteriorLightingGuard.LogOnce(instance, __instance, "UpdateLightmaps (global lightmap tint)");
-            return false;
+            s_Saved = Shader.GetGlobalVector(s_LightingStrengthId);
+            s_Running = instance;
+            return true;
+        }
+
+        public static System.Exception Finalizer(Il2Cpp.DarkLightingManager __instance)
+        {
+            var instance = s_Running;
+            s_Running = null;
+            if (instance == null) return null;
+            ClonedInteriorLightingGuard.RecordRoomLightingStrength(instance, Shader.GetGlobalVector(s_LightingStrengthId));
+            if (!ClonedInteriorLightingGuard.IsOwner(instance)) Shader.SetGlobalVector(s_LightingStrengthId, s_Saved);
+            return null;
         }
     }
 
@@ -756,14 +793,21 @@ namespace SeamlessInteriors
             if (clone == null || ClonedInteriorLightingGuard.IsOwner(clone)) return;
 
             __state = true;
-            if (ClonedInteriorLightingGuard.Owner != null) s_Saved = Shader.GetGlobalVector(s_LightingStrengthId);
+            s_Clone = clone;
+            s_Before = Shader.GetGlobalVector(s_LightingStrengthId);
+            if (ClonedInteriorLightingGuard.Owner != null) s_Saved = s_Before;
         }
+
+        private static SeamlessInteriorInstance s_Clone;
+        private static Vector4 s_Before;
 
         // A finalizer, so the restore also runs when Update throws (a template room's half-built light group
         // throws for a few frames while loading); the throw is swallowed, as it is unpatched.
         public static System.Exception Finalizer(bool __state)
         {
             if (!__state) return null;
+            Vector4 written = Shader.GetGlobalVector(s_LightingStrengthId);
+            if (written != s_Before) ClonedInteriorLightingGuard.RecordRoomLightingStrength(s_Clone, written);
             if (ClonedInteriorLightingGuard.Owner == null) Il2Cpp.LightingManager.SetLightingStrengthDefault();
             else Shader.SetGlobalVector(s_LightingStrengthId, s_Saved);
             return null;

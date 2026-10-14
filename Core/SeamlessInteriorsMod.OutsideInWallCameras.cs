@@ -203,13 +203,13 @@ namespace SeamlessInteriors
             try
             {
                 SwitchOffForViewIn(OutsideInBackdrops(b), s_OutsideInWallSwitchedOff);
-                ApplyOutsideInAmbient();
+                ApplyOutsideInAmbient(b);
                 cam.cullingMask = 1 << b.Layer;
                 cam.Render();
             }
             finally
             {
-                RenderSettings.ambientMode = savedMode; RenderSettings.ambientLight = savedLight;
+                RenderSettings.ambientMode = savedMode; RenderSettings.ambientLight = savedLight; RestoreOutsideInLightingStrength();
                 SwitchBackOn(s_OutsideInWallSwitchedOff);
             }
             return true;
@@ -863,13 +863,13 @@ namespace SeamlessInteriors
                 SwitchOffForViewIn(group.Hidden, s_OutsideInWallSwitchedOff);
                 SwitchOffForViewIn(OutsideInBackdrops(b), s_OutsideInWallSwitchedOff);
                 clearedFrom = ClearNearestCopy(b, group);
-                ApplyOutsideInAmbient();
+                ApplyOutsideInAmbient(b);
                 cam.cullingMask = 1 << b.Layer;
                 cam.Render();
             }
             finally
             {
-                RenderSettings.ambientMode = savedMode; RenderSettings.ambientLight = savedLight;
+                RenderSettings.ambientMode = savedMode; RenderSettings.ambientLight = savedLight; RestoreOutsideInLightingStrength();
                 if (clearedFrom != null && group.ClearOn != null) group.ClearOn.sharedMaterials = clearedFrom;
                 SwitchBackOn(s_OutsideInWallSwitchedOff);
             }

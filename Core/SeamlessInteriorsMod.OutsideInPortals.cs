@@ -1910,11 +1910,11 @@ namespace SeamlessInteriors
             try
             {
                 SwitchOffForViewIn(OutsideInBackdrops(s_OI), s_OutsideInWallSwitchedOff);
-                ApplyOutsideInAmbient();
+                ApplyOutsideInAmbient(s_OI);
                 cam.cullingMask = 1 << s_OI.Layer;
                 cam.Render();
             }
-            finally { RenderSettings.ambientMode = savedMode; RenderSettings.ambientLight = savedLight; SwitchBackOn(s_OutsideInWallSwitchedOff); }
+            finally { RenderSettings.ambientMode = savedMode; RenderSettings.ambientLight = savedLight; RestoreOutsideInLightingStrength(); SwitchBackOn(s_OutsideInWallSwitchedOff); }
 
             var quadRenderer = quad.GetComponent<MeshRenderer>();
             if (quadRenderer != null)
@@ -1952,9 +1952,23 @@ namespace SeamlessInteriors
         // just not toggleable while outside").
         private const float OUTSIDE_IN_DARK_FACTOR_NO_OWN_AMBIENT = 0.30f;
 
-        private static void ApplyOutsideInAmbient()
+        // The room's _LightingStrength (near black at night) dims its lightmaps; without it the view in was
+        // a bright room at night while inside was dark (player's FarmHouse shots, 2.3.0). Render only.
+        private static readonly int s_OutsideInLightingStrengthId = Shader.PropertyToID("_LightingStrength");
+        private static bool s_OutsideInLightingStrengthSwapped;
+        private static Vector4 s_OutsideInLightingStrengthSaved;
+
+        private static void ApplyOutsideInAmbient(OutsideInBuilding b)
         {
             if (!IsDarkAtmosphereMode) return;
+            Vector4 roomStrength;
+            if (!s_OutsideInLightingStrengthSwapped && b != null
+                && ClonedInteriorLightingGuard.TryGetRoomLightingStrength(b.Instance, out roomStrength))
+            {
+                s_OutsideInLightingStrengthSaved = Shader.GetGlobalVector(s_OutsideInLightingStrengthId);
+                Shader.SetGlobalVector(s_OutsideInLightingStrengthId, roomStrength);
+                s_OutsideInLightingStrengthSwapped = true;
+            }
             if (s_OutsideInAmbientValid)
             {
                 var tod = GameManager.GetTimeOfDayComponent();
@@ -1967,6 +1981,13 @@ namespace SeamlessInteriors
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(outdoors.r * OUTSIDE_IN_DARK_FACTOR_NO_OWN_AMBIENT, outdoors.g * OUTSIDE_IN_DARK_FACTOR_NO_OWN_AMBIENT,
                                                     outdoors.b * OUTSIDE_IN_DARK_FACTOR_NO_OWN_AMBIENT, outdoors.a);
+        }
+
+        private static void RestoreOutsideInLightingStrength()
+        {
+            if (!s_OutsideInLightingStrengthSwapped) return;
+            s_OutsideInLightingStrengthSwapped = false;
+            Shader.SetGlobalVector(s_OutsideInLightingStrengthId, s_OutsideInLightingStrengthSaved);
         }
 
         // The slot pool is sized from the preference once, and the preference is read through a NEW
