@@ -37,6 +37,7 @@ namespace SeamlessInteriors
         public static void ClearWindowSnow(string instanceId, int window, bool roomWindow)
         {
             if (instanceId == null || window < 0) return;
+            if (!roomWindow) window = SharedWindowRecord(instanceId, window);
             EnsureWindowStateLoaded(instanceId);
             var all = roomWindow ? s_RoomWindowSnowFrom : s_WindowSnowFrom;
             Dictionary<int, float> from;
@@ -48,6 +49,7 @@ namespace SeamlessInteriors
         private static void SetWindowSnowCleared(string instanceId, int window, bool roomWindow, bool cleared)
         {
             if (cleared) { ClearWindowSnow(instanceId, window, roomWindow); return; }
+            if (!roomWindow) window = SharedWindowRecord(instanceId, window);
             Dictionary<int, float> from;
             if ((roomWindow ? s_RoomWindowSnowFrom : s_WindowSnowFrom).TryGetValue(instanceId, out from)) from.Remove(window);
         }
@@ -58,6 +60,7 @@ namespace SeamlessInteriors
             frost = 1f;
             snow = WindowCleanedDefault() ? 0f : 1f;
             if (instanceId == null || window < 0) return;
+            if (!roomWindow) window = SharedWindowRecord(instanceId, window);
 
             bool cleaned = roomWindow ? IsRoomWindowCleaned(instanceId, window) : IsWindowCleaned(instanceId, window);
             if (cleaned)

@@ -484,9 +484,25 @@ namespace SeamlessInteriors
         private static readonly HashSet<string> s_WindowStateLoaded = new HashSet<string>();
         private static string s_WindowStateSaveName;
 
+        // A pretend half drawn by its neighbour's view shares that window's record, so inside and outside
+        // agree: the room window behind both reads only the neighbour (FarmHouse 17/18, 2026-10-14).
+        private static int SharedWindowRecord(string instanceId, int window)
+        {
+            for (int b = 0; b < s_OutsideInBuildings.Count; b++)
+            {
+                var building = s_OutsideInBuildings[b];
+                if (building == null || building.InstanceId != instanceId) continue;
+                if (window >= building.Apertures.Count) return window;
+                var pane = building.Apertures[window];
+                return pane.Pretend && pane.ViewFollows >= 0 ? pane.ViewFollows : window;
+            }
+            return window;
+        }
+
         public static bool IsWindowCleaned(string instanceId, int window)
         {
             if (instanceId == null || window < 0) return WindowCleanedDefault();
+            window = SharedWindowRecord(instanceId, window);
 
             EnsureWindowStateLoaded(instanceId);
 
@@ -502,6 +518,7 @@ namespace SeamlessInteriors
         public static void SetWindowCleaned(string instanceId, int window, bool cleaned)
         {
             if (instanceId == null || window < 0) return;
+            window = SharedWindowRecord(instanceId, window);
 
             // Load first, or the write below would be the only thing on record for this building
             // and the next save would overwrite the file with it.
