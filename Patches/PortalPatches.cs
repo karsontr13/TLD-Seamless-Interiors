@@ -67,6 +67,8 @@ namespace SeamlessInteriors
         {
             if (__instance == null || PortalMagicPatch.DecidedThisFrame(__instance)) return true;
             if (PortalMagicPatch.Prefix(__instance)) return true;
+            // In the game a scene load ends this wait; with none, Update used the door again every frame.
+            __instance.m_ActivateWhenPlayerTouchGround = false;
             GameManager.GetPlayerManagerComponent()?.ResetInteraction();
             return false;
         }
@@ -664,13 +666,17 @@ namespace SeamlessInteriors
         internal static void OnLoadingZone(LoadScene door)
         {
             if (door == null || string.IsNullOrEmpty(door.m_SceneToLoad)) return;
-            MarkDecided(door);
             var instance = SeamlessInteriorsMod.FindInstanceOwning(door.transform);
-            if (instance == null) { TryRedirectIntoClone(door); return; }
+            // Marked only where the game should load the scene: marked always, the Riken's hull zones sent its
+            // doors in and out to the game, loading the original ship or the region again (2026-10-14).
+            if (instance == null) { if (TryRedirectIntoClone(door)) MarkDecided(door); return; }
             if (!LeadsToARegion(door.m_SceneToLoad) && door.m_SceneToLoad != instance.Config.InteriorSceneBaseName
                 && (instance.Config.DoorSpawnPoints == null || instance.Config.DoorSpawnPoints.Count == 0)
                 && instance.Config.ExitSpawnPosition == Vector3.zero)
+            {
+                MarkDecided(door);
                 NoteLeftThrough(instance, door);
+            }
         }
 
         private static string NearestRegionExitPoint(SeamlessInteriorInstance instance, Vector3 near)
