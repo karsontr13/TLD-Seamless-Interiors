@@ -315,6 +315,8 @@ namespace SeamlessInteriors
 
             float real = Time.realtimeSinceStartup;
             if (!force && !s_CoverDirty && real < s_OI.CoversNextTick && live == s_OI.CoversLive) return;
+            // Cleared here too: left set, this ran every frame and restarted a refrosting window's fill each time.
+            s_CoverDirty = false;
             s_OI.CoversNextTick = real + 1f;
             s_OI.CoversLive = live;
 

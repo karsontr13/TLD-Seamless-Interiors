@@ -545,6 +545,8 @@ namespace SeamlessInteriors
             // 23 ms (2026-10-14). The texture keeps the old frost until the new one is whole.
             if (layer == null || layer.Tables == null) return;
             if (layer.FillNext >= 0 ? layer.FillTarget == frost : layer.FrostShown == frost) return;
+            // A fill under way is not restarted for a smaller step than shows: it would never finish.
+            if (layer.FillNext >= 0 && Mathf.Abs(frost - layer.FillTarget) < COVER_FROST_STEP && (frost == 0f) == (layer.FillTarget == 0f)) return;
             layer.FillTarget = frost;
             layer.FillNext = 0;
         }
