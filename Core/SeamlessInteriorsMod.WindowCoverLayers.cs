@@ -194,6 +194,7 @@ namespace SeamlessInteriors
             var opening = s_WindowPortalOpenings[index];
             Vector3 center; float width, height;
             if (!CoverRect(opening, out center, out width, out height)) return null;
+            center += opening.Outward * opening.CoverOut;
 
             // Seeded by the building's window where there is one, so the outside shows the same frost and snow.
             int window = index < s_WindowPortalSpot.Count ? s_WindowPortalSpot[index] : -1;

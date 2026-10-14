@@ -67,6 +67,10 @@ namespace SeamlessInteriors
         // (TryMeasureRoomFrameReach). A bool and not NaN: the struct's default must mean not known.
         public float FrameDepthIntoRoom;
         public bool FrameDepthKnown;
+
+        // Meters out from the glass where its frost and snow stand; 0 = on the glass. Set for a hand opening
+        // whose picture stands past boards, so the cover is behind them (Milton bank, 2026-10-14).
+        public float CoverOut;
     }
 
     public partial class SeamlessInteriorsMod
@@ -1560,6 +1564,8 @@ namespace SeamlessInteriors
                 opening.PortalCenter = float.IsNaN(row.PictureOutCm)
                     ? like.PortalCenter + slide
                     : opening.GlassCenter + like.Outward * (row.PictureOutCm * 0.01f);
+                if (!float.IsNaN(row.PictureOutCm))
+                    opening.CoverOut = Mathf.Max(0f, row.PictureOutCm * 0.01f - COVER_BANK_OUTSIDE_NEEDS - 0.002f);
                 if (!float.IsNaN(row.WidthCm))
                 {
                     float glassWidth = row.WidthCm * 0.01f;

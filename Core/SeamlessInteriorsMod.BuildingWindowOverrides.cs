@@ -738,7 +738,8 @@ namespace SeamlessInteriors
                     WindowsLeftAlone = new[] { 4 },
                     // Under Pane3 (room window 5) the bay is boards with no glass; seen from inside the
                     // gaps showed the room's white painted glow. A view behind the boards (2-9 cm out), down to the doors' sill.
-                    RoomOpeningsByHand = new[] { new RoomHandOpening { LikeRoomWindow = 5, BottomCm = -212f, TopCm = -22f, PictureOutCm = 10f } },
+                    // 14 cm, not 10: the frost and snow stand just in front of the picture and must clear the boards.
+                    RoomOpeningsByHand = new[] { new RoomHandOpening { LikeRoomWindow = 5, BottomCm = -212f, TopCm = -22f, PictureOutCm = 14f } },
                 }
             },
             // Milton post office. Its room glass is two sheets (A: five windows); read whole, the room was
