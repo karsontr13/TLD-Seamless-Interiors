@@ -33,58 +33,48 @@ namespace SeamlessInteriors
         }
 
         // Safehouse Customization+ makes stoves and other big objects movable when an interior scene initializes.
-        // SI hides template scenes from mods and empties them first, so SI runs that pass itself before the copy.
-        private static MethodInfo s_SCPlusMakeDecoration;
-        private static MethodInfo s_SCPlusCarryableRoot;
+        // SI hides template scenes from mods and empties them first, so SI hands SC+ that event itself before the copy.
+        private static MelonMod s_SCPlusMelon;
+        private static Assembly s_SCPlusAssembly;
 
         private static void InstallSafehouseCustomizationPlus()
         {
-            Assembly assembly = FindMelonAssembly("SafehouseCustomizationPlus");
-            if (assembly == null) return;
+            foreach (MelonBase melon in MelonBase.RegisteredMelons)
+                if (melon != null && melon.Info != null && melon.Info.Name == "SafehouseCustomizationPlus")
+                    s_SCPlusMelon = melon as MelonMod;
+            if (s_SCPlusMelon == null) return;
 
-            const BindingFlags statics = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
-            s_SCPlusMakeDecoration = assembly.GetType("SCPlus.SCPMain")?.GetMethod("MakeIntoDecoration", statics, null, new[] { typeof(GameObject) }, null);
-            s_SCPlusCarryableRoot = assembly.GetType("SCPlus.Utility")?.GetMethod("TryGetCarryableRoot", statics);
-            if (s_SCPlusMakeDecoration == null || s_SCPlusCarryableRoot == null)
-            {
-                s_SCPlusMakeDecoration = null;
-                MelonLogger.Warning($"{TAG} Safehouse Customization+ istisnasi kurulamadi: beklenen uyeler bulunamadi (surum degismis olabilir).");
-                return;
-            }
-            MelonLogger.Msg($"{TAG} Safehouse Customization+: bina sobalari ve buyuk esyalar tasinabilir yapilacak.");
+            s_SCPlusAssembly = s_SCPlusMelon.GetType().Assembly;
+            MelonLogger.Msg($"{TAG} Safehouse Customization+ {s_SCPlusMelon.Info.Version}: bina sobalari ve buyuk esyalar tasinabilir yapilacak.");
         }
 
-        // The same passes SC+ runs in OnSceneWasInitialized, per scene suffix, on the template's active objects.
+        // SC+'s own scene pass, through its public MelonMod callback, so it keeps working when SC+ renames its internals.
         internal static void ApplySafehouseCustomizationPlus(UnityEngine.SceneManagement.Scene scene, GameObject[] roots)
         {
-            if (s_SCPlusMakeDecoration == null || roots == null) return;
+            if (s_SCPlusMelon == null || roots == null || roots.Length == 0) return;
 
             string name = SeamlessInteriorsMod.RealSceneName(scene) ?? "";
-            var done = new HashSet<int>();
-            int made = 0;
+            int before = CountDecorations(roots);
             try
             {
-                foreach (GameObject root in roots)
-                {
-                    if (root == null) continue;
-                    if (name.EndsWith("_SANDBOX"))
-                    {
-                        made += MakeDecorations<WoodStove>(root, done);
-                        made += MakeDecorations<MillingMachine>(root, done);
-                        made += MakeDecorations<AmmoWorkBench>(root, done);
-                        made += MakeDecorations<ObjectAnim>(root, done);
-                    }
-                    else if (name.EndsWith("_DLC01")) made += MakeDecorations<Il2CppTLD.Trader.TraderRadio>(root, done);
-                    else if (!name.Contains("_")) made += MakeDecorations<WoodStove>(root, done);
-                }
+                SeamlessInteriorsMod.WithRealSceneView(() => s_SCPlusMelon.OnSceneWasInitialized(scene.buildIndex, name));
             }
             catch (Exception ex)
             {
                 ReportOnce("Safehouse Customization+", ex);
             }
 
+            int made = CountDecorations(roots) - before;
             if (made > 0)
                 MelonLogger.Msg($"{TAG} Safehouse Customization+: '{name}' icinde {made} esya tasinabilir yapildi.");
+        }
+
+        private static int CountDecorations(GameObject[] roots)
+        {
+            int n = 0;
+            foreach (GameObject root in roots)
+                if (root != null) n += root.GetComponentsInChildren<DecorationItem>(true).Length;
+            return n;
         }
 
         // SC+ switches off the original of a moved object when it loads the save, before SI has built the room,
@@ -97,7 +87,7 @@ namespace SeamlessInteriors
 
         internal static void ApplySafehouseCustomizationPlusMoves(SeamlessInteriorInstance instance)
         {
-            if (s_SCPlusMakeDecoration == null || instance == null || instance.MasterInterior == null) return;
+            if (s_SCPlusAssembly == null || instance == null || instance.MasterInterior == null) return;
             try
             {
                 if (!ResolveSCPlusData()) return;
@@ -145,12 +135,12 @@ namespace SeamlessInteriors
 
         internal static void TickSafehouseCustomizationPlus()
         {
-            if (s_SCPlusMakeDecoration == null || Time.unscaledTime < s_SCPlusNextTick) return;
+            if (s_SCPlusAssembly == null || Time.unscaledTime < s_SCPlusNextTick) return;
             s_SCPlusNextTick = Time.unscaledTime + 0.5f;
             try
             {
                 if (s_SCPlusCarryables == null)
-                    s_SCPlusCarryables = s_SCPlusMakeDecoration.DeclaringType.Assembly.GetType("SCPlus.CarryableManager")?
+                    s_SCPlusCarryables = s_SCPlusAssembly.GetType("SCPlus.CarryableManager")?
                         .GetField("carryables", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)?.GetValue(null) as IList;
                 if (s_SCPlusCarryables == null) return;
 
@@ -189,7 +179,7 @@ namespace SeamlessInteriors
         {
             if (s_SCPlusLoad != null) return true;
 
-            Assembly assembly = s_SCPlusMakeDecoration.DeclaringType.Assembly;
+            Assembly assembly = s_SCPlusAssembly;
             const BindingFlags statics = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
             Type utility = assembly.GetType("SCPlus.Utility");
             s_SCPlusData = utility?.GetField("dataManager", statics)?.GetValue(null);
@@ -274,24 +264,6 @@ namespace SeamlessInteriors
             float value;
             return float.TryParse(obj.Substring(i, j - i), System.Globalization.NumberStyles.Float,
                                   System.Globalization.CultureInfo.InvariantCulture, out value) ? value : fallback;
-        }
-
-        private static int MakeDecorations<T>(GameObject root, HashSet<int> done) where T : Component
-        {
-            int made = 0;
-            foreach (T component in root.GetComponentsInChildren<T>(false))
-            {
-                var args = new object[] { component.transform, null };
-                if (!(bool)s_SCPlusCarryableRoot.Invoke(null, args)) continue;
-
-                var go = args[1] as GameObject;
-                if (go == null || !done.Add(go.GetInstanceID())) continue;
-                if (go.GetComponentInChildren<DecorationItem>() != null) continue;
-
-                s_SCPlusMakeDecoration.Invoke(null, new object[] { go });
-                made++;
-            }
-            return made;
         }
 
         private static void InstallHangarShelter(HarmonyLib.Harmony harmony)

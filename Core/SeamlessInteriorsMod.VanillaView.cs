@@ -583,6 +583,15 @@ namespace SeamlessInteriors
             return real != null && real == s_ViewRegionScene && IsSceneViewActive() ? s_ViewInteriorScene : real;
         }
 
+        // Runs mod code SI calls itself against the real scenes, with every view off.
+        internal static void WithRealSceneView(Action action)
+        {
+            bool previous = s_BypassSceneView;
+            s_BypassSceneView = true;
+            try { action(); }
+            finally { s_BypassSceneView = previous; }
+        }
+
         // SI's own code reads real scene names through this, never the interior the mods are shown.
         internal static string RealSceneName(UnityEngine.SceneManagement.Scene scene)
         {
