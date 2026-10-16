@@ -827,7 +827,7 @@ namespace SeamlessInteriors
         // NOTE: Renderer, not MeshRenderer - SkinnedMeshRenderer, ParticleSystemRenderer
         // and LineRenderer have to be switched off too, otherwise part of the item stays
         // visible from outside.
-        private static void SetObjectVisualState(GameObject go, bool visible)
+        internal static void SetObjectVisualState(GameObject go, bool visible)
         {
             if (go == null) return;
 

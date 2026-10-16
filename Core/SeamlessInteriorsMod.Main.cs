@@ -520,6 +520,9 @@ namespace SeamlessInteriors
             // (see SeamlessInteriorsMod.CarriedDecorations.cs)
             TickCarriedDecorationGuard();
 
+            // Safehouse Customization+ objects standing in a parked room show and hide with it.
+            ModExceptions.TickSafehouseCustomizationPlus();
+
             // A shell left in a RandomBurnedHouses group the game switched off after the load.
             TickShellVariantGuard();
 

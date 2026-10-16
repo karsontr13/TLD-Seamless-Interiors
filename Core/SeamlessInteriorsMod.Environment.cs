@@ -227,7 +227,9 @@ namespace SeamlessInteriors
             foreach (var scn in loadedScenes)
             {
                 if (!scn.isLoaded) continue;
-                foreach (GameObject rootObj in RealRootObjects(scn))
+                GameObject[] sceneRoots = RealRootObjects(scn);
+                ModExceptions.ApplySafehouseCustomizationPlus(scn, sceneRoots);
+                foreach (GameObject rootObj in sceneRoots)
                 {
                     if (rootObj == instance.MasterInterior) continue;
                     rootObj.transform.SetParent(instance.MasterInterior.transform, false);

@@ -229,6 +229,7 @@ namespace SeamlessInteriors
 
             // Objects other mods made placeable after the clone was built: before anything moves.
             GuardedCall(() => StabilizeRuntimeGuids(instance), id, "sabit kimlik");
+            GuardedCall(() => ModExceptions.ApplySafehouseCustomizationPlusMoves(instance), id, "SC+ tasima");
 
             // ─── 1. One-time import of the player's pre-mod history ───
             //
