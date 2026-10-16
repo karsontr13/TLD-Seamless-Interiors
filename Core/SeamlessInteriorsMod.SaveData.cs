@@ -372,6 +372,9 @@ namespace SeamlessInteriors
                 if (!wasActive) instance.MasterInterior.SetActive(false);
             }
 
+            // Tells the restore this file was written with stable guids (see StableGuids.cs).
+            entries.Add($"{{\"g\":\"{StableGuidMarker}\"}}");
+
             // NOTE: this used to write "\\n" (backslash + n) instead of a real newline.
             // The parser ignores the separators, so old files still read fine.
             string json = "[\n" + string.Join(",\n", entries) + "\n]";
@@ -883,11 +886,15 @@ namespace SeamlessInteriors
                     guidToPosRot[entry.guid] = entry;
             }
 
+            // Files from before stable guids hold the old random ones: those objects are kept, not switched off.
+            bool stableFile = guidToPosRot.Remove(StableGuidMarker);
+
             Transform interiorT = instance.MasterInterior.transform;
             var placeables = InteriorScan.Placeables(instance.MasterInterior);
             int restoredCount = 0;
             int changedCount = 0;
             int protectedSpawned = 0;
+            int protectedUnstable = 0;
             int carriedHidden = 0;
             var restoredGuids = new HashSet<string>();
 
@@ -917,6 +924,12 @@ namespace SeamlessInteriors
                     if (IsSpawnedPlaceable(instance, p))
                     {
                         protectedSpawned++;
+                        continue;
+                    }
+
+                    if (!stableFile && HasStableGuid(p))
+                    {
+                        protectedUnstable++;
                         continue;
                     }
 
@@ -1026,6 +1039,9 @@ namespace SeamlessInteriors
                     }
                 }
             }
+
+            if (protectedUnstable > 0)
+                MelonLogger.Msg($"[PLACEABLE-LOAD] {instance.Config.ResolvedInstanceId}: eski kayitta kimligi tutmayan {protectedUnstable} obje kapatilmadi.");
 
             if (s_DebugBounds || protectedSpawned > 0 || carriedHidden > 0)
                 MelonLogger.Msg($"[PLACEABLE-LOAD] {instance.Config.InteriorSceneBaseName}: {restoredCount}/{guidToPosRot.Count} Placeable geri yuklendi " +

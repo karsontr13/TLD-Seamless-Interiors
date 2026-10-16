@@ -227,6 +227,9 @@ namespace SeamlessInteriors
             if (instance.LegacyImport == LegacyImportState.Unknown)
                 GuardedCall(() => ProbeLegacySave(instance, true), id, "yoklama");
 
+            // Objects other mods made placeable after the clone was built: before anything moves.
+            GuardedCall(() => StabilizeRuntimeGuids(instance), id, "sabit kimlik");
+
             // ─── 1. One-time import of the player's pre-mod history ───
             //
             // This only writes the mod's own JSON files; the restore calls below then

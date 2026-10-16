@@ -82,6 +82,7 @@ namespace SeamlessInteriors
         private void HandleInitialPlaceables(SeamlessInteriorInstance instance)
         {
             InvalidateInteriorPlaceables(instance.MasterInterior);
+            StabilizeRuntimeGuids(instance);
             CollectInteriorPlaceableGuids(instance.MasterInterior);
         }
 

@@ -572,3 +572,6 @@ DECOR-STATE	^\[DECOR\-STATE\]\ '(.*?)'\ kur\ kutusu\ geri\ yuklenemedi:\ (.*)$	[
 DECOR-STATE	^\[DECOR\-STATE\]\ '(.*?)'\ fotograf\ geri\ yuklenemedi:\ (.*)$	[DECOR-STATE] '${1}' photo could not be restored: ${2}
 LIGHT-MODE	^\[LIGHT\-MODE\]\ (.*?)\ (\d+)\ binaya\ hemen\ uygulandi\.$	[LIGHT-MODE] ${1} applied to ${2} buildings at once.
 LEGACY	^\[LEGACY\]\ (.*?):\ kur\ kutusu/fotograf\ aktarimi\ hatasi\ \-\ (.*)$	[LEGACY] ${1}: curing box/photo transfer error - ${2}
+STABLE-GUID	^\[STABLE\-GUID\]\ (.*?):\ calisirken\ verilmis\ (.*?)\ kimlik\ sabit\ kimlikle\ degistirildi\.$	[STABLE-GUID] ${1}: ${2} guids handed out at runtime were replaced with stable ones.
+STABLE-GUID	^\[STABLE\-GUID\]\ (.*?):\ '(.*?)'\ kimligi\ degistirilemedi:\ (.*?)$	[STABLE-GUID] ${1}: could not change the guid of '${2}': ${3}
+PLACEABLE-LOAD	^\[PLACEABLE\-LOAD\]\ (.*?):\ eski\ kayitta\ kimligi\ tutmayan\ (.*?)\ obje\ kapatilmadi\.$	[PLACEABLE-LOAD] ${1}: ${2} objects whose guid did not match an older save were kept switched on.
