@@ -12,6 +12,12 @@ namespace SeamlessInteriors
         // previous run, so everything belonging to this instance is wiped.
         private void CheckNewGameLootLock(SeamlessInteriorInstance instance)
         {
+            // A save SI already stamped is not new: during a loading-screen return the clock can still read 0
+            // before the game restores it, and this wiped every building. Stale data is quarantined instead.
+            if (HasOwnSaveIdentityFile()) return;
+            try { if (SaveGameSystem.IsRestoreInProgress() || SaveGameSystem.IsSceneRestoreInProgress()) return; }
+            catch { }
+
             // Less than ~3 minutes of played time means this is a fresh game.
             var tod = GameManager.GetTimeOfDayComponent();
             if (tod != null && tod.GetHoursPlayedNotPaused() < 0.05f)

@@ -645,6 +645,13 @@ namespace SeamlessInteriors
             return false;
         }
 
+        // Runs after EnsureSaveIdentity, which moves away an identity file of another game.
+        private static bool HasOwnSaveIdentityFile()
+        {
+            string path = GetSaveIdentityPath(SaveGameSystem.m_CurrentSaveName);
+            return path != null && File.Exists(path);
+        }
+
         private static float GetHoursPlayedSafe()
         {
             try
