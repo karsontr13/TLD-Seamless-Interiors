@@ -129,9 +129,13 @@ namespace SeamlessInteriors
 
         // SC+ keeps a moved object under the region, so in a parked room it would hang in the air seen from outside.
         // Only its look and collision follow the room: SC+ saves an inactive object as removed, losing its contents.
+        // While the room is held for the views in from outside, the object is drawn on the room's layer, like the room.
+        private const int SCPLUS_HIDDEN = 0, SCPLUS_SHOWN = 1, SCPLUS_ROOM_LAYER = 2;
         private static IList s_SCPlusCarryables;
         private static float s_SCPlusNextTick;
-        private static readonly Dictionary<int, bool> s_SCPlusShown = new Dictionary<int, bool>();
+        private static readonly Dictionary<int, int> s_SCPlusShown = new Dictionary<int, int>();
+        // The layers an object's renderers had before it went onto a room layer, by object.
+        private static readonly Dictionary<int, List<KeyValuePair<GameObject, int>>> s_SCPlusSavedLayers = new Dictionary<int, List<KeyValuePair<GameObject, int>>>();
 
         internal static void TickSafehouseCustomizationPlus()
         {
@@ -151,28 +155,63 @@ namespace SeamlessInteriors
                     GameObject go = carryable.gameObject;
                     if (SeamlessInteriorsMod.IsUnderAnyMasterInteriorPublic(go.transform)) continue;
 
-                    bool visible = true;
+                    int state = SCPLUS_SHOWN, roomLayer = -1;
                     foreach (SeamlessInteriorInstance instance in SeamlessInteriorsMod.ActiveInteriors.Values)
                     {
                         if (instance == null || instance.MasterInterior == null || !instance.Config.IsParked) continue;
                         if (!instance.IsPositionInVolume(go.transform.position)) continue;
-                        // The open room is drawn on its own layer for window views; this object is not.
-                        visible = instance.MasterInterior.activeSelf && SeamlessInteriorsMod.PlayerInteriorId == instance.Config.ResolvedInstanceId;
+                        string id = instance.Config.ResolvedInstanceId;
+                        roomLayer = SeamlessInteriorsMod.OutsideInHeldRoomLayer(id);
+                        if (instance.MasterInterior.activeSelf && SeamlessInteriorsMod.PlayerInteriorId == id) state = SCPLUS_SHOWN;
+                        else state = roomLayer >= 0 ? SCPLUS_ROOM_LAYER : SCPLUS_HIDDEN;
                         break;
                     }
 
-                    bool shown;
-                    int id = go.GetInstanceID();
-                    if (!s_SCPlusShown.TryGetValue(id, out shown)) shown = true;
-                    if (shown == visible) continue;
-                    SeamlessInteriorsMod.SetObjectVisualState(go, visible);
-                    s_SCPlusShown[id] = visible;
+                    int shown;
+                    int key = go.GetInstanceID();
+                    if (!s_SCPlusShown.TryGetValue(key, out shown)) shown = SCPLUS_SHOWN;
+                    if (shown == state && (state != SCPLUS_ROOM_LAYER || OnLayer(go, roomLayer))) continue;
+                    if (shown == SCPLUS_ROOM_LAYER) RestoreSCPlusLayers(key);
+                    // Collision only where the player is: a held room is seen, not walked in.
+                    SeamlessInteriorsMod.SetObjectVisualState(go, state == SCPLUS_SHOWN);
+                    if (state == SCPLUS_ROOM_LAYER) PutSCPlusOnRoomLayer(go, key, roomLayer);
+                    s_SCPlusShown[key] = state;
                 }
             }
             catch (Exception ex)
             {
                 ReportOnce("Safehouse Customization+ gorunum", ex);
             }
+        }
+
+        // Renderers on, each moved to the room's layer; the main camera does not draw that layer.
+        private static void PutSCPlusOnRoomLayer(GameObject go, int key, int layer)
+        {
+            var saved = new List<KeyValuePair<GameObject, int>>();
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r == null) continue;
+                r.enabled = true;
+                if (r.gameObject.layer == layer) continue;
+                saved.Add(new KeyValuePair<GameObject, int>(r.gameObject, r.gameObject.layer));
+                r.gameObject.layer = layer;
+            }
+            s_SCPlusSavedLayers[key] = saved;
+        }
+
+        private static void RestoreSCPlusLayers(int key)
+        {
+            List<KeyValuePair<GameObject, int>> saved;
+            if (!s_SCPlusSavedLayers.TryGetValue(key, out saved)) return;
+            foreach (var entry in saved) if (entry.Key != null) entry.Key.layer = entry.Value;
+            s_SCPlusSavedLayers.Remove(key);
+        }
+
+        // Another held room can take the layer over; the object follows it.
+        private static bool OnLayer(GameObject go, int layer)
+        {
+            var r = go.GetComponentInChildren<Renderer>(true);
+            return r == null || r.gameObject.layer == layer;
         }
 
         private static bool ResolveSCPlusData()

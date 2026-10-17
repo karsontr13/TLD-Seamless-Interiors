@@ -78,6 +78,17 @@ namespace SeamlessInteriors
             set { if (s_PrefOutsideInMaxHeldRooms != null) s_PrefOutsideInMaxHeldRooms.Value = value; }
         }
 
+        // The private layer a room is drawn on while held for the views in from outside, or -1.
+        internal static int OutsideInHeldRoomLayer(string instanceId)
+        {
+            for (int i = 0; i < s_OutsideInBuildings.Count; i++)
+            {
+                var building = s_OutsideInBuildings[i];
+                if (building.Borrowed && building.InstanceId == instanceId) return building.Layer;
+            }
+            return -1;
+        }
+
         private sealed class OutsideInBuilding
         {
             // Decided each frame by ChooseOutsideInHeldRooms, acted on by the tick.
