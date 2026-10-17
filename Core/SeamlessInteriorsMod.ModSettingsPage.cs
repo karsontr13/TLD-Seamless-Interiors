@@ -168,8 +168,8 @@ namespace SeamlessInteriors
             public bool ChimneySmoke = true;
 
             [ModSettings.Section("Uninstall")]
-            [ModSettings.Name("Prepare this region for uninstall")]
-            [ModSettings.Description("Set to Yes and confirm while playing: the buildings of the region you are in are saved the way the base game keeps its interiors, so your things are still there if you remove the mod. Do it in every region you use, then quit. Keep a copy of your save first.")]
+            [ModSettings.Name("Prepare the save for uninstall")]
+            [ModSettings.Description("Set to Yes and confirm while playing: every building of this mod, in every region, is saved the way the base game keeps its interiors, so your things are still there if you remove the mod. Then quit. Keep a copy of your save first.")]
             public bool PrepareForUninstall = false;
 
             [ModSettings.Section("Troubleshooting")]

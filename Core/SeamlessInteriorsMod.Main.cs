@@ -1934,8 +1934,8 @@ namespace SeamlessInteriors
 
             trace?.End("eski-kayit");
 
-            // The template's own gear ids, while it still has them (VanillaExport.cs).
-            CaptureVanillaSceneGuids(instance);
+            // The template's own ids, while it still has them (VanillaIndex.cs).
+            CaptureVanillaFacts(instance);
             s_LoadTrace = trace;
             trace?.Begin();
             ProcessSpawnsAndDeduplication(instance);
@@ -2066,6 +2066,7 @@ namespace SeamlessInteriors
             // UpdateGlobalEnvironment call.
             instance.IsCloningRoutineActive = false;
             instance.RunCompleted = true;
+            UpdateVanillaFacts(instance);
 
             // Check whether all instances are ready; if so, run the batched environment fix.
             MelonCoroutines.Start(TryBatchUpdateEnvironment());

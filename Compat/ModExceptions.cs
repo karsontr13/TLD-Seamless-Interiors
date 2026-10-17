@@ -131,7 +131,7 @@ namespace SeamlessInteriors
         // interior coordinates, as SC+ keeps them for the real interior. Runs after SC+ wrote this save's lists.
         private static MethodInfo s_SCPlusSave;
 
-        internal static void ExportSafehouseCustomizationPlus(List<KeyValuePair<SeamlessInteriorInstance, string>> rooms, string saveName)
+        internal static void ExportSafehouseCustomizationPlus(List<VanillaRoomFacts> rooms, string saveName)
         {
             if (s_SCPlusAssembly == null || rooms == null || rooms.Count == 0) return;
             try
@@ -141,7 +141,7 @@ namespace SeamlessInteriors
                 if (s_SCPlusSave == null) throw new MissingMemberException("Safehouse Customization+ kayit yazma uyesi bulunamadi.");
 
                 var regions = new HashSet<string>();
-                foreach (var room in rooms) regions.Add(room.Key.Config.ExteriorSceneName);
+                foreach (var room in rooms) regions.Add(room.Region);
 
                 foreach (string region in regions)
                 {
@@ -152,12 +152,12 @@ namespace SeamlessInteriors
                     foreach (string raw in SplitSCPlusRecords(s_SCPlusLoad.Invoke(s_SCPlusData, new object[] { regionKey }) as string))
                     {
                         string record = TrimSCPlusRecord(raw);
-                        KeyValuePair<SeamlessInteriorInstance, string> owner;
-                        if (JsonString(record, "currentScene") == region && FindSCPlusRoom(rooms, record, out owner))
+                        VanillaRoomFacts owner = JsonString(record, "currentScene") == region ? FindSCPlusRoom(rooms, region, record) : null;
+                        if (owner != null)
                         {
                             List<string> list;
-                            if (!perKey.TryGetValue(owner.Value, out list)) perKey[owner.Value] = list = new List<string>();
-                            list.Add(ToInteriorRecord(record, owner.Key, owner.Value));
+                            if (!perKey.TryGetValue(owner.Key, out list)) perKey[owner.Key] = list = new List<string>();
+                            list.Add(ToInteriorRecord(record, owner));
                         }
                         else kept.Add(record);
                     }
@@ -192,41 +192,39 @@ namespace SeamlessInteriors
             return r;
         }
 
-        // The room whose scene object the record moved: at its new spot, or hidden at the old one.
-        private static bool FindSCPlusRoom(List<KeyValuePair<SeamlessInteriorInstance, string>> rooms, string record,
-                                           out KeyValuePair<SeamlessInteriorInstance, string> owner)
-        {
-            owner = default;
-            string native = JsonString(record, "nativeScene");
-            string name = JsonString(record, "name");
-            if (string.IsNullOrEmpty(native) || string.IsNullOrEmpty(name)) return false;
+        // The room a record's scene object belongs to: its original spot lies inside that room. Rooms of one
+        // scene in one region are told apart only by that.
+        private const float SCPLUS_ROOM_MARGIN = 2f;
 
+        private static VanillaRoomFacts FindSCPlusRoom(List<VanillaRoomFacts> rooms, string region, string record)
+        {
+            string native = JsonString(record, "nativeScene");
+            if (string.IsNullOrEmpty(native) || string.IsNullOrEmpty(JsonString(record, "name"))) return null;
+            Vector3 original = JsonVector(record, "originalPos");
+
+            VanillaRoomFacts only = null, inside = null;
+            int sameScene = 0;
             foreach (var room in rooms)
             {
-                var instance = room.Key;
-                if (instance.MasterInterior == null || instance.Config.InteriorSceneBaseName != native) continue;
-                if (FindSCPlusOriginal(instance.MasterInterior, name, JsonVector(record, "currentPos")) != null
-                    || FindSCPlusOriginal(instance.MasterInterior, name, JsonVector(record, "originalPos")) != null)
-                {
-                    owner = room;
-                    return true;
-                }
+                if (room.Scene != native || room.Region != region) continue;
+                sameScene++;
+                only = room;
+                if (room.ContainsLocal(room.ToLocal(original), SCPLUS_ROOM_MARGIN)) inside = room;
             }
-            return false;
+            return inside ?? (sameScene == 1 ? only : null);
         }
 
-        private static string ToInteriorRecord(string record, SeamlessInteriorInstance instance, string key)
+        private static string ToInteriorRecord(string record, VanillaRoomFacts room)
         {
-            Transform t = instance.MasterInterior.transform;
             Vector3 rot = JsonVector(record, "currentRot");
             Quaternion world = new Quaternion(rot.x, rot.y, rot.z, JsonFloat(JsonObject(record, "currentRot"), "w", 1f));
-            Quaternion local = Quaternion.Inverse(t.rotation) * world;
+            Quaternion local = room.ToLocal(world);
 
             // SC+ matches the native scene with Contains(save key), so an instanced interior needs its full key.
-            record = SetJsonString(record, "nativeScene", key);
-            record = SetJsonString(record, "currentScene", instance.Config.InteriorSceneBaseName);
-            record = SetJsonObject(record, "originalPos", Vector3Json(t.InverseTransformPoint(JsonVector(record, "originalPos"))));
-            record = SetJsonObject(record, "currentPos", Vector3Json(t.InverseTransformPoint(JsonVector(record, "currentPos"))));
+            record = SetJsonString(record, "nativeScene", room.Key);
+            record = SetJsonString(record, "currentScene", room.Scene);
+            record = SetJsonObject(record, "originalPos", Vector3Json(room.ToLocal(JsonVector(record, "originalPos"))));
+            record = SetJsonObject(record, "currentPos", Vector3Json(room.ToLocal(JsonVector(record, "currentPos"))));
             record = SetJsonObject(record, "currentRot",
                 "{\"@type\":\"UnityEngine.Quaternion\",\"x\":" + F(local.x) + ",\"y\":" + F(local.y) + ",\"z\":" + F(local.z) + ",\"w\":" + F(local.w) + "}");
             return record;

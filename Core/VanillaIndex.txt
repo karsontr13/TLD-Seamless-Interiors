@@ -1,0 +1,2 @@
+# Facts of every building for "Prepare the save for uninstall" (SeamlessInteriorsMod.VanillaIndex.cs).
+# Made by loading each region once with the mod: SeamlessInteriorsData/VanillaIndex/<id>.txt, joined here.

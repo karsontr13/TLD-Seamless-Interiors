@@ -12,30 +12,32 @@ namespace SeamlessInteriors
     // ─────────────────────────────────────────────────────────────────────
     // PREPARE A SAVE FOR UNINSTALL
     //
-    // The reverse of LegacyImport.cs. Each building of the loaded region is written into the
-    // game's save under the key the base game reads for that interior scene, as a
-    // SceneSaveGameFormat, so loading the save without the mod finds the player's things in
+    // The reverse of LegacyImport.cs. Every building the mod holds data for, in any region, is
+    // written into the game's save under the key the base game reads for that interior scene,
+    // as a SceneSaveGameFormat, so loading the save without the mod finds the player's things in
     // the real interiors.
     //
-    // Only on the player's request (settings page). The mod itself never reads these keys
-    // again for a building it owns (its _legacy.json marker says so), so a save that goes on
-    // being played with the mod is not changed by them; it only holds an older copy.
+    // Built from the mod's own files (the player's state), the building's facts
+    // (VanillaIndex.cs: the scene's ids and the clone's place) and the region's game save
+    // (fires), so the building's region does not have to be loaded.
+    //
+    // Only on the player's request (settings page). The mod never reads these keys again for a
+    // building it owns (its _legacy.json marker says so), so a save that goes on being played
+    // with the mod is not changed by them; it only holds an older copy.
     //
     // Clone-local space IS interior-scene space (see LegacyImport.cs), so positions are only
-    // copied, never converted, except where the mod's own records hold world positions.
+    // copied, except where the mod's own records hold world positions.
     // ─────────────────────────────────────────────────────────────────────
     public partial class SeamlessInteriorsMod
     {
         private static bool s_VanillaExportArmed;
-        private static bool s_VanillaExportRunning;
 
-        // Settings page: hydrate every building of this region, then save once with the export on.
+        // Settings page: save once with the export on.
         public static void RequestVanillaExport()
         {
-            if (s_VanillaExportRunning) return;
-            if (string.IsNullOrEmpty(SaveGameSystem.m_CurrentSaveName) || ActiveInteriors.Count == 0)
+            if (string.IsNullOrEmpty(SaveGameSystem.m_CurrentSaveName))
             {
-                ShowExportMessage("Seamless Interiors: there is no building of this mod in this region.");
+                ShowExportMessage("Seamless Interiors: load your save first.");
                 return;
             }
             MelonCoroutines.Start(VanillaExportRoutine());
@@ -43,126 +45,203 @@ namespace SeamlessInteriors
 
         private static IEnumerator VanillaExportRoutine()
         {
-            s_VanillaExportRunning = true;
             yield return null;
-
-            int filled = 0;
-            foreach (var instance in new List<SeamlessInteriorInstance>(ActiveInteriors.Values))
-            {
-                if (!IsExportable(instance) || instance.ContentHydrated) continue;
-                try { EnsureHydratedNow(instance, "vanilla-export"); filled++; }
-                catch (System.Exception ex)
-                {
-                    MelonLogger.Warning($"[KALDIRMA] {instance.Config.ResolvedInstanceId}: doldurulamadi - {ex.Message}",
-                                        $"[UNINSTALL] {instance.Config.ResolvedInstanceId}: could not be filled - {ex.Message}");
-                }
-                yield return null;
-            }
-
             s_VanillaExportArmed = true;
-            s_VanillaExportRunning = false;
-            MelonLogger.Msg($"[KALDIRMA] {filled} bina dolduruldu, kayit baslatiliyor.",
-                            $"[UNINSTALL] {filled} buildings filled, saving the game.");
-            ShowExportMessage("Seamless Interiors: saving this region for the base game...");
-
+            ShowExportMessage("Seamless Interiors: saving your buildings for the base game...");
             try { GameManager.TriggerSurvivalSaveAndDisplayHUDMessage(); }
             catch (System.Exception ex)
             {
-                MelonLogger.Warning($"[KALDIRMA] Kayit baslatilamadi: {ex.Message}",
-                                    $"[UNINSTALL] Could not start the save: {ex.Message}");
+                MelonLogger.Warning($"[KALDIRMA] Kayit baslatilamadi: {ex.Message}", $"[UNINSTALL] Could not start the save: {ex.Message}");
             }
         }
 
-        // A building the mod owns: it has its own gear file, so ProbeLegacySave never imports it again.
-        private static bool IsExportable(SeamlessInteriorInstance instance)
+        private static string GetExportFilePath(string saveName, string id, string suffix)
         {
-            if (instance == null || instance.MasterInterior == null || !instance.RunCompleted) return false;
-            string gearPath = GetInactiveSceneGearSavePath(instance);
-            return gearPath != null && SaveFiles.Exists(gearPath);
+            return Path.Combine(ModPaths.DataDir(), saveName + "_" + id + suffix);
         }
 
-        // SaveSceneData postfix, after the mod's own files were written for this save.
+        // SaveSceneData postfix (last), after the mod's own files and SC+'s records were written for this save.
         public static void WriteVanillaExportIfArmed(SlotData slot)
         {
+            UpdateAllVanillaFacts();
+
             if (!s_VanillaExportArmed || slot == null) return;
             string saveName = SaveGameSystem.m_CurrentSaveName;
             if (string.IsNullOrEmpty(saveName) || !SlotBelongsToSave(slot, saveName)) return;
             s_VanillaExportArmed = false;
 
-            int written = 0, skipped = 0;
+            int written = 0, failed = 0;
+            var missing = new Dictionary<string, int>();
             var usedKeys = new HashSet<string>();
-            var exported = new List<KeyValuePair<SeamlessInteriorInstance, string>>();
-            foreach (var instance in ActiveInteriors.Values)
+            var exported = new List<VanillaRoomFacts>();
+            var fireCache = new Dictionary<string, Dictionary<string, string>>();
+
+            foreach (var cfg in SupportedInteriors)
             {
-                if (!IsExportable(instance)) continue;
-                string id = instance.Config.ResolvedInstanceId;
+                string id = cfg.ResolvedInstanceId;
+
+                // A building the mod owns has its gear file, so ProbeLegacySave never imports it again.
+                string gearPath = GetExportFilePath(saveName, id, "_inactive_scene_gear.json");
+                if (!SaveFiles.Exists(gearPath)) continue;
+
                 try
                 {
-                    if (!instance.ContentHydrated && IsLazyContentEnabled)
+                    VanillaRoomFacts facts = null;
+                    SeamlessInteriorInstance live;
+                    if (ActiveInteriors.TryGetValue(id, out live) && live != null && live.VanillaFacts != null && live.VanillaFacts.HasTransform)
+                        facts = live.VanillaFacts;
+                    if (facts == null) facts = FindVanillaFacts(id);
+                    BorrowSceneFacts(facts);
+                    if (facts == null || !facts.HasTransform || string.IsNullOrEmpty(facts.Key))
                     {
-                        MelonLogger.Warning($"[KALDIRMA] {id}: bina dolu degil, atlandi.", $"[UNINSTALL] {id}: building not filled, skipped.");
-                        skipped++;
+                        int n;
+                        missing.TryGetValue(cfg.ExteriorSceneName, out n);
+                        missing[cfg.ExteriorSceneName] = n + 1;
+                        MelonLogger.Warning($"[KALDIRMA] {id}: bu bina icin dizin yok, atlandi.", $"[UNINSTALL] {id}: no index for this building, skipped.");
                         continue;
                     }
-
-                    string key = ResolveVanillaSceneKey(instance);
-                    if (key == null || !usedKeys.Add(key))
+                    if (!usedKeys.Add(facts.Key))
                     {
-                        MelonLogger.Warning($"[KALDIRMA] {id}: oyunun kayit anahtari bulunamadi, atlandi.",
-                                            $"[UNINSTALL] {id}: the game's save key could not be found, skipped.");
-                        skipped++;
+                        MelonLogger.Warning($"[KALDIRMA] {id}: '{facts.Key}' anahtari baska binada, atlandi.", $"[UNINSTALL] {id}: key '{facts.Key}' already used, skipped.");
+                        failed++;
                         continue;
                     }
 
                     string summary;
-                    string json = BuildVanillaSceneJson(instance, out summary);
+                    string json = BuildVanillaSceneJson(saveName, id, facts, FireRecordsOf(saveName, facts.Region, fireCache), out summary);
                     var fmt = Utils.DeserializeObject<SceneSaveGameFormat>(json);
                     if (fmt == null || string.IsNullOrEmpty(fmt.m_GearManagerSerialized))
                     {
                         MelonLogger.Warning($"[KALDIRMA] {id}: sahne kaydi kurulamadi, atlandi.", $"[UNINSTALL] {id}: scene record could not be built, skipped.");
-                        skipped++;
+                        failed++;
                         continue;
                     }
 
-                    BackUpVanillaKey(instance, saveName, key);
-                    if (!SaveGameSlots.SaveDataToSlot(slot, key, fmt))
+                    BackUpVanillaKey(saveName, id, facts.Key);
+                    if (!SaveGameSlots.SaveDataToSlot(slot, facts.Key, fmt))
                     {
-                        MelonLogger.Warning($"[KALDIRMA] {id}: oyun '{key}' kaydini kabul etmedi.", $"[UNINSTALL] {id}: the game refused the record '{key}'.");
-                        skipped++;
+                        MelonLogger.Warning($"[KALDIRMA] {id}: oyun '{facts.Key}' kaydini kabul etmedi.", $"[UNINSTALL] {id}: the game refused the record '{facts.Key}'.");
+                        failed++;
                         continue;
                     }
 
-                    try { File.WriteAllText(GetInstanceSavePath(instance, "_vanilla_export.json"), json); } catch { }
-                    MelonLogger.Msg($"[KALDIRMA] {id} -> '{key}': {summary}", $"[UNINSTALL] {id} -> '{key}': {summary}");
-                    exported.Add(new KeyValuePair<SeamlessInteriorInstance, string>(instance, key));
+                    try { File.WriteAllText(GetExportFilePath(saveName, id, "_vanilla_export.json"), json); } catch { }
+                    MelonLogger.Msg($"[KALDIRMA] {id} -> '{facts.Key}': {summary}", $"[UNINSTALL] {id} -> '{facts.Key}': {summary}");
+                    exported.Add(facts);
                     written++;
                 }
                 catch (System.Exception ex)
                 {
                     MelonLogger.Warning($"[KALDIRMA] {id}: hata - {ex.Message}", $"[UNINSTALL] {id}: error - {ex.Message}");
-                    skipped++;
+                    failed++;
                 }
             }
+
+            // The region's own records of the clones' containers would land in a lost-and-found box (SI destroys those boxes).
+            StripCloneContainersFromRegions(slot, saveName, exported);
 
             // Objects moved with Safehouse Customization+ go to the interior's own SC+ records.
             ModExceptions.ExportSafehouseCustomizationPlus(exported, saveName);
 
-            string msg = skipped == 0
-                ? $"Seamless Interiors: {written} buildings of this region are ready for the base game. Repeat in every region you use, then quit."
-                : $"Seamless Interiors: {written} buildings ready, {skipped} could not be written (see the log).";
-            ShowExportMessage(msg);
+            var msg = new StringBuilder($"Seamless Interiors: {written} buildings are ready for the base game.");
+            if (failed > 0) msg.Append($" {failed} could not be written (see the log).");
+            if (missing.Count > 0)
+            {
+                var parts = new List<string>();
+                foreach (var kv in missing) parts.Add($"{kv.Key} ({kv.Value})");
+                msg.Append(" Not prepared, enter these regions once and repeat: ").Append(string.Join(", ", parts)).Append('.');
+            }
+            MelonLogger.Msg($"[KALDIRMA] {written} bina yazildi, {failed} hata, {missing.Count} bolgede dizin yok.", "[UNINSTALL] " + msg);
+            ShowExportMessage(msg.ToString());
+        }
+
+        // A region's container record belongs to a clone when its id is an interior scene's (or carries "_CLONE"),
+        // or it lies inside an SI room and has the name of one of that room's containers.
+        private static void StripCloneContainersFromRegions(SlotData slot, string saveName, List<VanillaRoomFacts> exported)
+        {
+            // Every region the mod has buildings in; one the player never visited has no record and is skipped.
+            var regions = new HashSet<string>();
+            foreach (var cfg in SupportedInteriors) regions.Add(cfg.ExteriorSceneName);
+
+            foreach (string region in regions)
+            {
+                try
+                {
+                    SceneSaveGameFormat fmt = null;
+                    string raw;
+                    if (!SaveGameSlots.TryLoadDataFromSlot<SceneSaveGameFormat>(saveName, region, out fmt) || fmt == null)
+                    {
+                        fmt = null;
+                        if (TryLoadSlotString(saveName, region, false, out raw)) fmt = Utils.DeserializeObject<SceneSaveGameFormat>(raw);
+                    }
+                    if (fmt == null || string.IsNullOrEmpty(fmt.m_ContainerManagerSerialized)) continue;
+
+                    var list = Utils.DeserializeObject<ContainerSaveList>(fmt.m_ContainerManagerSerialized);
+                    if (list == null || list.m_SerializedContainers == null) continue;
+
+                    // Every SI building of the region, exported or not: their clones all leave records.
+                    var rooms = new List<VanillaRoomFacts>();
+                    var interiorIds = new HashSet<string>();
+                    foreach (var cfg in SupportedInteriors)
+                    {
+                        if (cfg.ExteriorSceneName != region) continue;
+                        SeamlessInteriorInstance live;
+                        VanillaRoomFacts f = ActiveInteriors.TryGetValue(cfg.ResolvedInstanceId, out live) && live != null ? live.VanillaFacts : null;
+                        if (f == null) f = FindVanillaFacts(cfg.ResolvedInstanceId);
+                        if (f == null) continue;
+                        BorrowSceneFacts(f);
+                        rooms.Add(f);
+                        foreach (var fc in f.Containers) interiorIds.Add(fc.Guid);
+                    }
+
+                    var removedNames = new List<string>();
+                    for (int i = list.m_SerializedContainers.Count - 1; i >= 0; i--)
+                    {
+                        var c = list.m_SerializedContainers[i];
+                        if (c == null || !IsCloneContainerRecord(c, region, rooms, interiorIds)) continue;
+                        removedNames.Add(c.m_PrefabName);
+                        list.m_SerializedContainers.RemoveAt(i);
+                    }
+                    if (removedNames.Count == 0) continue;
+
+                    string backup = GetExportFilePath(saveName, region, "_region_before_export.json");
+                    try { if (!File.Exists(backup)) File.WriteAllText(backup, Utils.SerializeObject(fmt)); } catch { }
+
+                    fmt.m_ContainerManagerSerialized = Utils.SerializeObject(list);
+                    if (SaveGameSlots.SaveDataToSlot(slot, region, fmt))
+                        MelonLogger.Msg($"[KALDIRMA] {region}: bolge kaydindan {removedNames.Count} klon konteyneri cikarildi ({string.Join(", ", removedNames)}).",
+                                        $"[UNINSTALL] {region}: {removedNames.Count} clone containers taken out of the region's record ({string.Join(", ", removedNames)}).");
+                }
+                catch (System.Exception ex)
+                {
+                    MelonLogger.Warning($"[KALDIRMA] {region}: bolge kaydi temizlenemedi - {ex.Message}", $"[UNINSTALL] {region}: region record not cleaned - {ex.Message}");
+                }
+            }
+        }
+
+        private static bool IsCloneContainerRecord(ContainerSaveData c, string region, List<VanillaRoomFacts> rooms, HashSet<string> interiorIds)
+        {
+            if (!string.IsNullOrEmpty(c.m_Guid) && (c.m_Guid.EndsWith("_CLONE") || interiorIds.Contains(c.m_Guid))) return true;
+            string name = CleanGearName(c.m_PrefabName ?? "");
+            foreach (var f in rooms)
+            {
+                if (f.Region != region || !f.HasTransform || !f.ContainsLocal(f.ToLocal(c.m_Position), 0.5f)) continue;
+                foreach (var fc in f.Containers)
+                    if (fc.Name == name) return true;
+            }
+            return false;
         }
 
         private static void ShowExportMessage(string text)
         {
-            try { HUDMessage.AddMessage(text, 8f, true, true); } catch { }
+            try { HUDMessage.AddMessage(text, 10f, true, true); } catch { }
         }
 
         // Before a key is replaced, its current value is kept once in the mod's data folder.
-        private static void BackUpVanillaKey(SeamlessInteriorInstance instance, string saveName, string key)
+        private static void BackUpVanillaKey(string saveName, string id, string key)
         {
-            string path = GetInstanceSavePath(instance, "_vanilla_before_export.json");
-            if (path == null || File.Exists(path)) return;
+            string path = GetExportFilePath(saveName, id, "_vanilla_before_export.json");
+            if (File.Exists(path)) return;
             string raw;
             if (TryLoadSlotString(saveName, key, false, out raw) && !string.IsNullOrEmpty(raw))
             {
@@ -219,18 +298,23 @@ namespace SeamlessInteriors
         }
 
         // ─── The scene record ───
-        private static string BuildVanillaSceneJson(SeamlessInteriorInstance instance, out string summary)
+        private static string BuildVanillaSceneJson(string saveName, string id, VanillaRoomFacts facts,
+                                                    Dictionary<string, string> regionFires, out string summary)
         {
-            Transform interiorT = instance.MasterInterior.transform;
             int nGear, nCont, nPlace, nRemoved, nState, nFire;
 
-            string gear = BuildExportGear(instance, out nGear);
-            string containers = BuildExportContainers(instance, interiorT, out nCont);
+            var placeRecords = ReadPlaceableRecords(GetExportFilePath(saveName, id, "_placeables.json"));
+            var spawnRecords = ReadSpawnRecords(GetExportFilePath(saveName, id, "_spawn_placeables.json"));
+
+            string gear = BuildExportGear(GetExportFilePath(saveName, id, "_inactive_scene_gear.json"), out nGear);
+            string containers = BuildExportContainers(GetExportFilePath(saveName, id, "_containers.json"), facts, placeRecords, spawnRecords, out nCont);
             string curing, photos;
-            string placements = BuildExportPlacements(instance, interiorT, out nPlace, out nRemoved, out curing, out photos);
+            string placements = BuildExportPlacements(facts, placeRecords, spawnRecords, out nPlace, out nRemoved, out curing, out photos);
             string breakDowns, harvestables, openClosers, brokenDecor;
-            nState = BuildExportStates(instance, interiorT, out breakDowns, out harvestables, out openClosers, out brokenDecor);
-            string fires = BuildExportFires(instance, interiorT, out nFire);
+            nState = BuildExportStates(GetExportFilePath(saveName, id, "_interactive_v2.json"), facts,
+                                       out breakDowns, out harvestables, out openClosers, out brokenDecor);
+            string fires = BuildExportFires(facts, regionFires, out nFire);
+            bool junkCleared = ReadJunkCleared(GetExportFilePath(saveName, id, "_junk.json"));
 
             float hours = 0f;
             try { hours = GameManager.GetTimeOfDayComponent().GetHoursPlayedNotPaused(); } catch { }
@@ -241,7 +325,7 @@ namespace SeamlessInteriors
             sb.Append("{\"m_Version\":").Append(version);
             Str(sb, "m_ContainerManagerSerialized", containers);
             Str(sb, "m_GearManagerSerialized", gear);
-            Str(sb, "m_GearSpawnInOldSavesGUIDs", BuildSpawnedInOldSavesList(instance));
+            Str(sb, "m_GearSpawnInOldSavesGUIDs", BuildSpawnedInOldSavesList(facts));
             Str(sb, "m_FireManagerSerialized", fires);
             Str(sb, "m_BreakDownObjectsSerialized", breakDowns);
             if (harvestables != null) Str(sb, "m_HarvestablesSerialized", harvestables);
@@ -286,20 +370,64 @@ namespace SeamlessInteriors
             sb.Append(",\"m_DecorationItemData\":{\"m_ParentData\":[],\"m_CraftedItemPlacementPendingData\":[]}");
             if (curing != null) sb.Append(",\"m_CuringStorageSerialized\":").Append(curing);
             if (photos != null) sb.Append(",\"m_FramedPhotoSerialized\":").Append(photos);
-            sb.Append(",\"m_JunkManagedSerialized\":{\"m_ClearedJunk\":").Append(instance.JunkCleared ? "true" : "false").Append('}');
+            sb.Append(",\"m_JunkManagedSerialized\":{\"m_ClearedJunk\":").Append(junkCleared ? "true" : "false").Append('}');
             sb.Append('}');
 
-            summary = $"{nGear} gear ({instance.VanillaSceneGuids.Count} scene ids), {nCont} containers, {nPlace} placed/moved, {nRemoved} removed, {nState} states, {nFire} fires";
+            summary = $"{nGear} gear ({facts.SceneIds.Count} scene ids), {nCont} containers, {nPlace} placed/moved, " +
+                      $"{nRemoved} removed, {nState} states, {nFire} fires";
             return sb.ToString();
         }
 
-        // Gear: the mod's own file (it also holds strays and orphans), the payload's
-        // world position replaced by the clone-local one the file records.
-        private static string BuildExportGear(SeamlessInteriorInstance instance, out int count)
+        // Gear and loot pickers marked "spawn in old saves" are only deleted / left alone on load when their
+        // id is in m_GearSpawnInOldSavesGUIDs; without it the scene's own copy stays next to the saved one.
+        private static string BuildSpawnedInOldSavesList(VanillaRoomFacts facts)
+        {
+            var items = new List<string>(facts.SceneIds.Count);
+            foreach (var g in facts.SceneIds) items.Add(JsonString(g));
+            return "[" + string.Join(",", items) + "]";
+        }
+
+        // ─── The mod's files ───
+        private class SpawnRecord { public string Guid, Data, Element; public Vector3 Position; public bool HasPosition; }
+
+        private static Dictionary<string, PlaceableEntry> ReadPlaceableRecords(string path)
+        {
+            var records = new Dictionary<string, PlaceableEntry>();
+            if (!SaveFiles.Exists(path)) return records;
+            foreach (var element in SplitJsonArray(SaveFiles.Read(path)))
+            {
+                var e = ParseEntry(element);
+                if (e == null || string.IsNullOrEmpty(e.guid) || e.guid == StableGuidMarker) continue;
+                records[e.guid] = e;
+            }
+            return records;
+        }
+
+        private static List<SpawnRecord> ReadSpawnRecords(string path)
+        {
+            var result = new List<SpawnRecord>();
+            if (!SaveFiles.Exists(path)) return result;
+            foreach (var element in SplitJsonArray(SaveFiles.Read(path)))
+            {
+                var r = new SpawnRecord { Guid = ExtractString(element, "\"g\":\"", "\""), Data = ExtractEscapedField(element, "d"), Element = element };
+                if (string.IsNullOrEmpty(r.Guid) || string.IsNullOrEmpty(r.Data)) continue;
+                r.HasPosition = TryReadTopVector(r.Data, "m_Position", out r.Position);
+                result.Add(r);
+            }
+            return result;
+        }
+
+        private static bool ReadJunkCleared(string path)
+        {
+            try { return SaveFiles.Exists(path) && SaveFiles.Read(path).Replace(" ", "").Contains("\"cleared\":true"); }
+            catch { return false; }
+        }
+
+        // Gear: the payload's world position replaced by the clone-local one the file records.
+        private static string BuildExportGear(string path, out int count)
         {
             var items = new List<string>();
-            string path = GetInactiveSceneGearSavePath(instance);
-            if (path != null && SaveFiles.Exists(path))
+            if (SaveFiles.Exists(path))
             {
                 foreach (var e in ParseGearFile(SaveFiles.Read(path)))
                 {
@@ -313,50 +441,64 @@ namespace SeamlessInteriors
             return "{\"m_SerializedItems\":[" + string.Join(",", items) + "],\"m_SpawnedGearInOldSavesGUIDs\":[]}";
         }
 
-        // Containers: the mod's file for the contents, the live clone for guid and rotation.
-        private static string BuildExportContainers(SeamlessInteriorInstance instance, Transform interiorT, out int count)
+        // Containers are matched by id on load: the scene's container where it now stands (after the
+        // furniture it sits on was moved), else furniture the player placed at that spot.
+        private static string BuildExportContainers(string path, VanillaRoomFacts facts, Dictionary<string, PlaceableEntry> placeRecords,
+                                                    List<SpawnRecord> spawnRecords, out int count)
         {
-            var live = new List<Container>(instance.MasterInterior.GetComponentsInChildren<Container>(true));
-            foreach (var moved in instance.MovedContainers)
-                if (moved != null && !live.Contains(moved)) live.Add(moved);
-            var claimed = new bool[live.Count];
+            var where = new List<Vector3>(facts.Containers.Count);
+            foreach (var c in facts.Containers)
+            {
+                PlaceableEntry moved;
+                if (c.PlaceableGuid != null && placeRecords.TryGetValue(c.PlaceableGuid, out moved))
+                {
+                    Vector3 scale = moved.scale == Vector3.zero ? Vector3.one : moved.scale;
+                    where.Add(moved.position + moved.rotation * Vector3.Scale(scale, c.RelativePosition));
+                }
+                else where.Add(c.Position);
+            }
+            var claimed = new bool[facts.Containers.Count];
+            float radiusSqr = CONTAINER_RESTORE_RADIUS * CONTAINER_RESTORE_RADIUS;
 
             var items = new List<string>();
-            string path = GetContainerSavePath(instance);
-            if (path != null && SaveFiles.Exists(path))
+            if (SaveFiles.Exists(path))
             {
                 foreach (var rec in ParseContainerFile(SaveFiles.Read(path)))
                 {
                     if (!rec.hasPosition || string.IsNullOrEmpty(rec.data)) continue;
 
                     int best = -1;
-                    float bestSqr = CONTAINER_RESTORE_RADIUS * CONTAINER_RESTORE_RADIUS;
-                    for (int i = 0; i < live.Count; i++)
+                    float bestSqr = radiusSqr;
+                    for (int i = 0; i < where.Count; i++)
                     {
-                        if (claimed[i] || live[i] == null) continue;
-                        float sqr = (interiorT.InverseTransformPoint(live[i].transform.position) - rec.position).sqrMagnitude;
+                        if (claimed[i]) continue;
+                        float sqr = (where[i] - rec.position).sqrMagnitude;
                         if (sqr <= bestSqr) { bestSqr = sqr; best = i; }
                     }
 
-                    string data = SetTopVector(rec.data, "m_Position", Vec(rec.position));
                     string guid = null, name = rec.name;
-                    bool notActive = false;
                     if (best >= 0)
                     {
                         claimed[best] = true;
-                        var c = live[best];
-                        data = SetTopVector(data, "m_Rotation", Quat(Quaternion.Inverse(interiorT.rotation) * c.transform.rotation));
-                        guid = SceneGuidOf(c.GetComponent<ObjectGuid>());
-                        if (string.IsNullOrEmpty(name)) name = CleanGearName(c.gameObject.name);
-                        notActive = !c.gameObject.activeSelf;
+                        guid = facts.Containers[best].Guid;
+                        if (string.IsNullOrEmpty(name)) name = facts.Containers[best].Name;
                     }
+                    else
+                    {
+                        // A crafted container is re-created with its furniture's id.
+                        foreach (var s in spawnRecords)
+                            if (s.HasPosition && (s.Position - rec.position).sqrMagnitude <= radiusSqr) { guid = s.Guid; break; }
+                    }
+
+                    string data = SetTopVector(rec.data, "m_Position", Vec(rec.position));
+                    Quaternion worldRot;
+                    if (TryReadTopQuat(data, "m_Rotation", out worldRot)) data = SetTopVector(data, "m_Rotation", Quat(facts.ToLocal(worldRot)));
 
                     var sb = new StringBuilder();
                     sb.Append("{\"m_Position\":").Append(Vec(rec.position));
                     sb.Append(",\"m_PrefabName\":\"").Append(EscapeJson(name ?? "")).Append('"');
                     sb.Append(",\"m_SearializedContainer\":\"").Append(EscapeJson(data)).Append('"');
                     if (!string.IsNullOrEmpty(guid)) sb.Append(",\"m_Guid\":\"").Append(EscapeJson(guid)).Append('"');
-                    if (notActive) sb.Append(",\"m_NotActive\":true");
                     sb.Append('}');
                     items.Add(sb.ToString());
                 }
@@ -365,9 +507,9 @@ namespace SeamlessInteriors
             return "{\"m_SerializedContainers\":[" + string.Join(",", items) + "]}";
         }
 
-        // Placeables: player-placed ones from the spawn file, the scene's own furniture
-        // from the position file; scene furniture that is gone becomes a "Removed" record.
-        private static string BuildExportPlacements(SeamlessInteriorInstance instance, Transform interiorT,
+        // Placeables: player-placed ones from the spawn file, the scene's own furniture from the position
+        // file; scene furniture that is gone becomes a "Removed" record.
+        private static string BuildExportPlacements(VanillaRoomFacts facts, Dictionary<string, PlaceableEntry> placeRecords, List<SpawnRecord> spawnRecords,
                                                     out int placed, out int removed, out string curing, out string photos)
         {
             placed = 0; removed = 0; curing = null; photos = null;
@@ -376,82 +518,38 @@ namespace SeamlessInteriors
             var curingStates = new List<string>();
             var photoStates = new List<string>();
 
-            var liveByGuid = BestPlaceablePerGuid(InteriorScan.Placeables(instance.MasterInterior));
-
             // 1. Player-placed furniture: the record is already a clone-local PlaceableSaveData.
-            string spawnPath = GetSpawnedPlaceableSavePath(instance);
-            if (spawnPath != null && SaveFiles.Exists(spawnPath))
+            foreach (var s in spawnRecords)
             {
-                foreach (var element in SplitJsonArray(SaveFiles.Read(spawnPath)))
-                {
-                    string guid = ExtractString(element, "\"g\":\"", "\"");
-                    string data = ExtractEscapedField(element, "d");
-                    if (string.IsNullOrEmpty(guid) || string.IsNullOrEmpty(data) || !done.Add(guid)) continue;
-                    items.Add($"{{\"m_Guid\":\"{EscapeJson(guid)}\",\"m_Serialized\":{data}}}");
-                    placed++;
-
-                    // Curing box / photo state, keyed by the guid the game recreates the object with.
-                    string cs = ReadEscapedField(element, "\"cs\":\"");
-                    if (!string.IsNullOrEmpty(cs)) curingStates.Add(SetTopString(cs, "m_GUID", guid));
-                    string fp = ReadEscapedField(element, "\"fp\":\"");
-                    if (!string.IsNullOrEmpty(fp)) photoStates.Add(SetTopString(fp, "m_GUID", guid));
-                }
-            }
-
-            // 2. The scene's furniture with the transform the mod keeps for it.
-            var records = new Dictionary<string, PlaceableEntry>();
-            string placePath = GetPlaceableSavePath(instance);
-            if (placePath != null && SaveFiles.Exists(placePath))
-            {
-                foreach (var element in SplitJsonArray(SaveFiles.Read(placePath)))
-                {
-                    var e = ParseEntry(element);
-                    if (e == null || string.IsNullOrEmpty(e.guid)) continue;
-                    if (e.guid == StableGuidMarker) continue;
-                    records[e.guid] = e;
-                }
-            }
-
-            Dictionary<string, Il2CppTLD.Placement.Placeable> sceneByGuid = null;
-            foreach (var kv in records)
-            {
-                if (done.Contains(kv.Key)) continue;
-                Il2CppTLD.Placement.Placeable p;
-                if (!liveByGuid.TryGetValue(kv.Key, out p) || p == null)
-                {
-                    // Furniture moved with the game's placement leaves the clone for the placement root.
-                    if (sceneByGuid == null) sceneByGuid = BestPlaceablePerGuid(SceneScan.PlaceablesAll());
-                    if (!sceneByGuid.TryGetValue(kv.Key, out p) || p == null) continue;
-                }
-                if (HasStableGuid(p)) continue;
-                if (IsPlayerOrInventory(p.transform)) continue;
-                done.Add(kv.Key);
-
-                if (!kv.Value.active) { items.Add(RemovedRecord(kv.Key)); removed++; continue; }
-
-                var data = p.Serialize();
-                if (data == null) continue;
-                data.m_Position = kv.Value.position;
-                data.m_Rotation = kv.Value.rotation;
-                if (kv.Value.scale != Vector3.zero) data.m_Scale = kv.Value.scale;
-                data.m_ActiveSelf = true;
-                string s = Utils.SerializeObject(data);
-                if (string.IsNullOrEmpty(s)) continue;
-                items.Add($"{{\"m_Guid\":\"{EscapeJson(kv.Key)}\",\"m_Serialized\":{s}}}");
+                if (!done.Add(s.Guid)) continue;
+                items.Add($"{{\"m_Guid\":\"{EscapeJson(s.Guid)}\",\"m_Serialized\":{s.Data}}}");
                 placed++;
+
+                // Curing box / photo state, keyed by the id the game recreates the object with.
+                string cs = ReadEscapedField(s.Element, "\"cs\":\"");
+                if (!string.IsNullOrEmpty(cs)) curingStates.Add(SetTopString(cs, "m_GUID", s.Guid));
+                string fp = ReadEscapedField(s.Element, "\"fp\":\"");
+                if (!string.IsNullOrEmpty(fp)) photoStates.Add(SetTopString(fp, "m_GUID", s.Guid));
             }
 
-            // 3. Scene furniture the mod has no record for was taken by the player.
-            if (records.Count > 0)
+            // 2. The scene's furniture with the transform the mod keeps for it; without a record it was taken.
+            if (placeRecords.Count > 0)
             {
-                foreach (var kv in liveByGuid)
+                foreach (var p in facts.Placeables.Values)
                 {
-                    if (done.Contains(kv.Key) || kv.Value == null) continue;
-                    if (IsSpawnedPlaceable(instance, kv.Value) || HasStableGuid(kv.Value)) continue;
-                    if (IsPlayerOrInventory(kv.Value.transform)) continue;
-                    done.Add(kv.Key);
-                    items.Add(RemovedRecord(kv.Key));
-                    removed++;
+                    if (!done.Add(p.Guid)) continue;
+                    PlaceableEntry e;
+                    if (!placeRecords.TryGetValue(p.Guid, out e) || !e.active)
+                    {
+                        items.Add($"{{\"m_Guid\":\"{EscapeJson(p.Guid)}\",\"m_State\":\"Removed\"}}");
+                        removed++;
+                        continue;
+                    }
+                    Vector3 scale = e.scale == Vector3.zero ? Vector3.one : e.scale;
+                    items.Add($"{{\"m_Guid\":\"{EscapeJson(p.Guid)}\",\"m_Serialized\":{{\"m_ActiveSelf\":true," +
+                              $"\"m_Name\":{JsonString(p.Name)},\"m_Addressable\":{JsonString(p.Addressable)}," +
+                              $"\"m_Position\":{Vec(e.position)},\"m_Rotation\":{Quat(e.rotation)},\"m_Scale\":{Vec(scale)}}}}}");
+                    placed++;
                 }
             }
 
@@ -460,14 +558,9 @@ namespace SeamlessInteriors
             return "[" + string.Join(",", items) + "]";
         }
 
-        private static string RemovedRecord(string guid)
-        {
-            return $"{{\"m_Guid\":\"{EscapeJson(guid)}\",\"m_State\":\"Removed\"}}";
-        }
-
         // Broken-down, harvested, opened objects and repaired cabinet doors, from the mod's file.
         // Smashables and locks have no list of their own in a scene save.
-        private static int BuildExportStates(SeamlessInteriorInstance instance, Transform interiorT,
+        private static int BuildExportStates(string path, VanillaRoomFacts facts,
                                              out string breakDowns, out string harvestables, out string openClosers, out string brokenDecor)
         {
             var bd = new List<string>();
@@ -475,8 +568,7 @@ namespace SeamlessInteriors
             var oc = new List<string>();
             var br = new List<string>();
 
-            string path = GetInteractiveStateSavePath(instance);
-            if (path != null && SaveFiles.Exists(path))
+            if (SaveFiles.Exists(path))
             {
                 foreach (var kv in ParseStateFile(SaveFiles.Read(path)))
                 {
@@ -488,7 +580,7 @@ namespace SeamlessInteriors
                     // The mod's records were taken from the parked clone, in world space.
                     Vector3 world;
                     if (TryReadTopVector(d, "m_Position", out world))
-                        d = SetTopVector(d, "m_Position", Vec(interiorT.InverseTransformPoint(world)));
+                        d = SetTopVector(d, "m_Position", Vec(facts.ToLocal(world)));
 
                     switch (tag)
                     {
@@ -514,79 +606,47 @@ namespace SeamlessInteriors
             return bd.Count + hv.Count + oc.Count + br.Count;
         }
 
-        // Stove and fireplace fires, from the live clone.
-        private static string BuildExportFires(SeamlessInteriorInstance instance, Transform interiorT, out int count)
+        // Fires of a clone are saved with the region (SI registers them with the game's FireManager).
+        // Id -> the fire's own record, from the region's entry in the save.
+        private static Dictionary<string, string> FireRecordsOf(string saveName, string region, Dictionary<string, Dictionary<string, string>> cache)
         {
-            var items = new List<string>();
-            foreach (var f in instance.MasterInterior.GetComponentsInChildren<Fire>(true))
-            {
-                if (f == null) continue;
-                var stove = f.GetComponentInParent<WoodStove>();
-                if (stove == null) continue;
-
-                string s = null;
-                try { s = f.Serialize(); } catch { }
-                if (string.IsNullOrEmpty(s)) continue;
-
-                s = SetTopVector(s, "m_Position", Vec(interiorT.InverseTransformPoint(f.transform.position)));
-                s = SetTopVector(s, "m_Rotation", Quat(Quaternion.Inverse(interiorT.rotation) * f.transform.rotation));
-                string guid = GetFireKey(f);
-
-                var sb = new StringBuilder();
-                sb.Append("{\"m_Position\":").Append(Vec(interiorT.InverseTransformPoint(stove.transform.position)));
-                sb.Append(",\"m_InWoodStove\":true");
-                sb.Append(",\"m_SearializedFire\":\"").Append(EscapeJson(s)).Append('"');
-                if (!string.IsNullOrEmpty(guid)) sb.Append(",\"m_Guid\":\"").Append(EscapeJson(guid)).Append('"');
-                sb.Append('}');
-                items.Add(sb.ToString());
-            }
-            count = items.Count;
-            return "{\"m_SerializedFires\":[" + string.Join(",", items) + "],\"m_DestroyedFires\":[]}";
-        }
-
-        // The scene's own id of an object: on a clone it often lives in PDID, and containers carry "_CLONE".
-        private static string SceneGuidOf(ObjectGuid og)
-        {
-            if (og == null) return null;
-            string g = null;
-            try { g = !string.IsNullOrEmpty(og.m_Guid) ? og.m_Guid : og.PDID; } catch { }
-            if (!string.IsNullOrEmpty(g) && g.EndsWith("_CLONE")) g = g.Substring(0, g.Length - "_CLONE".Length);
-            return string.IsNullOrEmpty(g) ? null : g;
-        }
-
-        // ─── Scene gear the base game must treat as already spawned ───
-        // Gear and loot pickers marked "spawn in old saves" are only deleted / left alone on load when
-        // their id is in m_GearSpawnInOldSavesGUIDs; without it the scene's own copy stays next to the saved one.
-        // Taken in Run, before the loot roll and hydration replace the template's gear.
-        public static void CaptureVanillaSceneGuids(SeamlessInteriorInstance instance)
-        {
-            if (instance == null || instance.MasterInterior == null) return;
-            instance.VanillaSceneGuids.Clear();
+            Dictionary<string, string> result;
+            if (cache.TryGetValue(region, out result)) return result;
+            result = new Dictionary<string, string>();
+            cache[region] = result;
             try
             {
-                foreach (var g in instance.MasterInterior.GetComponentsInChildren<GearItem>(true))
-                    if (g != null) AddSceneGuid(instance, g.GetComponent<ObjectGuid>());
-                foreach (var r in instance.MasterInterior.GetComponentsInChildren<RandomSpawnObject>(true))
-                    if (r != null) AddSceneGuid(instance, r.GetComponent<ObjectGuid>());
+                string raw;
+                if (!TryLoadSlotString(saveName, region, false, out raw)) return result;
+                string blob = ExtractNestedJsonField(raw, "m_FireManagerSerialized");
+                if (string.IsNullOrEmpty(blob)) return result;
+                var list = Utils.DeserializeObject<FireSaveList>(blob);
+                if (list == null || list.m_SerializedFires == null) return result;
+                foreach (var fsd in list.m_SerializedFires)
+                    if (fsd != null && !string.IsNullOrEmpty(fsd.m_Guid) && !string.IsNullOrEmpty(fsd.m_SearializedFire))
+                        result[fsd.m_Guid] = fsd.m_SearializedFire;
             }
             catch (System.Exception ex)
             {
-                MelonLogger.Warning($"[KALDIRMA] {instance.Config.ResolvedInstanceId}: sahne kimlikleri okunamadi - {ex.Message}",
-                                    $"[UNINSTALL] {instance.Config.ResolvedInstanceId}: scene ids could not be read - {ex.Message}");
+                MelonLogger.Warning($"[KALDIRMA] {region}: ates kayitlari okunamadi - {ex.Message}", $"[UNINSTALL] {region}: fire records could not be read - {ex.Message}");
             }
+            return result;
         }
 
-        private static void AddSceneGuid(SeamlessInteriorInstance instance, ObjectGuid og)
+        private static string BuildExportFires(VanillaRoomFacts facts, Dictionary<string, string> regionFires, out int count)
         {
-            string g = SceneGuidOf(og);
-            if (g != null) instance.VanillaSceneGuids.Add(g);
-        }
-
-        private static string BuildSpawnedInOldSavesList(SeamlessInteriorInstance instance)
-        {
-            var items = new List<string>(instance.VanillaSceneGuids.Count);
-            foreach (var g in instance.VanillaSceneGuids) items.Add(JsonString(g));
-            return "[" + string.Join(",", items) + "]";
+            var items = new List<string>();
+            foreach (var fire in facts.Fires)
+            {
+                string s;
+                if (!regionFires.TryGetValue(fire.Guid, out s)) continue;
+                s = SetTopVector(s, "m_Position", Vec(fire.FirePosition));
+                s = SetTopVector(s, "m_Rotation", Quat(fire.FireRotation));
+                items.Add("{\"m_Position\":" + Vec(fire.StovePosition) + ",\"m_InWoodStove\":true,\"m_SearializedFire\":" + JsonString(s) +
+                          ",\"m_Guid\":" + JsonString(fire.Guid) + "}");
+            }
+            count = items.Count;
+            return "{\"m_SerializedFires\":[" + string.Join(",", items) + "],\"m_DestroyedFires\":[]}";
         }
 
         // ─── JSON helpers ───
@@ -637,21 +697,31 @@ namespace SeamlessInteriors
             return json.Substring(0, start) + array + json.Substring(end + 1);
         }
 
+        private static float[] ReadTopNumbers(string json, string field)
+        {
+            int start = FindTopField(json, field);
+            if (start < 0 || start >= json.Length || json[start] != '[') return null;
+            int end = json.IndexOf(']', start);
+            if (end < 0) return null;
+            var parts = json.Substring(start + 1, end - start - 1).Split(',');
+            var result = new float[parts.Length];
+            for (int i = 0; i < parts.Length; i++)
+                if (!float.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out result[i])) return null;
+            return result;
+        }
+
         private static bool TryReadTopVector(string json, string field, out Vector3 v)
         {
-            v = Vector3.zero;
-            int start = FindTopField(json, field);
-            if (start < 0 || start >= json.Length || json[start] != '[') return false;
-            int end = json.IndexOf(']', start);
-            if (end < 0) return false;
-            var parts = json.Substring(start + 1, end - start - 1).Split(',');
-            if (parts.Length != 3) return false;
-            float x, y, z;
-            if (!float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out x)) return false;
-            if (!float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out y)) return false;
-            if (!float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out z)) return false;
-            v = new Vector3(x, y, z);
-            return true;
+            var n = ReadTopNumbers(json, field);
+            v = n != null && n.Length == 3 ? new Vector3(n[0], n[1], n[2]) : Vector3.zero;
+            return n != null && n.Length == 3;
+        }
+
+        private static bool TryReadTopQuat(string json, string field, out Quaternion q)
+        {
+            var n = ReadTopNumbers(json, field);
+            q = n != null && n.Length == 4 ? new Quaternion(n[0], n[1], n[2], n[3]) : Quaternion.identity;
+            return n != null && n.Length == 4;
         }
 
         // Sets a top-level string field, adding it when missing.
