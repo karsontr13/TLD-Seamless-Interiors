@@ -274,11 +274,11 @@ namespace SeamlessInteriors
             layer.BankGo.SetActive(false);
         }
 
-        // A window's frost tables, packed: 9 bytes a pixel where seven floats took 28. Read only once made,
+        // A window's frost tables, packed: 11 bytes a pixel. Read only once made,
         // so windows of the same size, seed and shape share one set.
         private sealed class CoverTables
         {
-            public byte[] Vein, Grain, HazeGain, GlassAlpha, GlassWhite;
+            public byte[] Vein, Grain, HazeGain, GlassAlpha, GlassR, GlassG, GlassB;
             public ushort[] VeinTime, HazeTime;
 
             // How the stored numbers read back (stored = (value - base) / scale).
@@ -287,16 +287,16 @@ namespace SeamlessInteriors
             public const float HazeBase = -1f, HazeScale = 3f / 65535f;              // haze time -1..2
             public const float GrainBase = -0.2f, GrainScale = 1.4f / 255f;          // grain -0.2..1.2
             public const float GainScale = 1.2f / 255f;                              // haze gain 0..1.2
-            public const float WhiteBase = 0.8f, WhiteScale = 0.4f / 255f;           // glass white 0.8..1.2
 
+            // The glass's colour comes in already as bytes (PrepareCoverGlass).
             public static CoverTables Encode(int n, float[] veinTime, float[] vein, float[] glow, float[] hazeTime, float[] grain,
-                                             float[] glassAlpha, float[] glassWhite)
+                                             float[] glassAlpha, byte[] glassR, byte[] glassG, byte[] glassB)
             {
                 int count = n * n;
                 var t = new CoverTables
                 {
                     Vein = new byte[count], Grain = new byte[count], HazeGain = new byte[count], GlassAlpha = new byte[count],
-                    GlassWhite = new byte[count], VeinTime = new ushort[count], HazeTime = new ushort[count]
+                    GlassR = glassR, GlassG = glassG, GlassB = glassB, VeinTime = new ushort[count], HazeTime = new ushort[count]
                 };
                 for (int i = 0; i < count; i++)
                 {
@@ -307,7 +307,6 @@ namespace SeamlessInteriors
                     // The haze's own strength, its grain and the glow round the ferns, folded into one.
                     t.HazeGain[i] = (byte)(C01((0.36f + 0.22f * grain[i] + 0.3f * glow[i]) / 1.2f) * 255f + 0.5f);
                     t.GlassAlpha[i] = (byte)(C01(glassAlpha[i]) * 255f + 0.5f);
-                    t.GlassWhite[i] = (byte)(C01((glassWhite[i] - WhiteBase) / 0.4f) * 255f + 0.5f);
                 }
                 return t;
             }
@@ -480,55 +479,74 @@ namespace SeamlessInteriors
                     hazeTime[i] = edge * 0.85f + (CoverFbm(ua * 3f + seed * 3.1f, v * 3f + seed * 1.7f, 4) - 0.5f) * 0.4f + 0.02f - glow[i] * 0.5f;
                     grain[i] = 0.5f + (CoverHash(x + seed * 977, y) - 0.5f) * 0.45f + (CoverFbm(ua * 28f + seed, v * 28f, 2) - 0.5f) * 0.7f;
                 }
-            float[] glassAlpha = new float[n * n], glassWhite = new float[n * n];
-            PrepareCoverGlass(n, aspect, seed, glassAlpha, glassWhite);
-            return CoverTables.Encode(n, veinTime, vein, glow, hazeTime, grain, glassAlpha, glassWhite);
+            float[] glassAlpha = new float[n * n];
+            byte[] glassR = new byte[n * n], glassG = new byte[n * n], glassB = new byte[n * n];
+            PrepareCoverGlass(n, aspect, seed, glassAlpha, glassR, glassG, glassB);
+            return CoverTables.Encode(n, veinTime, vein, glow, hazeTime, grain, glassAlpha, glassR, glassG, glassB);
         }
 
-        // The glass itself under the frost, so a wiped window still reads as glass and not as an empty
-        // hole (owner, 2026-10-13): a faint tint, a damp ring at the frame, a reflection band, a few
-        // sweeping wipe marks spread over the pane, and specks of dust.
-        private const int COVER_GLASS_WIPES = 5;
+        // The glass under the frost, painted like the game's own panes but see-through (owner and Lycanthor,
+        // 2026-10-17: the old shine band and wipe arcs did not fit). Navy blotches and strokes, mist left at
+        // the sides and corners, a few pale specks and chips; colours measured on STR_WindowGlassMixExtApha_A.
+        // Plain floats, not Color: this runs off the main thread, where Color's methods call into the game.
+        private static readonly float[] s_GlassDark = { 0.19f, 0.24f, 0.28f }, s_GlassLight = { 0.34f, 0.43f, 0.50f };
+        private static readonly float[] s_GlassSpeck = { 0.59f, 0.66f, 0.72f }, s_GlassMist = { 0.62f, 0.70f, 0.75f };
+        private static readonly float[] s_GlassChip = { 0.49f, 0.57f, 0.63f };   // speck toward light, 0.4
+        private const float GLASS_DOT_CELL = 0.035f;
 
-        private static void PrepareCoverGlass(int n, float aspect, int seed, float[] glassAlpha, float[] glassWhite)
+        private static void PrepareCoverGlass(int n, float aspect, int seed, float[] glassAlpha, byte[] glassR, byte[] glassG, byte[] glassB)
         {
             var rng = new System.Random(seed * 31 + 7);
-            var wx = new float[COVER_GLASS_WIPES]; var wy = new float[COVER_GLASS_WIPES]; var wr = new float[COVER_GLASS_WIPES];
-            // One hand's sweep per slice across, so the marks do not bunch up (owner: they were too tight).
-            for (int k = 0; k < COVER_GLASS_WIPES; k++)
+            float sd = (seed % 1000) * 13.7f;
+            int chips = 1 + rng.Next(2);
+            var cx = new float[chips]; var cy = new float[chips]; var cs = new float[chips]; var cc = new float[chips]; var sn = new float[chips];
+            for (int k = 0; k < chips; k++)
             {
-                wx[k] = (k + 0.2f + (float)rng.NextDouble() * 0.6f) / COVER_GLASS_WIPES * aspect;
-                wy[k] = 0.15f + (float)rng.NextDouble() * 0.7f;
-                wr[k] = 0.10f + (float)rng.NextDouble() * 0.06f;
+                cx[k] = (0.1f + (float)rng.NextDouble() * 0.8f) * aspect; cy[k] = 0.1f + (float)rng.NextDouble() * 0.8f;
+                cs[k] = 0.012f + (float)rng.NextDouble() * 0.012f;
+                float turn = (float)rng.NextDouble() * 6.28f; cc[k] = (float)System.Math.Cos(turn); sn[k] = (float)System.Math.Sin(turn);
             }
             for (int y = 0; y < n; y++)
                 for (int x = 0; x < n; x++)
                 {
                     float u = (x + 0.5f) / n, v = (y + 0.5f) / n, ua = u * aspect;
-                    float eu = (u < 1f - u ? u : 1f - u) * aspect, ev = v < 1f - v ? v : 1f - v;
-                    float e = (eu < ev ? eu : ev) + (CoverFbm(ua * 9f + seed, v * 9f, 3) - 0.5f) * 0.06f;
-                    float damp = C01(1f - e / 0.08f); damp *= damp;
+                    float blot = CoverFbm(ua * 1.8f + sd, v * 1.8f, 5);
+                    float warp = CoverFbm(ua * 1.5f + sd + 40f, v * 1.5f, 2);
+                    float stroke = CoverFbm(ua * 1.2f + warp * 1.2f + sd, v * 6f, 4);
+                    float shade = C01((blot - 0.40f) * 2.6f) * 0.55f + C01((stroke - 0.48f) * 3f) * 0.45f;
+                    shade = CLerp(shade, CFloor(shade * 4f) / 4f, 0.5f);   // flat brush steps
+                    float wisp = C01((CoverFbm(ua * 3.5f + sd + 90f, v * 3.5f, 5) - 0.58f) * 5f);
+                    float tone = C01(shade * 0.8f + wisp * 0.5f);
+                    float cr = CLerp(s_GlassDark[0], s_GlassLight[0], tone), cg = CLerp(s_GlassDark[1], s_GlassLight[1], tone), cb = CLerp(s_GlassDark[2], s_GlassLight[2], tone);
+                    float a = 0.12f + shade * 0.09f + wisp * 0.10f;
 
-                    // Thin arcs far apart, and only parts of each circle: a hand sweeps, it does not draw rings.
-                    float wipe = 0f;
-                    for (int k = 0; k < COVER_GLASS_WIPES; k++)
+                    // Mist at the sides, thicker in the corners, with a ragged painted edge.
+                    float ex = (u < 1f - u ? u : 1f - u) * aspect, ey = v < 1f - v ? v : 1f - v;
+                    float rag = (CoverFbm(ua * 7f + sd + 200f, v * 7f, 4) - 0.5f) * 0.05f;
+                    float side = C01(1f - ((ex < ey ? ex : ey) + rag) / 0.035f) * 0.75f;
+                    float nook = C01(1f - ((float)System.Math.Sqrt(ex * ey) + rag * 1.5f) / 0.075f);
+                    float fog = side > nook ? side : nook;
+                    fog = C01(fog * fog * (3f - 2f * fog) * (0.75f + CoverFbm(ua * 12f + sd, v * 12f, 3) * 0.5f));
+                    cr = CLerp(cr, s_GlassMist[0], fog); cg = CLerp(cg, s_GlassMist[1], fog); cb = CLerp(cb, s_GlassMist[2], fog);
+                    a = CLerp(a, 0.78f, fog);
+
+                    int gx = CFloor(ua / GLASS_DOT_CELL), gy = CFloor(v / GLASS_DOT_CELL);
+                    if (CoverHash(gx + seed * 101, gy) > 0.975f)
                     {
-                        float dx = ua - wx[k], dy = v - wy[k];
-                        float d = (float)System.Math.Sqrt(dx * dx + dy * dy);
-                        float ring = (float)System.Math.Sin(d / wr[k] * 6.283f + CoverFbm(ua * 3f + k * 5, v * 3f, 2) * 2.5f) * 0.5f + 0.5f;
-                        ring *= ring; ring = ring * ring * ring;
-                        float arc = C01((CoverFbm((float)System.Math.Atan2(dy, dx) * 1.2f + k * 7.3f, d * 2f, 2) - 0.45f) * 4f);
-                        wipe += ring * arc * C01(1f - d / 0.35f);
+                        float px = (gx + 0.2f + CoverHash(gx, gy + 7) * 0.6f) * GLASS_DOT_CELL, py = (gy + 0.2f + CoverHash(gx + 3, gy) * 0.6f) * GLASS_DOT_CELL;
+                        float r = 0.0025f + CoverHash(gx + 9, gy + 9) * 0.003f;
+                        if ((ua - px) * (ua - px) + (v - py) * (v - py) < r * r)
+                        { cr = s_GlassSpeck[0]; cg = s_GlassSpeck[1]; cb = s_GlassSpeck[2]; a = a > 0.6f ? a : 0.6f; }
                     }
-                    wipe = C01(wipe);
-
-                    float diag = u * 0.6f + v * 0.4f;
-                    float b1 = (diag - 0.62f) / 0.08f, b2 = (diag - 0.80f) / 0.03f;
-                    float shine = (float)System.Math.Exp(-b1 * b1) + 0.6f * (float)System.Math.Exp(-b2 * b2);
-                    float dust = CoverHash(x * 3 + seed * 17, y * 5) > 0.997f ? 1f : 0f;
+                    for (int k = 0; k < chips; k++)
+                    {
+                        float dx = ua - cx[k], dy = v - cy[k], lx = dx * cc[k] - dy * sn[k], ly = dx * sn[k] + dy * cc[k];
+                        float d = System.Math.Max(System.Math.Abs(lx) * 1.3f, System.Math.Abs(ly)) + System.Math.Abs(lx + ly) * 0.35f;
+                        if (d < cs[k]) { cr = s_GlassChip[0]; cg = s_GlassChip[1]; cb = s_GlassChip[2]; a = a > 0.5f ? a : 0.5f; }
+                    }
                     int i = y * n + x;
-                    glassAlpha[i] = C01(0.055f + damp * 0.28f + wipe * 0.05f + shine * 0.10f + dust * 0.2f + (CoverFbm(ua * 2f + seed, v * 2f, 3) - 0.5f) * 0.03f);
-                    glassWhite[i] = 0.86f + shine * 0.14f + damp * 0.08f;
+                    glassAlpha[i] = C01(a);
+                    glassR[i] = (byte)(C01(cr) * 255f + 0.5f); glassG[i] = (byte)(C01(cg) * 255f + 0.5f); glassB[i] = (byte)(C01(cb) * 255f + 0.5f);
                 }
         }
 
@@ -601,7 +619,7 @@ namespace SeamlessInteriors
             var tb = layer.Tables;
             float reach = frost * 1.15f, haze0 = frost * 0.06f;
             var veinTime = tb.VeinTime; var vein = tb.Vein; var hazeTime = tb.HazeTime; var grain = tb.Grain; var hazeGain = tb.HazeGain;
-            var glassAlpha = tb.GlassAlpha; var glassWhite = tb.GlassWhite; var mask = layer.FrostMask;
+            var glassAlpha = tb.GlassAlpha; var glassR = tb.GlassR; var glassG = tb.GlassG; var glassB = tb.GlassB; var mask = layer.FrostMask;
             var bytes = layer.FrostBytes;
             for (int i = from; i < to; i++)
             {
@@ -611,12 +629,12 @@ namespace SeamlessInteriors
                 float a = C01(haze0 + haze * hazeGain[i] * CoverTables.GainScale + v * 0.7f);
                 float w = C01(0.80f + 0.20f * v + 0.05f * g);
                 // The frost laid over the glass.
-                float ga = glassAlpha[i] * CoverTables.UnitScale * (1f - a), gw = glassWhite[i] * CoverTables.WhiteScale + CoverTables.WhiteBase, all = a + ga;
+                float ga = glassAlpha[i] * CoverTables.UnitScale * (1f - a), all = a + ga, gs = ga * CoverTables.UnitScale;
                 float k = all > 0.0001f ? 1f / all : 0f;
                 int o = i * 4;
-                bytes[o] = (byte)(C01((w * 0.90f * a + gw * 0.88f * ga) * k) * 255f);
-                bytes[o + 1] = (byte)(C01((w * 0.95f * a + gw * 0.93f * ga) * k) * 255f);
-                bytes[o + 2] = (byte)(C01((w * a + gw * 0.98f * ga) * k) * 255f);
+                bytes[o] = (byte)(C01((w * 0.90f * a + glassR[i] * gs) * k) * 255f);
+                bytes[o + 1] = (byte)(C01((w * 0.95f * a + glassG[i] * gs) * k) * 255f);
+                bytes[o + 2] = (byte)(C01((w * a + glassB[i] * gs) * k) * 255f);
                 bytes[o + 3] = (byte)(C01(mask != null ? all * mask[i] : all) * 255f);
             }
         }
