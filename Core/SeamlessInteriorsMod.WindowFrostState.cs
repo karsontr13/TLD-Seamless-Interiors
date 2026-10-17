@@ -303,7 +303,7 @@ namespace SeamlessInteriors
             if (after <= 0f || now - hour < after) return false;
             // The cover layers grow the frost in sight, so the record can turn while seen; the old
             // all-at-once frost waits until the window is out of sight.
-            if (!WindowCoverLayers && IsWindowBeingDrawn(instanceId, window, roomWindow)) return false;
+            if ((!WindowCoverLayers || !WindowCoverBuildUp) && IsWindowBeingDrawn(instanceId, window, roomWindow)) return false;
 
             building[window] = false;
             at.Remove(window);

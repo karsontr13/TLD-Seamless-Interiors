@@ -12,6 +12,9 @@ namespace SeamlessInteriors
         // Tools/WindowFrostPrototype.md). Replaces the game's painted frost; the cover comes from WindowCover.cs.
         public static bool WindowCoverLayers = true;
 
+        // The player's setting. Off: no growth and no banks; only a cleaned pane is drawn by the layers.
+        internal static bool WindowCoverBuildUp => s_PrefWindowFrostSnowBuildUp == null || s_PrefWindowFrostSnowBuildUp.Value;
+
         private const int COVER_FROST_SIZE = 512;
         // How far the cover must move before the frost texture or the snow bank is made again.
         private const float COVER_FROST_STEP = 1f / 256f;
@@ -1342,6 +1345,17 @@ namespace SeamlessInteriors
             float frost, snow;
             GetRoomPaneCover(index, out frost, out snow);
             var layer = s_CoverLayers[index];
+            // Build-up off: an uncleaned pane is the game's frost as before the layers; a cleaned one falls through.
+            if (!WindowCoverBuildUp && (frost > 0f || layer == null || !layer.Shown))
+            {
+                bool cleared = frost <= 0f;
+                SetGlassShown(opening.Glass, !cleared);
+                SetRenderersEnabled(opening.Frost, !cleared && InsideOutShowSnowSlab);
+                if (!cleared && !s_WindowPortalKeepsOwnGlass) GiveGlassTheFrostMaterial(opening.Glass);
+                if (layer != null && layer.FrostGo != null) layer.FrostGo.SetActive(false);
+                if (layer != null && layer.BankGo != null) layer.BankGo.SetActive(false);
+                return false;
+            }
             // Until its tables are ready the window keeps the game's own frost.
             if (layer != null && !layer.Shown) { SetGlassShown(opening.Glass, true); return false; }
 

@@ -63,6 +63,8 @@ namespace SeamlessInteriors
             if (!roomWindow) window = SharedWindowRecord(instanceId, window);
 
             bool cleaned = roomWindow ? IsRoomWindowCleaned(instanceId, window) : IsWindowCleaned(instanceId, window);
+            // Build-up off: clean or frosted, nothing in between, and no snow.
+            if (!WindowCoverBuildUp) { frost = cleaned ? 0f : 1f; snow = 0f; return; }
             if (cleaned)
             {
                 Dictionary<int, float> at;

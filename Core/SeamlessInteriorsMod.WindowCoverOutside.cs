@@ -251,6 +251,8 @@ namespace SeamlessInteriors
             // Asked every time: asking is what lets a cleaned window frost over again (WindowFrostState.cs).
             bool cleaned = IsWindowCleaned(s_OutsideInInstanceId, aperture);
             var layer = WindowCoverLayers && aperture < s_OI.Covers.Count ? s_OI.Covers[aperture] : null;
+            // Build-up off: the game's frost and drift until cleaned; a cleaned pane shows the clean glass layer.
+            if (!WindowCoverBuildUp) return !cleaned || (frost && (layer == null || !layer.Shown || layer.FrostShown != 0f));
             if (layer == null) return !cleaned;
             if (!frost) return layer.BankGo == null && !cleaned;
             if (layer.Shown && layer.FrostShown >= 0f) return false;
@@ -339,7 +341,7 @@ namespace SeamlessInteriors
                     if (fresh) firstFills++; else fills++;
                 }
                 if (layer.FrostMat.color != light) layer.FrostMat.color = light;
-                bool showFrost = live && OutsideInFrostedPane && layer.FrostShown >= 0f;
+                bool showFrost = live && OutsideInFrostedPane && layer.FrostShown >= 0f && (WindowCoverBuildUp || layer.FrostShown == 0f);
                 if (layer.FrostGo.activeSelf != showFrost) layer.FrostGo.SetActive(showFrost);
             }
         }

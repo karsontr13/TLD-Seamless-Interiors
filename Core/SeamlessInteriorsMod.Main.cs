@@ -91,6 +91,7 @@ namespace SeamlessInteriors
         private static MelonPreferences_Entry<float> s_PrefWindowGroundGlowStrength;
 
         private static MelonPreferences_Entry<bool> s_PrefEnableWindowPortals;
+        private static MelonPreferences_Entry<bool> s_PrefWindowFrostSnowBuildUp;
         private static MelonPreferences_Entry<int> s_PrefWindowPortalLimit;
         private static MelonPreferences_Entry<float> s_PrefWindowPortalResolutionScale;
         private static MelonPreferences_Entry<bool> s_PrefClearWindowPanes;
@@ -249,6 +250,14 @@ namespace SeamlessInteriors
                 true,
                 "See Through Windows",
                 "Windows show the real view from where the building stands, instead of a painted backdrop. Costs one extra render of the world for each window you can actually see at that moment."
+            );
+
+            // Owner, 2026-10-17: off brings back the game's own frosted panes; a cleaned pane still gets the clean glass.
+            s_PrefWindowFrostSnowBuildUp = s_PrefCategory.CreateEntry<bool>(
+                "WindowFrostSnowBuildUp",
+                true,
+                "Frost And Snow Build Up On Windows",
+                "On: frost grows back over a cleaned window and snow piles up against it while it snows. Off: windows wear the game's own painted frost until cleaned, and a cleaned window frosts over again all at once."
             );
 
             // NEW KEY on purpose, replacing "MaxWindowPortals". That entry's 4 was never a cost
