@@ -171,6 +171,19 @@ namespace SeamlessInteriors
         }
     }
 
+    // "Prepare this region for uninstall" (VanillaExport.cs). Last, so the mod's own files and
+    // Safehouse Customization+'s records for this save are already written.
+    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.SaveGameSystem), nameof(Il2Cpp.SaveGameSystem.SaveSceneData))]
+    public class VanillaExportSavePatch
+    {
+        [HarmonyLib.HarmonyPriority(HarmonyLib.Priority.Last)]
+        public static void Postfix(Il2Cpp.SlotData __0)
+        {
+            try { SeamlessInteriorsMod.WriteVanillaExportIfArmed(__0); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[KALDIRMA] Hata: {ex.Message}", $"[UNINSTALL] Error: {ex.Message}"); }
+        }
+    }
+
     // GearManager.Deserialize starts by deleting every active gear item, so it must not
     // land while an interior scene is being pulled in. It is deferred for exactly that
     // moment and replayed straight after. TargetMethods is used because the method is

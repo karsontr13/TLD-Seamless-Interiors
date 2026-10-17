@@ -127,6 +127,154 @@ namespace SeamlessInteriors
             }
         }
 
+        // "Prepare for uninstall": a room's SC+ records move from the region's list to the interior's own key, in
+        // interior coordinates, as SC+ keeps them for the real interior. Runs after SC+ wrote this save's lists.
+        private static MethodInfo s_SCPlusSave;
+
+        internal static void ExportSafehouseCustomizationPlus(List<KeyValuePair<SeamlessInteriorInstance, string>> rooms, string saveName)
+        {
+            if (s_SCPlusAssembly == null || rooms == null || rooms.Count == 0) return;
+            try
+            {
+                if (!ResolveSCPlusData()) return;
+                if (s_SCPlusSave == null) s_SCPlusSave = s_SCPlusData.GetType().GetMethod("Save", new[] { typeof(string), typeof(string) });
+                if (s_SCPlusSave == null) throw new MissingMemberException("Safehouse Customization+ kayit yazma uyesi bulunamadi.");
+
+                var regions = new HashSet<string>();
+                foreach (var room in rooms) regions.Add(room.Key.Config.ExteriorSceneName);
+
+                foreach (string region in regions)
+                {
+                    string regionKey = s_SCPlusTag + "_" + region;
+                    var kept = new List<string>();
+                    var perKey = new Dictionary<string, List<string>>();
+
+                    foreach (string raw in SplitSCPlusRecords(s_SCPlusLoad.Invoke(s_SCPlusData, new object[] { regionKey }) as string))
+                    {
+                        string record = TrimSCPlusRecord(raw);
+                        KeyValuePair<SeamlessInteriorInstance, string> owner;
+                        if (JsonString(record, "currentScene") == region && FindSCPlusRoom(rooms, record, out owner))
+                        {
+                            List<string> list;
+                            if (!perKey.TryGetValue(owner.Value, out list)) perKey[owner.Value] = list = new List<string>();
+                            list.Add(ToInteriorRecord(record, owner.Key, owner.Value));
+                        }
+                        else kept.Add(record);
+                    }
+                    if (perKey.Count == 0) continue;
+
+                    foreach (var kv in perKey)
+                    {
+                        string key = s_SCPlusTag + "_" + kv.Key;
+                        BackUpSCPlusKey(saveName, key);
+                        s_SCPlusSave.Invoke(s_SCPlusData, new object[] { "[" + string.Join(",", kv.Value) + "]", key });
+                        MelonLogger.Msg($"[KALDIRMA] Safehouse Customization+: {kv.Value.Count} tasinmis obje '{kv.Key}' sahnesine aktarildi.",
+                                        $"[UNINSTALL] Safehouse Customization+: {kv.Value.Count} moved objects written for '{kv.Key}'.");
+                    }
+
+                    // Left in the region's list, SC+ would make a copy of each one in the region.
+                    BackUpSCPlusKey(saveName, regionKey);
+                    s_SCPlusSave.Invoke(s_SCPlusData, new object[] { "[" + string.Join(",", kept) + "]", regionKey });
+                }
+            }
+            catch (Exception ex)
+            {
+                ReportOnce("Safehouse Customization+ aktarimi", ex);
+            }
+        }
+
+        // SplitSCPlusRecords cuts between record starts, so a piece can end with "," or the list's "]".
+        private static string TrimSCPlusRecord(string raw)
+        {
+            string r = raw.TrimEnd();
+            if (r.EndsWith("]")) r = r.Substring(0, r.Length - 1).TrimEnd();
+            if (r.EndsWith(",")) r = r.Substring(0, r.Length - 1).TrimEnd();
+            return r;
+        }
+
+        // The room whose scene object the record moved: at its new spot, or hidden at the old one.
+        private static bool FindSCPlusRoom(List<KeyValuePair<SeamlessInteriorInstance, string>> rooms, string record,
+                                           out KeyValuePair<SeamlessInteriorInstance, string> owner)
+        {
+            owner = default;
+            string native = JsonString(record, "nativeScene");
+            string name = JsonString(record, "name");
+            if (string.IsNullOrEmpty(native) || string.IsNullOrEmpty(name)) return false;
+
+            foreach (var room in rooms)
+            {
+                var instance = room.Key;
+                if (instance.MasterInterior == null || instance.Config.InteriorSceneBaseName != native) continue;
+                if (FindSCPlusOriginal(instance.MasterInterior, name, JsonVector(record, "currentPos")) != null
+                    || FindSCPlusOriginal(instance.MasterInterior, name, JsonVector(record, "originalPos")) != null)
+                {
+                    owner = room;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static string ToInteriorRecord(string record, SeamlessInteriorInstance instance, string key)
+        {
+            Transform t = instance.MasterInterior.transform;
+            Vector3 rot = JsonVector(record, "currentRot");
+            Quaternion world = new Quaternion(rot.x, rot.y, rot.z, JsonFloat(JsonObject(record, "currentRot"), "w", 1f));
+            Quaternion local = Quaternion.Inverse(t.rotation) * world;
+
+            // SC+ matches the native scene with Contains(save key), so an instanced interior needs its full key.
+            record = SetJsonString(record, "nativeScene", key);
+            record = SetJsonString(record, "currentScene", instance.Config.InteriorSceneBaseName);
+            record = SetJsonObject(record, "originalPos", Vector3Json(t.InverseTransformPoint(JsonVector(record, "originalPos"))));
+            record = SetJsonObject(record, "currentPos", Vector3Json(t.InverseTransformPoint(JsonVector(record, "currentPos"))));
+            record = SetJsonObject(record, "currentRot",
+                "{\"@type\":\"UnityEngine.Quaternion\",\"x\":" + F(local.x) + ",\"y\":" + F(local.y) + ",\"z\":" + F(local.z) + ",\"w\":" + F(local.w) + "}");
+            return record;
+        }
+
+        private static void BackUpSCPlusKey(string saveName, string key)
+        {
+            try
+            {
+                string path = System.IO.Path.Combine(ModPaths.DataDir(), saveName + "_" + key + "_before_export.json");
+                if (System.IO.File.Exists(path)) return;
+                string old = s_SCPlusLoad.Invoke(s_SCPlusData, new object[] { key }) as string;
+                if (!string.IsNullOrEmpty(old)) System.IO.File.WriteAllText(path, old);
+            }
+            catch { }
+        }
+
+        private static string Vector3Json(Vector3 v)
+        {
+            return "{\"@type\":\"UnityEngine.Vector3\",\"x\":" + F(v.x) + ",\"y\":" + F(v.y) + ",\"z\":" + F(v.z) + "}";
+        }
+
+        private static string F(float v)
+        {
+            return v.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static string SetJsonString(string json, string field, string value)
+        {
+            string key = "\"" + field + "\":\"";
+            int i = json.IndexOf(key, StringComparison.Ordinal);
+            if (i < 0) return json;
+            int start = i + key.Length;
+            int end = json.IndexOf('"', start);
+            return end < 0 ? json : json.Substring(0, start) + value + json.Substring(end);
+        }
+
+        // TinyJSON writes these objects flat, so the first "}" closes them.
+        private static string SetJsonObject(string json, string field, string value)
+        {
+            string key = "\"" + field + "\":{";
+            int i = json.IndexOf(key, StringComparison.Ordinal);
+            if (i < 0) return json;
+            int start = i + key.Length - 1;
+            int end = json.IndexOf('}', start);
+            return end < 0 ? json : json.Substring(0, start) + value + json.Substring(end + 1);
+        }
+
         // SC+ keeps a moved object under the region, so in a parked room it would hang in the air seen from outside.
         // Only its look and collision follow the room: SC+ saves an inactive object as removed, losing its contents.
         // While the room is held for the views in from outside, the object is drawn on the room's layer, like the room.

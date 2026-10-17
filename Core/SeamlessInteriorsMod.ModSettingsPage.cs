@@ -167,6 +167,11 @@ namespace SeamlessInteriors
             [ModSettings.Description("Smoke rises from a building's chimney while a stove or fireplace burns inside it.")]
             public bool ChimneySmoke = true;
 
+            [ModSettings.Section("Uninstall")]
+            [ModSettings.Name("Prepare this region for uninstall")]
+            [ModSettings.Description("Set to Yes and confirm while playing: the buildings of the region you are in are saved the way the base game keeps its interiors, so your things are still there if you remove the mod. Do it in every region you use, then quit. Keep a copy of your save first.")]
+            public bool PrepareForUninstall = false;
+
             [ModSettings.Section("Troubleshooting")]
             [ModSettings.Name("Verbose logging")]
             [ModSettings.Description("Writes a log line per object during save and load. Costs frame time; on only when reporting a problem (F7).")]
@@ -239,6 +244,14 @@ namespace SeamlessInteriors
 
                 MelonPreferences.Save();
                 MelonLogger.Msg("[AYARLAR] Ayar sayfasindan kaydedildi.", "[SETTINGS] Saved from the settings page.");
+
+                // A one-off action, not a setting: it runs once and the switch goes back.
+                if (PrepareForUninstall)
+                {
+                    PrepareForUninstall = false;
+                    RefreshGUI();
+                    RequestVanillaExport();
+                }
             }
 
             private static void Set<T>(MelonPreferences_Entry<T> entry, T value)

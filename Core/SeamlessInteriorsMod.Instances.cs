@@ -283,6 +283,9 @@ namespace SeamlessInteriors
         public readonly System.Collections.Generic.List<string> OrphanContainerEntries = new System.Collections.Generic.List<string>();
         public readonly System.Collections.Generic.List<string> OrphanSpawnEntries = new System.Collections.Generic.List<string>();
 
+        // Ids of the template's gear and loot pickers, for "Prepare for uninstall" (VanillaExport.cs).
+        public readonly System.Collections.Generic.HashSet<string> VanillaSceneGuids = new System.Collections.Generic.HashSet<string>();
+
         // Items put back by the door after falling under the room, waiting for its floor colliders.
         public readonly System.Collections.Generic.List<UnityEngine.GameObject> GearToSettle = new System.Collections.Generic.List<UnityEngine.GameObject>();
 

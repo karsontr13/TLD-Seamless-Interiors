@@ -1933,6 +1933,9 @@ namespace SeamlessInteriors
             }
 
             trace?.End("eski-kayit");
+
+            // The template's own gear ids, while it still has them (VanillaExport.cs).
+            CaptureVanillaSceneGuids(instance);
             s_LoadTrace = trace;
             trace?.Begin();
             ProcessSpawnsAndDeduplication(instance);
