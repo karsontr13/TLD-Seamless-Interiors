@@ -503,8 +503,10 @@ namespace SeamlessInteriors
             if (s_PrefEnableWindowPortals == null || !s_PrefEnableWindowPortals.Value)
             {
                 if (s_WindowPortalInstanceId != null) TeardownWindowPortals();
+                TickPaintedPanesOnly();
                 return;
             }
+            if (s_PaintedPanesOnlyId != null) EndPaintedPanesOnly();
 
             SeamlessInteriorInstance instance = s_IsPlayerInsideClone ? ResolveOccupiedInstance() : null;
 
@@ -1927,6 +1929,40 @@ namespace SeamlessInteriors
                                 (left > 0 ? $", {left} left off because they sit under an object switched off for some other reason." : "."));
         }
 
+        // SEE THROUGH WINDOWS OFF: no views, but a parked room still needs its painted panes, or its
+        // windows show the world 40-80 m up (player report 2026-10-17: "my house appears to be floating").
+        private static string s_PaintedPanesOnlyId;
+
+        private static void TickPaintedPanesOnly()
+        {
+            SeamlessInteriorInstance instance = s_IsPlayerInsideClone ? ResolveOccupiedInstance() : null;
+            string id = instance != null && instance.MasterInterior != null && instance.Config != null
+                        && instance.Config.ParkOffset != Vector3.zero ? instance.Config.ResolvedInstanceId : null;
+            if (id == s_PaintedPanesOnlyId) return;
+            EndPaintedPanesOnly();
+            if (id == null) return;
+            s_PaintedPanesOnlyId = id;
+            ShowPaintedPanesInParkedRoom(instance, FindInteriorWindowOpenings(instance));
+        }
+
+        private static void EndPaintedPanesOnly()
+        {
+            RestoreShownBackdrops();
+            s_PaintedPanesOnlyId = null;
+        }
+
+        // Puts back what ShowPaintedPanesInParkedRoom switched on.
+        private static void RestoreShownBackdrops()
+        {
+            for (int i = 0; i < s_WindowPortalShownBackdrops.Count; i++)
+                if (s_WindowPortalShownBackdrops[i] != null) s_WindowPortalShownBackdrops[i].enabled = false;
+            s_WindowPortalShownBackdrops.Clear();
+            // Innermost first, the reverse of the order they were switched on in.
+            for (int i = s_WindowPortalActivatedBackdrops.Count - 1; i >= 0; i--)
+                if (s_WindowPortalActivatedBackdrops[i] != null) s_WindowPortalActivatedBackdrops[i].SetActive(false);
+            s_WindowPortalActivatedBackdrops.Clear();
+        }
+
         private static GameObject CreateWindowPortalQuad(InteriorWindowOpening opening)
         {
             var quad = new GameObject("SI_WindowPortalQuad");
@@ -1979,10 +2015,11 @@ namespace SeamlessInteriors
         // the copy the room as the game made it; TickWindowPortals sets them up again next frame.
         public static void ReleaseRoomBeforeItIsCopied(GameObject room)
         {
-            if (room == null || s_WindowPortalInstanceId == null) return;
+            string wearerId = s_WindowPortalInstanceId ?? s_PaintedPanesOnlyId;
+            if (room == null || wearerId == null) return;
 
             SeamlessInteriorInstance wearer;
-            if (ActiveInteriors.TryGetValue(s_WindowPortalInstanceId, out wearer)
+            if (ActiveInteriors.TryGetValue(wearerId, out wearer)
                 && wearer != null && wearer.MasterInterior != room) return;
 
             if (s_DebugBounds)
@@ -2015,13 +2052,8 @@ namespace SeamlessInteriors
             }
             s_WindowPortalHiddenBackdrops.Clear();
 
-            for (int i = 0; i < s_WindowPortalShownBackdrops.Count; i++)
-                if (s_WindowPortalShownBackdrops[i] != null) s_WindowPortalShownBackdrops[i].enabled = false;
-            s_WindowPortalShownBackdrops.Clear();
-            // Innermost first, the reverse of the order they were switched on in.
-            for (int i = s_WindowPortalActivatedBackdrops.Count - 1; i >= 0; i--)
-                if (s_WindowPortalActivatedBackdrops[i] != null) s_WindowPortalActivatedBackdrops[i].SetActive(false);
-            s_WindowPortalActivatedBackdrops.Clear();
+            RestoreShownBackdrops();
+            s_PaintedPanesOnlyId = null;
             s_WindowPortalWasDrawn.Clear();
 
             // The glass gets its own material back first. The clone outlives the portal system, so a
