@@ -13,7 +13,11 @@ namespace SeamlessInteriors
             try
             {
                 if (!string.IsNullOrEmpty(name) && name == SaveGameSystem.m_CurrentSaveName)
+                {
                     SaveFiles.Commit(name);
+                    // The slot as SI left it, to tell a later save made without the mod (VanillaReturn.cs).
+                    SeamlessInteriorsMod.RecordSiDiskSave(name);
+                }
             }
             catch (System.Exception ex) { MelonLogger.Warning($"[SAVE-COMMIT] Commit hatasi: {ex.Message}"); }
         }
@@ -31,6 +35,7 @@ namespace SeamlessInteriors
                 if (string.IsNullOrEmpty(name)) return;
                 MelonLogger.Msg($"[SAVE-COMMIT] RestoreGame '{name}'.");
                 SaveFiles.Discard(name);
+                SeamlessInteriorsMod.CheckPlayedWithoutSi(name);
             }
             catch (System.Exception ex) { MelonLogger.Warning($"[SAVE-COMMIT] Discard hatasi: {ex.Message}"); }
         }

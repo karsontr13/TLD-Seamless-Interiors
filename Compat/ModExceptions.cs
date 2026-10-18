@@ -183,6 +183,74 @@ namespace SeamlessInteriors
             }
         }
 
+        // Reinstall after playing without SI: a building's SC+ records go from the interior's key back under the
+        // region, in world coordinates, where SI keeps them (the reverse of ExportSafehouseCustomizationPlus).
+        internal static void ReturnSafehouseCustomizationPlus(string saveName, List<KeyValuePair<string, string>> rooms)
+        {
+            if (s_SCPlusAssembly == null || rooms == null || rooms.Count == 0) return;
+            try
+            {
+                if (!ResolveSCPlusData()) return;
+                if (s_SCPlusSave == null) s_SCPlusSave = s_SCPlusData.GetType().GetMethod("Save", new[] { typeof(string), typeof(string) });
+                if (s_SCPlusSave == null) throw new MissingMemberException("Safehouse Customization+ kayit yazma uyesi bulunamadi.");
+
+                var perRegion = new Dictionary<string, List<string>>();
+                foreach (var room in rooms)
+                {
+                    VanillaRoomFacts f = SeamlessInteriorsMod.FindVanillaFacts(room.Key);
+                    if (f == null || !f.HasTransform || string.IsNullOrEmpty(room.Value)) continue;
+
+                    string interiorKey = s_SCPlusTag + "_" + room.Value;
+                    var back = new List<string>();
+                    foreach (string raw in SplitSCPlusRecords(s_SCPlusLoad.Invoke(s_SCPlusData, new object[] { interiorKey }) as string))
+                    {
+                        string record = TrimSCPlusRecord(raw);
+                        if (string.IsNullOrEmpty(JsonString(record, "currentScene"))) continue;   // carried: SC+'s own list
+                        back.Add(ToRegionRecord(record, f));
+                    }
+                    if (back.Count == 0) continue;
+
+                    // Copied, not moved: a save made inside the base game's interior loads that scene, whose SC+ reads its own key.
+                    List<string> list;
+                    if (!perRegion.TryGetValue(f.Region, out list)) perRegion[f.Region] = list = new List<string>();
+                    list.AddRange(back);
+                    MelonLogger.Msg($"[KALDIRMA] Safehouse Customization+: '{room.Value}' sahnesindeki {back.Count} tasinmis obje bolgeye geri alindi.",
+                                    $"[UNINSTALL] Safehouse Customization+: {back.Count} moved objects of '{room.Value}' returned to the region.");
+                }
+
+                foreach (var kv in perRegion)
+                {
+                    string regionKey = s_SCPlusTag + "_" + kv.Key;
+                    var all = new List<string>();
+                    foreach (string raw in SplitSCPlusRecords(s_SCPlusLoad.Invoke(s_SCPlusData, new object[] { regionKey }) as string))
+                        all.Add(TrimSCPlusRecord(raw));
+                    all.AddRange(kv.Value);
+                    s_SCPlusSave.Invoke(s_SCPlusData, new object[] { "[" + string.Join(",", all) + "]", regionKey });
+                }
+            }
+            catch (Exception ex)
+            {
+                ReportOnce("Safehouse Customization+ geri alma", ex);
+            }
+        }
+
+        private static string ToRegionRecord(string record, VanillaRoomFacts room)
+        {
+            Matrix4x4 toWorld = room.WorldToLocal.inverse;
+            Quaternion toWorldRot = Quaternion.Inverse(room.InverseRotation);
+            Vector3 rot = JsonVector(record, "currentRot");
+            Quaternion local = new Quaternion(rot.x, rot.y, rot.z, JsonFloat(JsonObject(record, "currentRot"), "w", 1f));
+            Quaternion world = toWorldRot * local;
+
+            record = SetJsonString(record, "nativeScene", room.Scene);
+            record = SetJsonString(record, "currentScene", room.Region);
+            record = SetJsonObject(record, "originalPos", Vector3Json(toWorld.MultiplyPoint3x4(JsonVector(record, "originalPos"))));
+            record = SetJsonObject(record, "currentPos", Vector3Json(toWorld.MultiplyPoint3x4(JsonVector(record, "currentPos"))));
+            record = SetJsonObject(record, "currentRot",
+                "{\"@type\":\"UnityEngine.Quaternion\",\"x\":" + F(world.x) + ",\"y\":" + F(world.y) + ",\"z\":" + F(world.z) + ",\"w\":" + F(world.w) + "}");
+            return record;
+        }
+
         // SplitSCPlusRecords cuts between record starts, so a piece can end with "," or the list's "]".
         private static string TrimSCPlusRecord(string raw)
         {

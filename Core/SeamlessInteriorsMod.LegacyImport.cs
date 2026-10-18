@@ -133,6 +133,20 @@ namespace SeamlessInteriors
                 TryDelete(markerPath);
             }
 
+            // Played without the mod after "Prepare the save for uninstall": the game's record is the truth
+            // now, under the key the export wrote (VanillaReturn.cs).
+            string reimportKey, reimportRaw;
+            if (TryTakeReimportKey(instance, out reimportKey) && TryLoadSlotString(saveName, reimportKey, false, out reimportRaw))
+            {
+                instance.LegacySource = LegacySourceKind.Name;
+                instance.LegacySourceId = reimportKey;
+                instance.LegacyRawBlob = reimportRaw;
+                instance.LegacyImport = LegacyImportState.Pending;
+                MelonLogger.Msg($"[KALDIRMA] {instance.Config.ResolvedInstanceId}: modsuz donemin kaydi '{reimportKey}' geri alinacak.",
+                                $"[UNINSTALL] {instance.Config.ResolvedInstanceId}: reading back the game's record '{reimportKey}' from the time without the mod.");
+                return;
+            }
+
             // 2) The mod already owns this save's data for this building - it has been
             //    played with the mod at least once, so there is nothing legacy about it.
             string gearPath = GetInactiveSceneGearSavePath(instance);

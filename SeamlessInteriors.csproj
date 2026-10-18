@@ -197,6 +197,7 @@
     <Compile Include="Core\SeamlessInteriorsMod.DecorationState.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.VanillaExport.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.VanillaIndex.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.VanillaReturn.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.LightingModeSwitch.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InteriorProbes.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Configs.cs" />

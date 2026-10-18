@@ -157,6 +157,9 @@ namespace SeamlessInteriors
             // Objects moved with Safehouse Customization+ go to the interior's own SC+ records.
             ModExceptions.ExportSafehouseCustomizationPlus(exported, saveName);
 
+            // Which buildings the game now holds, for a reinstall after playing without the mod (VanillaReturn.cs).
+            RecordVanillaExport(saveName, exported);
+
             var msg = new StringBuilder($"Seamless Interiors: {written} buildings are ready for the base game.");
             if (failed > 0) msg.Append($" {failed} could not be written (see the log).");
             if (missing.Count > 0)
