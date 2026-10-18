@@ -133,18 +133,19 @@ namespace SeamlessInteriors
         private static readonly System.Collections.Generic.List<Collider> s_ShotGlassOff = new System.Collections.Generic.List<Collider>();
 
         // An arrow, stone or flare crossing an open window, or about to this step, is carried outside.
-        internal static void MaybeCarryProjectileThroughWindow(Component projectile)
+        // launch: the speed to judge by while the thing has none of its own yet. True once carried.
+        internal static bool MaybeCarryProjectileThroughWindow(Component projectile, Vector3 launch = default)
         {
-            if (s_ShotThroughFailed || projectile == null) return;
-            if (!AnyWindowOpenForShots()) return;
+            if (s_ShotThroughFailed || projectile == null) return false;
+            if (!AnyWindowOpenForShots()) return false;
             try
             {
                 var rb = projectile.GetComponent<Rigidbody>();
-                if (rb == null) return;
+                if (rb == null) return false;
                 // A nocked arrow or a stone in the hand moves with the player, not through the window.
                 Transform pt = GameManager.GetPlayerTransform();
                 Camera cam = GameManager.GetMainCamera();
-                if ((pt != null && projectile.transform.IsChildOf(pt)) || (cam != null && projectile.transform.IsChildOf(cam.transform))) return;
+                if ((pt != null && projectile.transform.IsChildOf(pt)) || (cam != null && projectile.transform.IsChildOf(cam.transform))) return false;
                 // An arrow flies kinematic, on its own velocity, sweeping from its last place.
                 var arrow = projectile.TryCast<ArrowItem>();
                 Vector3 cur = projectile.transform.position;
@@ -152,17 +153,18 @@ namespace SeamlessInteriors
                 // Just loosed it has no speed yet, and its first step hits the room's wall over the
                 // window (live, 2026-10-18): it is judged on its release speed along its nose instead.
                 if (arrow != null && v.sqrMagnitude < 0.25f && rb.velocity.sqrMagnitude < 0.25f) v = projectile.transform.forward * arrow.m_ReleaseVelocity;
+                if (v.sqrMagnitude < 0.25f && rb.velocity.sqrMagnitude < 0.25f) v = launch;
                 Vector3 from = arrow != null && (arrow.m_LastPosition - cur).sqrMagnitude < 25f ? arrow.m_LastPosition : cur;
-                if (rb.isKinematic && arrow == null) return;
-                if (v.sqrMagnitude < 0.25f) return;
+                if (rb.isKinematic && arrow == null) return false;
+                if (v.sqrMagnitude < 0.25f) return false;
 
-                // From its last place to three steps and a hand ahead.
-                Vector3 to = cur + v * (Time.fixedDeltaTime * 3f) + v.normalized * 0.5f;
+                // From its last place to three steps (frames, for a thrown thing) and a hand ahead.
+                Vector3 to = cur + v * (Mathf.Max(Time.fixedDeltaTime, Time.deltaTime) * 3f) + v.normalized * 0.5f;
                 Vector3 seg = to - from;
                 float len = seg.magnitude;
-                if (len < 0.01f) return;
+                if (len < 0.01f) return false;
                 int best = FindOpenWindowCrossing(from, seg / len, len, out float t, out Vector3 hit);
-                if (best < 0) return;
+                if (best < 0) return false;
 
                 Vector3 shift = WindowCrossingShift(best);
                 rb.position += shift;
@@ -175,11 +177,46 @@ namespace SeamlessInteriors
                     if (pts != null) for (int i = 0; i < pts.Length; i++) pts[i] = pts[i] + shift;
                 }
                 MelonLogger.Msg($"[ATIS] {projectile.name} {best} numarali acik pencereden disari.", $"[SHOT] {projectile.name} carried out through open window {best}.");
+                return true;
             }
             catch (System.Exception ex)
             {
                 s_ShotThroughFailed = true;
                 MelonLogger.Warning($"[ATIS] Kapatildi: {ex.Message}", $"[SHOT] Turned off after an error: {ex.Message}");
+                return false;
+            }
+        }
+
+        // ─── THROWN TORCHES AND FLARES ───
+        // They have no physics step of their own to watch, so each is followed for a few seconds after it
+        // leaves the hand (owner, 2026-10-18: a thrown torch and flare stopped at the open window).
+        private const float THROWN_FOLLOW_SECONDS = 4f;
+        private const float THROWN_LAUNCH_SPEED = 12f;   // metres a second, only until the throw's force lands
+        private static readonly System.Collections.Generic.List<GearItem> s_Thrown = new System.Collections.Generic.List<GearItem>();
+        private static readonly System.Collections.Generic.List<float> s_ThrownUntil = new System.Collections.Generic.List<float>();
+
+        internal static void FollowThrownThroughWindow(GearItem item)
+        {
+            if (item == null || s_Thrown.Contains(item)) return;
+            // Just let go, the force is not applied yet: judged as thrown along the eye.
+            Camera cam = GameManager.GetMainCamera();
+            Vector3 launch = cam != null ? cam.transform.forward * THROWN_LAUNCH_SPEED : Vector3.zero;
+            if (MaybeCarryProjectileThroughWindow(item, launch)) return;
+            s_Thrown.Add(item);
+            s_ThrownUntil.Add(Time.time + THROWN_FOLLOW_SECONDS);
+        }
+
+        // Every frame.
+        private static void TickThrownThroughWindows()
+        {
+            for (int i = s_Thrown.Count - 1; i >= 0; i--)
+            {
+                var item = s_Thrown[i];
+                if (item == null || Time.time > s_ThrownUntil[i] || MaybeCarryProjectileThroughWindow(item))
+                {
+                    s_Thrown.RemoveAt(i);
+                    s_ThrownUntil.RemoveAt(i);
+                }
             }
         }
 
@@ -287,6 +324,17 @@ namespace SeamlessInteriors
     public class ArrowThroughWindowPatch
     {
         public static void Prefix(ArrowItem __instance) { SeamlessInteriorsMod.MaybeCarryProjectileThroughWindow(__instance); }
+    }
+
+    [HarmonyPatch(typeof(PlayerManager), nameof(PlayerManager.ReleaseThrownObject))]
+    public class ThrownThroughWindowPatch
+    {
+        public static void Prefix(PlayerManager __instance, out GearItem __state) { __state = __instance.m_ThrownItem; }
+        public static void Postfix(PlayerManager __instance, GearItem __state)
+        {
+            SeamlessInteriorsMod.FollowThrownThroughWindow(__state);
+            if (__instance.m_ThrownItem != __state) SeamlessInteriorsMod.FollowThrownThroughWindow(__instance.m_ThrownItem);
+        }
     }
 
     [HarmonyPatch(typeof(ArrowItem), nameof(ArrowItem.Fire))]

@@ -560,6 +560,7 @@ namespace SeamlessInteriors
             TickWindowCoverLayers();   // the frost and snow drawn on the room's glass
             TickWindowSashes();        // windows that open (see SeamlessInteriorsMod.WindowSashes.cs)
             TickShotWindowColliders(); // and their glass let shots through while open (SeamlessInteriorsMod.ShootThroughWindow.cs)
+            TickThrownThroughWindows(); // and thrown torches and flares out
             TickOpenWindowAir();       // and the cold and wind they let in (SeamlessInteriorsMod.OpenWindowAir.cs)
 
             // Room objects a building's row hides stay hidden. (see HideRoomObjectsByRow)
