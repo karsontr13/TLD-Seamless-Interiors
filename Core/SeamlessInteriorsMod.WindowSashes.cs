@@ -152,7 +152,7 @@ namespace SeamlessInteriors
             {
                 if (!IsOpenableWindow(row, i, s_WindowPortalOpenings[i])) continue;
                 string why;
-                var sash = BuildSlideUpSash(s_WindowPortalOpenings[i], i, true, out why);
+                var sash = BuildSash(s_WindowPortalOpenings[i], i, true, out why);
                 if (sash == null)
                 {
                     MelonLogger.Warning($"[PENCERE-KANAT] {s_WindowPortalInstanceId}: oda penceresi {i} kanatsiz kaldi: {why}",
@@ -208,6 +208,122 @@ namespace SeamlessInteriors
             var v = new Vector3[src.Length];
             for (int i = 0; i < v.Length; i++) v[i] = src[i];
             return v;
+        }
+
+        private static WindowSash BuildSash(InteriorWindowOpening opening, int index, bool cutFrame, out string why)
+        {
+            if (IsSlideRightWindowModel(opening)) return BuildSlideRightSash(opening, index, out why);
+            return BuildSlideUpSash(opening, index, cutFrame, out why);
+        }
+
+        // The left pane on a sash that slides right, in front of the frame's face. The sash keeps the
+        // slide-up layout with its axes turned: its Up is the window's right, its Right the window's up.
+        // The frame is part of the building's window mesh, so it is found by its post between the panes.
+        private static WindowSash BuildSlideRightSash(InteriorWindowOpening opening, int index, out string why)
+        {
+            why = null;
+            Transform pr = opening.PaneRoot;
+            if (pr == null) { why = "no window object"; return null; }
+            if (pr.Find("SI_Sash") != null) { why = "already has one"; return null; }
+            MeshRenderer glassRenderer = null;
+            MeshFilter glassMf = null;
+            if (opening.Glass != null)
+                foreach (var g in opening.Glass)
+                {
+                    var mf = g != null ? g.GetComponent<MeshFilter>() : null;
+                    if (mf != null && mf.sharedMesh != null && mf.sharedMesh.isReadable) { glassRenderer = g as MeshRenderer; glassMf = mf; break; }
+                }
+            if (glassMf == null || glassRenderer == null) { why = "no readable glass"; return null; }
+
+            Vector3 origin = opening.GlassCenter, R = opening.Right, U = opening.Up, O = opening.Outward;
+            // The panes: the widest stretch across the window that no glass triangle covers is the post.
+            var glassVerts = CopyVerts(glassMf.sharedMesh);
+            var across = new float[glassVerts.Length];
+            float gBottom = float.MaxValue, gTop = float.MinValue;
+            for (int i = 0; i < glassVerts.Length; i++)
+            {
+                Vector3 p = glassMf.transform.TransformPoint(glassVerts[i]) - origin;
+                across[i] = Vector3.Dot(p, R);
+                float u = Vector3.Dot(p, U);
+                gBottom = Mathf.Min(gBottom, u); gTop = Mathf.Max(gTop, u);
+            }
+            var spans = new List<Vector2>();
+            var tris = glassMf.sharedMesh.triangles;
+            for (int i = 0; i + 2 < tris.Length; i += 3)
+            {
+                float a = across[tris[i]], b = across[tris[i + 1]], c = across[tris[i + 2]];
+                spans.Add(new Vector2(Mathf.Min(a, Mathf.Min(b, c)), Mathf.Max(a, Mathf.Max(b, c))));
+            }
+            if (spans.Count == 0) { why = "no glass triangles"; return null; }
+            spans.Sort((x, y) => x.x.CompareTo(y.x));
+            float gLeft = spans[0].x, gRight = spans[0].y, postL = 0f, postR = 0f;
+            foreach (var s in spans)
+            {
+                if (s.x > gRight && s.x - gRight > postR - postL) { postL = gRight; postR = s.x; }
+                gRight = Mathf.Max(gRight, s.y);
+            }
+            if (postR - postL < 0.02f || postL - gLeft < 0.2f || gRight - postR < 0.2f) { why = "not two panes side by side"; return null; }
+            float seam = (postL + postR) * 0.5f;
+
+            // The frame's room face on the post, and its material and colour there.
+            MeshFilter frameMf = null;
+            float face = float.MaxValue;
+            Vector2 frameUv = Vector2.zero;
+            if (pr.parent != null)
+                foreach (var mf in pr.parent.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    if (mf == glassMf || mf.transform.IsChildOf(pr) || mf.sharedMesh == null || !mf.sharedMesh.isReadable || mf.name.StartsWith("SI_")) continue;
+                    var renderer = mf.GetComponent<MeshRenderer>();
+                    if (renderer == null || !renderer.bounds.Contains(origin)) continue;
+                    var verts = mf.sharedMesh.vertices;
+                    var uvs = mf.sharedMesh.uv;
+                    for (int i = 0; i < verts.Length; i++)
+                    {
+                        Vector3 p = mf.transform.TransformPoint(verts[i]) - origin;
+                        float r = Vector3.Dot(p, R), u = Vector3.Dot(p, U), o = Vector3.Dot(p, O);
+                        if (r < postL - 0.005f || r > postR + 0.005f || u < gBottom - 0.02f || u > gTop + 0.02f || o > 0.01f || o < -0.15f) continue;
+                        if (o < face) { face = o; frameMf = mf; frameUv = i < uvs.Length ? uvs[i] : Vector2.zero; }
+                    }
+                }
+            if (frameMf == null) { why = "no frame post between the panes"; return null; }
+
+            // Over the frame round the left pane by a few centimetres, so no gap shows at its edges.
+            const float OVER = 0.03f;
+            var sash = new WindowSash { Opening = index, PaneRoot = pr, Up = R, Right = U, Outward = O, Seam = seam };
+            float o1 = face - SASH_DEPTH_GAP, o0 = o1 - 0.024f;
+            sash.SashMid = (o0 + o1) * 0.5f;
+            sash.EdgeLeft = gBottom - OVER; sash.EdgeRight = gTop + OVER; sash.EdgeBottom = gLeft - OVER;
+            sash.RailTop = postL + OVER;
+            // Its left edge stops at the post, clear of the left pane.
+            sash.Slide = postL - sash.EdgeBottom;
+
+            sash.Go = new GameObject("SI_Sash");
+            sash.Go.layer = frameMf.gameObject.layer;
+            sash.Go.transform.SetParent(pr, false);
+            sash.SashMesh = BuildSashMesh(pr, origin, U, R, O, sash.EdgeLeft, sash.EdgeRight, sash.EdgeBottom, sash.RailTop, o0, o1);
+            var flat = new Vector2[sash.SashMesh.vertexCount];
+            for (int i = 0; i < flat.Length; i++) flat[i] = frameUv;
+            sash.SashMesh.uv = flat;
+            sash.Go.AddComponent<MeshFilter>().sharedMesh = sash.SashMesh;
+            sash.Go.AddComponent<MeshRenderer>().sharedMaterial = frameMf.GetComponent<MeshRenderer>().sharedMaterial;
+
+            sash.GlassMf = glassMf;
+            sash.GlassRenderer = glassRenderer;
+            sash.GlassOwn = glassMf.sharedMesh;
+            sash.GlassUpper = CutMeshAtSeam(sash.GlassOwn, glassMf.transform, origin, R, seam, true);
+            sash.GlassLower = CutMeshAtSeam(sash.GlassOwn, glassMf.transform, origin, R, seam, false);
+            KeepInsideSash(sash.GlassLower, glassMf.transform, origin, U, R, sash);
+            glassMf.sharedMesh = sash.GlassUpper;
+            var lowGlassGo = new GameObject("SI_SashGlass");
+            lowGlassGo.layer = glassMf.gameObject.layer;
+            lowGlassGo.transform.SetParent(sash.Go.transform, false);
+            lowGlassGo.transform.position = glassMf.transform.position + O * sash.SashMid;
+            lowGlassGo.transform.rotation = glassMf.transform.rotation;
+            lowGlassGo.transform.localScale = glassMf.transform.localScale;
+            lowGlassGo.AddComponent<MeshFilter>().sharedMesh = sash.GlassLower;
+            sash.LowGlass = lowGlassGo.AddComponent<MeshRenderer>();
+            FollowGlass(sash);
+            return sash;
         }
 
         // cutFrame: the frame's rail gives up its room half so the sash can pass it. Off for the view from
@@ -487,25 +603,36 @@ namespace SeamlessInteriors
             var mf = layer.FrostGo.GetComponent<MeshFilter>();
             if (mf == null || mf.sharedMesh == null) return;
             var opening = s_WindowPortalOpenings[sash.Opening];
-            Vector3 origin = opening.GlassCenter, U = opening.Up, O = opening.Outward;
-            // The quad is in world space: 0, 1 along the bottom, 2, 3 along the top.
+            // Along the sash's own axes: its Up is the way it slides, for a side slider the window's right.
+            Vector3 origin = opening.GlassCenter, A = sash.Up, B = sash.Right, O = opening.Outward;
+            // A rectangle in world space; each corner is kept in its place in the quad, so the faces keep their winding.
             var v = CopyVerts(mf.sharedMesh);
             if (v.Length != 4) return;
             Transform t = mf.transform;
-            float ub = Vector3.Dot(t.TransformPoint(v[0]) - origin, U), ut = Vector3.Dot(t.TransformPoint(v[2]) - origin, U);
-            float f = (sash.Seam - ub) / (ut - ub);
+            var uv0 = mf.sharedMesh.uv;
+            if (uv0.Length != 4) return;
+            var a = new float[4];
+            var b = new float[4];
+            for (int i = 0; i < 4; i++) { Vector3 p = t.TransformPoint(v[i]) - origin; a[i] = Vector3.Dot(p, A); b[i] = Vector3.Dot(p, B); }
+            float aMin = Mathf.Min(Mathf.Min(a[0], a[1]), Mathf.Min(a[2], a[3])), aMax = Mathf.Max(Mathf.Max(a[0], a[1]), Mathf.Max(a[2], a[3]));
+            float bMin = Mathf.Min(Mathf.Min(b[0], b[1]), Mathf.Min(b[2], b[3])), bMax = Mathf.Max(Mathf.Max(b[0], b[1]), Mathf.Max(b[2], b[3]));
+            if (aMax - aMin < 0.05f || bMax - bMin < 0.05f) return;
+            float f = (sash.Seam - aMin) / (aMax - aMin);
             if (f <= 0.01f || f >= 0.99f) return;
 
             // The upper part starts at the rail's top: from the seam it lay over the rail, hidden by the shut
             // sash's top rail, and showed below the raised one (owner, 2026-10-18).
             float upperBottom = Mathf.Max(sash.Seam, sash.RailTop);
-            float fu = (upperBottom - ub) / (ut - ub);
             sash.FrostOwn = mf.sharedMesh;
             sash.FrostUpper = Object.Instantiate(sash.FrostOwn);
-            var up = CopyVerts(sash.FrostOwn);
-            var uvUp = new[] { new Vector2(0, fu), new Vector2(1, fu), new Vector2(0, 1), new Vector2(1, 1) };
-            up[0] = t.InverseTransformPoint(t.TransformPoint(v[0]) + U * (upperBottom - ub));
-            up[1] = t.InverseTransformPoint(t.TransformPoint(v[1]) + U * (upperBottom - ub));
+            var up = new Vector3[4];
+            var uvUp = new Vector2[4];
+            for (int i = 0; i < 4; i++)
+            {
+                float ai = Mathf.Max(a[i], upperBottom);
+                up[i] = t.InverseTransformPoint(origin + A * ai + B * b[i] + O * Vector3.Dot(t.TransformPoint(v[i]) - origin, O));
+                uvUp[i] = QuadUv(a, b, uv0, aMin, aMax, bMin, bMax, ai, b[i]);
+            }
             sash.FrostUpper.vertices = up;
             sash.FrostUpper.uv = uvUp;
             sash.FrostUpper.RecalculateBounds();
@@ -513,21 +640,23 @@ namespace SeamlessInteriors
 
             // The lower half on the sash, at the sash's depth, cut to the sash's edges: wider or lower, its
             // rim showed past the sash and moved with it (owner, 2026-10-18).
-            Vector3 R = opening.Right;
-            float r0 = Vector3.Dot(t.TransformPoint(v[0]) - origin, R), r1 = Vector3.Dot(t.TransformPoint(v[1]) - origin, R);
-            float left = Mathf.Max(r0, sash.EdgeLeft), right = Mathf.Min(r1, sash.EdgeRight), bottom = Mathf.Max(ub, sash.EdgeBottom);
-            if (right - left < 0.05f || sash.Seam - bottom < 0.05f) return;
-            float uL = (left - r0) / (r1 - r0), uR = (right - r0) / (r1 - r0), vB = (bottom - ub) / (ut - ub);
+            float left = Mathf.Max(bMin, sash.EdgeLeft), right = Mathf.Min(bMax, sash.EdgeRight), bottom = Mathf.Max(aMin, sash.EdgeBottom);
+            // A side slider's sash ends short of the seam, at the post.
+            float top = Mathf.Min(sash.Seam, sash.RailTop);
+            if (right - left < 0.05f || top - bottom < 0.05f) return;
             Transform st = sash.Go.transform;
             Vector3 plane = origin + O * sash.SashMid;
             var low = new Vector3[4];
-            low[0] = st.InverseTransformPoint(plane + R * left + U * bottom);
-            low[1] = st.InverseTransformPoint(plane + R * right + U * bottom);
-            low[2] = st.InverseTransformPoint(plane + R * left + U * sash.Seam);
-            low[3] = st.InverseTransformPoint(plane + R * right + U * sash.Seam);
+            var uvLow = new Vector2[4];
+            for (int i = 0; i < 4; i++)
+            {
+                float ai = a[i] - aMin < aMax - a[i] ? bottom : top, bi = b[i] - bMin < bMax - b[i] ? left : right;
+                low[i] = st.InverseTransformPoint(plane + A * ai + B * bi);
+                uvLow[i] = QuadUv(a, b, uv0, aMin, aMax, bMin, bMax, ai, bi);
+            }
             sash.FrostLower = Object.Instantiate(sash.FrostOwn);
             sash.FrostLower.vertices = low;
-            sash.FrostLower.uv = new[] { new Vector2(uL, vB), new Vector2(uR, vB), new Vector2(uL, f), new Vector2(uR, f) };
+            sash.FrostLower.uv = uvLow;
             sash.FrostLower.RecalculateBounds();
 
             sash.LowFrost = new GameObject("SI_SashFrost");
@@ -537,6 +666,19 @@ namespace SeamlessInteriors
             renderer.sharedMaterial = layer.FrostMat;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
+        }
+
+        // The texture point at (a, b) of a rectangle quad, from its four corners' points.
+        private static Vector2 QuadUv(float[] a, float[] b, Vector2[] uv, float aMin, float aMax, float bMin, float bMax, float at, float bt)
+        {
+            float s = (at - aMin) / (aMax - aMin), q = (bt - bMin) / (bMax - bMin);
+            Vector2 c00 = Vector2.zero, c10 = Vector2.zero, c01 = Vector2.zero, c11 = Vector2.zero;
+            for (int i = 0; i < 4; i++)
+            {
+                bool hiA = a[i] - aMin > aMax - a[i], hiB = b[i] - bMin > bMax - b[i];
+                if (!hiA && !hiB) c00 = uv[i]; else if (hiA && !hiB) c10 = uv[i]; else if (!hiA) c01 = uv[i]; else c11 = uv[i];
+            }
+            return Vector2.Lerp(Vector2.Lerp(c00, c10, s), Vector2.Lerp(c01, c11, s), q);
         }
 
         private static void DropSashFrost(WindowSash sash)
@@ -674,18 +816,24 @@ namespace SeamlessInteriors
             "OBJ_LakeCabinWindowA", "OBJ_LakeCabinWindowB", "Obj_WindowCabinA2",
         };
 
-        private static bool IsSlideUpWindowModel(InteriorWindowOpening opening)
+        // Two panes side by side; the left one slides right (owner, 2026-10-18, Coastal Highway house).
+        private static readonly string[] SLIDE_RIGHT_WINDOW_MODELS = { "STR_GlassPane_Single" };
+
+        private static bool IsSlideUpWindowModel(InteriorWindowOpening opening) { return IsWindowModel(opening, SLIDE_UP_WINDOW_MODELS); }
+        private static bool IsSlideRightWindowModel(InteriorWindowOpening opening) { return IsWindowModel(opening, SLIDE_RIGHT_WINDOW_MODELS); }
+
+        private static bool IsWindowModel(InteriorWindowOpening opening, string[] models)
         {
             var pr = opening.PaneRoot;
             if (pr == null) return false;
-            if (StartsWithModel(pr.name)) return true;
-            for (int c = 0; c < pr.childCount; c++) if (StartsWithModel(pr.GetChild(c).name)) return true;
+            if (StartsWithModel(pr.name, models)) return true;
+            for (int c = 0; c < pr.childCount; c++) if (StartsWithModel(pr.GetChild(c).name, models)) return true;
             return false;
         }
 
-        private static bool StartsWithModel(string name)
+        private static bool StartsWithModel(string name, string[] models)
         {
-            foreach (var model in SLIDE_UP_WINDOW_MODELS)
+            foreach (var model in models)
                 if (name.StartsWith(model, System.StringComparison.OrdinalIgnoreCase)
                     && (name.Length == model.Length || !char.IsLetterOrDigit(name[model.Length]))) return true;
             return false;
@@ -695,7 +843,7 @@ namespace SeamlessInteriors
         private static bool IsOpenableWindow(BuildingWindowOverride row, int roomWindow, InteriorWindowOpening opening)
         {
             if (opening.ViewOutOnly) return false;
-            if (IsSlideUpWindowModel(opening)) return true;
+            if (IsSlideUpWindowModel(opening) || IsSlideRightWindowModel(opening)) return true;
             if (row == null || row.OpenableWindows == null) return false;
             foreach (var entry in row.OpenableWindows) if (entry != null && entry.RoomWindow == roomWindow) return true;
             return false;
@@ -720,7 +868,7 @@ namespace SeamlessInteriors
             if (kept.Sash == null && Time.realtimeSinceStartup >= kept.RetryAt)
             {
                 string why;
-                kept.Sash = BuildSlideUpSash(opening, roomWindow, false, out why);
+                kept.Sash = BuildSash(opening, roomWindow, false, out why);
                 if (kept.Sash == null)
                 {
                     kept.RetryAt = Time.realtimeSinceStartup + OUTSIDE_SASH_RETRY_SECONDS;
