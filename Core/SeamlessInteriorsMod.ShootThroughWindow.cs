@@ -41,7 +41,7 @@ namespace SeamlessInteriors
                 // Only the open part: under the raised sash, between its sides.
                 float r = Vector3.Dot(p - opening.GlassCenter, sash.Right);
                 float u = Vector3.Dot(p - opening.GlassCenter, sash.Up);
-                if (r < sash.EdgeLeft || r > sash.EdgeRight || u < sash.EdgeBottom || u > sash.EdgeBottom + sash.Slide * sash.Shown) continue;
+                if (!InBays(r, sash.Bays, sash.EdgeLeft, sash.EdgeRight, 0f) || u < sash.EdgeBottom || u > sash.EdgeBottom + sash.Slide * sash.Shown) continue;
                 best = sash.Opening; hitT = t; hit = p;
             }
             return best;
@@ -161,7 +161,7 @@ namespace SeamlessInteriors
                         Vector3 p = from + dir * t + ap.Delta;
                         float r = Vector3.Dot(p - opening.GlassCenter, sash.Right);
                         float u = Vector3.Dot(p - opening.GlassCenter, sash.Up);
-                        if (r < sash.EdgeLeft || r > sash.EdgeRight || u < sash.EdgeBottom || u > sash.EdgeBottom + sash.Slide * sash.Shown) continue;
+                        if (!InBays(r, sash.Bays, sash.EdgeLeft, sash.EdgeRight, 0f) || u < sash.EdgeBottom || u > sash.EdgeBottom + sash.Slide * sash.Shown) continue;
                         bestT = t;
                         roomWindow = held.RoomWindow;
                         room = b;
