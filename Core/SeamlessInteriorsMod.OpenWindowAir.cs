@@ -55,6 +55,7 @@ namespace SeamlessInteriors
 
                 TickOpenWindowCooling(open);
                 TickOpenWindowSound(open > 0 && main != null, nearest, nearestDist);
+                TickWindowEar(main);
             }
             catch (System.Exception ex)
             {
@@ -132,8 +133,89 @@ namespace SeamlessInteriors
             }
         }
 
+        // ─── ANIMALS OUTSIDE ARE HEARD AT THE WINDOW ───
+        //
+        // The listener is on the player's camera, in the parked room 80 m over the building, so wolves
+        // howling beside the window were all but silent (owner, 2026-10-18). A second listener stands
+        // where the nearest window's view out is taken from, and the animals' sound objects are heard
+        // by it too: fully beside an open window, much less through shut glass (owner), none far in.
+        private const float WINDOW_EAR_SHUT_GAIN = 0.25f;
+        private const float WINDOW_EAR_SCAN_SECONDS = 1f;
+        private static GameObject s_WindowEar;
+        private static readonly System.Collections.Generic.List<GameObject> s_WindowEarEmitters = new System.Collections.Generic.List<GameObject>();
+        private static float s_WindowEarGain = -1f;
+        private static float s_WindowEarNextScan;
+
+        private static void TickWindowEar(Camera main)
+        {
+            if (!s_IsPlayerInsideClone || main == null || s_WindowPortalOpenings.Count == 0) { DropWindowEar(); return; }
+
+            Vector3 eye = main.transform.position;
+            int nearest = -1; float nearestDist = float.MaxValue;
+            for (int i = 0; i < s_WindowPortalOpenings.Count && i < s_WindowPortalDelta.Count; i++)
+            {
+                float d = Vector3.Distance(eye, s_WindowPortalOpenings[i].GlassCenter);
+                if (d < nearestDist) { nearestDist = d; nearest = i; }
+            }
+            if (nearest < 0) { DropWindowEar(); return; }
+
+            if (s_WindowEar == null)
+            {
+                s_WindowEar = new GameObject("SI_WindowEar");
+                Object.DontDestroyOnLoad(s_WindowEar);
+                AkSoundEngine.RegisterGameObj(s_WindowEar, s_WindowEar.name);
+                s_WindowEarGain = -1f;
+                s_WindowEarNextScan = 0f;
+            }
+            AkSoundEngine.SetObjectPosition(s_WindowEar, eye + s_WindowPortalDelta[nearest], main.transform.forward, main.transform.up);
+
+            // How open that window is, eased with its sash, and how near the player stands to it.
+            var sash = SashOf(nearest);
+            float open = sash != null ? Mathf.Clamp01(sash.Shown) : 0f;
+            float far = Mathf.Clamp01((nearestDist - OPEN_AIR_SOUND_FULL_WITHIN) / (OPEN_AIR_SOUND_GONE_AT - OPEN_AIR_SOUND_FULL_WITHIN));
+            float target = (1f - far * far * (3f - 2f * far)) * Mathf.Lerp(WINDOW_EAR_SHUT_GAIN, 1f, open);
+            float gain = s_WindowEarGain < 0f ? target : Mathf.Lerp(s_WindowEarGain, target, 1f - Mathf.Exp(-Time.unscaledDeltaTime / OPEN_AIR_SOUND_GLIDE_SECONDS));
+
+            bool added = false;
+            if (Time.unscaledTime >= s_WindowEarNextScan)
+            {
+                s_WindowEarNextScan = Time.unscaledTime + WINDOW_EAR_SCAN_SECONDS;
+                s_WindowEarEmitters.RemoveAll(go => go == null);
+                foreach (var ai in Object.FindObjectsOfType<BaseAi>())
+                {
+                    if (ai == null) continue;
+                    // An animal's calls play on its sound child (Audio_WildlifeWolf), not on itself.
+                    foreach (var ak in ai.GetComponentsInChildren<AkGameObj>(true))
+                    {
+                        var go = ak.gameObject;
+                        if (s_WindowEarEmitters.Contains(go)) continue;
+                        AkSoundEngine.AddListener(go, s_WindowEar);
+                        s_WindowEarEmitters.Add(go);
+                        added = true;
+                    }
+                }
+            }
+            if (added || s_WindowEarGain < 0f || Mathf.Abs(gain - s_WindowEarGain) > 0.002f)
+                foreach (var go in s_WindowEarEmitters)
+                    if (go != null) AkSoundEngine.SetGameObjectOutputBusVolume(go, s_WindowEar, gain);
+            s_WindowEarGain = gain;
+        }
+
+        private static void DropWindowEar()
+        {
+            if (s_WindowEar == null) return;
+            foreach (var go in s_WindowEarEmitters)
+                if (go != null) AkSoundEngine.RemoveListener(go, s_WindowEar);
+            s_WindowEarEmitters.Clear();
+            AkSoundEngine.UnregisterGameObj(s_WindowEar);
+            Object.Destroy(s_WindowEar);
+            s_WindowEar = null;
+            s_WindowEarGain = -1f;
+        }
+
         private static void ResetOpenWindowAir()
         {
+            DropWindowEar();
             StopOpenWindowSound();
             if (s_OpenAirSpace != null) s_OpenAirSpace.m_TemperatureDeltaCelsius = 0f;
             s_OpenAirSpace = null;

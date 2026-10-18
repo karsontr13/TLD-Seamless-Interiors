@@ -19,6 +19,9 @@ namespace SeamlessInteriors
         private static bool s_ShotThroughFailed;
         private static BaseAi s_ShotAi;   // set while a sent-out bullet is in its Start
         internal static bool s_FleeSeesOutdoors;   // true inside BaseAi.ProcessFlee while the player is in a room
+        private static bool s_ShotHeard;
+        private static Vector3 s_ShotHeardAt;
+        private static GameObject s_ShotSoundSource;
         private static readonly System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<BaseAi, float>> s_ShotHp = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<BaseAi, float>>();
         private static WeaponSource s_ShotSource;
 
@@ -87,6 +90,8 @@ namespace SeamlessInteriors
                     if (ai != null && Vector3.Distance(ai.transform.position, bt.position) < bullet.Range)
                         s_ShotHp.Add(new System.Collections.Generic.KeyValuePair<BaseAi, float>(ai, ai.m_CurrentHP));
                 s_ShotAi = s_ShotHp.Count > 0 ? s_ShotHp[0].Key : null;
+                s_ShotHeard = true;
+                s_ShotHeardAt = bt.position;
             }
             catch (System.Exception ex)
             {
@@ -95,8 +100,32 @@ namespace SeamlessInteriors
             }
         }
 
-        // After the bullet's own hit: the struck animal runs or turns, as from a shot outdoors.
+        // After the bullet's own hit: the struck animal runs or turns, and the rest hear the shot.
         internal static void AfterShotThroughWindow()
+        {
+            ReactToShotThroughWindow();
+            if (!s_ShotHeard) return;
+            s_ShotHeard = false;
+            try
+            {
+                // The game tells animals of the shot from the player, who stands far off in the room and
+                // counts as unseen to them there, so nothing heard it (owner, 2026-10-18). Told again from
+                // the window's outside, by a source that is not the player, wolves 30 m off ran (live).
+                if (s_ShotSoundSource == null)
+                {
+                    s_ShotSoundSource = new GameObject("SI_WindowShotSound");
+                    Object.DontDestroyOnLoad(s_ShotSoundSource);
+                }
+                s_ShotSoundSource.transform.position = s_ShotHeardAt;
+                GameAudioManager.NotifyAiAudioEvent(s_ShotSoundSource, s_ShotHeardAt, GameAudioAiEvent.Gunshot);
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[ATIS] Atis sesi: {ex.Message}", $"[SHOT] Shot sound: {ex.Message}");
+            }
+        }
+
+        private static void ReactToShotThroughWindow()
         {
             if (s_ShotAi == null || s_ShotThroughFailed) { s_ShotHp.Clear(); return; }
             s_ShotAi = null;
