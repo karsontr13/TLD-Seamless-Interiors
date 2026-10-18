@@ -1213,9 +1213,6 @@ namespace SeamlessInteriors
         private const float COVER_OUTDOOR_FROST = 0.85f, COVER_OUTDOOR_BANK = 3f;
         // The last light, for layers made between two reads.
         private static Color s_CoverLight = new Color(0.3f, 0.3f, 0.3f, 1f), s_CoverBankLight = Color.white;
-        private static string s_CoverLightRoom;
-        // Share of the way to a new reading taken each second.
-        private const float COVER_LIGHT_FOLLOW = 0.1f;
         private static readonly MaterialPropertyBlock s_CoverBankTint = new MaterialPropertyBlock();
 
         // The frost's colour and the bank's tint for this second's light.
@@ -1273,6 +1270,8 @@ namespace SeamlessInteriors
                     TeardownWindowCoverLayers();
                     if (id == null || s_WindowPortalOpenings.Count == 0) return;
                     s_CoverLayersInstance = id;
+                    // New layers start in this room's light, not the last room's.
+                    CoverRoomLight(out s_CoverLight, out s_CoverBankLight);
                     for (int i = 0; i < s_WindowPortalOpenings.Count; i++) s_CoverLayers.Add(null);
                     s_CoverLayersBuilt = 0;
                 }
@@ -1307,16 +1306,9 @@ namespace SeamlessInteriors
                 s_CoverDirty = false;
                 s_CoverNextTick = real + 1f;
 
+                // Taken as read, not eased in: the slow follow made the frost brighten over half a minute (owner, 2026-10-18).
                 Color light, bankTint;
                 CoverRoomLight(out light, out bankTint);
-                // Which views are drawn, and how large, changes as the player walks: the light moved with
-                // every step (owner, Community Hall, 2026-10-13). It follows slowly; a new room starts on its own.
-                if (s_CoverLightRoom == id)
-                {
-                    light = Color.Lerp(s_CoverLight, light, COVER_LIGHT_FOLLOW);
-                    bankTint = Color.Lerp(s_CoverBankLight, bankTint, COVER_LIGHT_FOLLOW);
-                }
-                s_CoverLightRoom = id;
                 s_CoverLight = light; s_CoverBankLight = bankTint;
                 TickSnowedUpWindowShafts();
                 int fills = 0;
