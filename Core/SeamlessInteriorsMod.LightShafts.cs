@@ -107,6 +107,7 @@ namespace SeamlessInteriors
             internal Light Light;
             internal bool LightWasOn;
             internal float External;
+            internal readonly List<Renderer> Meshes = new List<Renderer>();
         }
 
         private static readonly Dictionary<int, DimmedShaft> s_DimmedShafts = new Dictionary<int, DimmedShaft>();
@@ -160,24 +161,55 @@ namespace SeamlessInteriors
             s_RoomShaftWindow.Add(best);
         }
 
-        // Held at 0 every look: the room's own manager writes the external intensity too.
+        // The game turns the shaft back on every frame; a once-a-second dim flickered (owner, 2026-10-18).
         private static void DimShaft(Component shaft, int id, bool already)
         {
+            if (already) return;
             var gimble = shaft.TryCast<LightShaftGimble>();
             var tod = gimble == null ? shaft.TryCast<LightShaftTod>() : null;
             Light light = gimble != null ? gimble.m_Light : (tod != null ? tod.m_Light : null);
-            if (!already)
+            var was = new DimmedShaft
             {
-                s_DimmedShafts[id] = new DimmedShaft
-                {
-                    Light = light, LightWasOn = light != null && light.enabled,
-                    External = gimble != null ? gimble.m_ExternalIntensity : (tod != null ? tod.m_ExternalIntensity : 1f)
-                };
-                s_DimmedShaftOwners[id] = shaft;
+                Light = light, LightWasOn = light != null && light.enabled,
+                External = gimble != null ? gimble.m_ExternalIntensity : (tod != null ? tod.m_ExternalIntensity : 1f)
+            };
+            Il2CppReferenceArray<Renderer> meshes = gimble != null ? gimble.m_LightShaftRenderer : null;
+            if (meshes != null)
+                for (int i = 0; i < meshes.Length; i++)
+                    if (meshes[i] != null && meshes[i].enabled) was.Meshes.Add(meshes[i]);
+            s_DimmedShafts[id] = was;
+            s_DimmedShaftOwners[id] = shaft;
+            HoldShaftDark(shaft, was);
+        }
+
+        // From OnLateUpdate, after the game's own Updates and before rendering.
+        internal static void HoldSnowedUpShaftsDark()
+        {
+            if (s_DimmedShafts.Count == 0) return;
+            // The covers' look stops once the player leaves the room; the shafts are given back here.
+            if ((WindowCoverLayers ? s_WindowPortalInstanceId : null) != s_ShaftWindowsRoom)
+            {
+                RestoreSnowedUpShafts();
+                s_ShaftWindowsRoom = null;
+                s_RoomShafts.Clear(); s_RoomShaftWindow.Clear();
+                return;
             }
+            foreach (var pair in s_DimmedShafts)
+            {
+                Component shaft;
+                if (s_DimmedShaftOwners.TryGetValue(pair.Key, out shaft) && shaft != null) HoldShaftDark(shaft, pair.Value);
+            }
+        }
+
+        private static void HoldShaftDark(Component shaft, DimmedShaft was)
+        {
+            var gimble = shaft.TryCast<LightShaftGimble>();
+            var tod = gimble == null ? shaft.TryCast<LightShaftTod>() : null;
             if (gimble != null) gimble.m_ExternalIntensity = 0f;
             if (tod != null) tod.m_ExternalIntensity = 0f;
-            if (light != null && light.enabled) light.enabled = false;
+            if (was.Light != null && was.Light.enabled) was.Light.enabled = false;
+            foreach (Renderer mesh in was.Meshes)
+                if (mesh != null && mesh.enabled) mesh.enabled = false;
         }
 
         private static void RestoreShaft(int id)
@@ -191,6 +223,8 @@ namespace SeamlessInteriors
                 if (gimble != null) gimble.m_ExternalIntensity = was.External;
                 if (tod != null) tod.m_ExternalIntensity = was.External;
                 if (was.Light != null && was.LightWasOn) was.Light.enabled = true;
+                foreach (Renderer mesh in was.Meshes)
+                    if (mesh != null) mesh.enabled = true;
             }
             s_DimmedShafts.Remove(id);
             s_DimmedShaftOwners.Remove(id);

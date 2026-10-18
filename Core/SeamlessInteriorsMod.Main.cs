@@ -786,6 +786,9 @@ namespace SeamlessInteriors
             long perf = PerfProbe.Begin();
             ClonedInteriorLightingGuard.EnforceOwnerAmbient();
 
+            // A snowed-up window's light shaft stays off every frame. (see SeamlessInteriorsMod.LightShafts.cs)
+            HoldSnowedUpShaftsDark();
+
             // In a parked room the game's snow is born at the ground, below the room.
             // (see SeamlessInteriorsMod.ParkedWeather.cs)
             TickParkedSnowEmitters();
