@@ -556,6 +556,7 @@ namespace SeamlessInteriors
             TickWindowFrostWeather();
             TickWindowFrostFires();
             TickWindowFrostReturn();
+            TickOutsideOpenWindows();  // open windows seen from outside, taken down first on the way in
             TickWindowCoverLayers();   // the frost and snow drawn on the room's glass
             TickWindowSashes();        // windows that open (see SeamlessInteriorsMod.WindowSashes.cs)
 

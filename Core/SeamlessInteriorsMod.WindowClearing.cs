@@ -362,7 +362,38 @@ namespace SeamlessInteriors
             hold.AddEventCallback(InteractionEventType.HoldEnd, done);
 
             FindDoorsOverGlass(target, box);
+            HideSoundSpheresFromRays(target, box);
             s_CleanTargets.Add(target);
+        }
+
+        // THE GAME'S WINDOW SOUND STOPS THE CROSSHAIR. Camp Office window 2 (LakeCabinWindowC) carries its
+        // ambient sound on a solid 0.5 m sphere with a Rigidbody, centred on the glass: the crosshair met it
+        // 46 cm short of the target and the window could not be cleaned (owner, 2026-10-18). Such spheres in
+        // front of a target go to Ignore Raycast while the targets stand; collisions are unchanged.
+        private const int IGNORE_RAYCAST_LAYER = 2;
+        private const float SOUND_SPHERE_REACH = 0.6f;
+        private static readonly List<Collider> s_CleanSoundSpheres = new List<Collider>();
+        private static readonly List<int> s_CleanSoundSphereLayers = new List<int>();
+
+        private static void HideSoundSpheresFromRays(CleanTarget target, BoxCollider box)
+        {
+            var half = new Vector3(box.size.x * 0.5f, box.size.y * 0.5f, SOUND_SPHERE_REACH);
+            foreach (var c in Physics.OverlapBox(target.Position, half, target.Go.transform.rotation, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (c == null || c.isTrigger || c.gameObject.layer == IGNORE_RAYCAST_LAYER || s_CleanSoundSpheres.Contains(c)) continue;
+                if (c.GetComponent<AkAmbient>() == null) continue;
+                s_CleanSoundSpheres.Add(c);
+                s_CleanSoundSphereLayers.Add(c.gameObject.layer);
+                c.gameObject.layer = IGNORE_RAYCAST_LAYER;
+            }
+        }
+
+        private static void RestoreSoundSpheres()
+        {
+            for (int i = 0; i < s_CleanSoundSpheres.Count; i++)
+                if (s_CleanSoundSpheres[i] != null) s_CleanSoundSpheres[i].gameObject.layer = s_CleanSoundSphereLayers[i];
+            s_CleanSoundSpheres.Clear();
+            s_CleanSoundSphereLayers.Clear();
         }
 
         private static void StartCleanSound(CleanTarget target)
@@ -541,6 +572,7 @@ namespace SeamlessInteriors
         {
             if (s_RightCleanTarget != null) StopCleanSound(s_RightCleanTarget);
             s_RightCleanTarget = null;
+            RestoreSoundSpheres();
             SetDoorWindowCleanMode(false);
             s_CleanHeldTarget = null;
             s_CleanStateNextAt = 0f;

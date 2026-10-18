@@ -971,6 +971,7 @@ namespace SeamlessInteriors
             s_OutsideInApertureGlass.Clear();
             s_OutsideInApertureInteriorSize.Clear();
             s_OutsideInApertureOpenings.Clear();
+            s_OI.ApertureRoomWindow.Clear();
             s_OutsideInPairedCount = 0;
             s_OutsideInRetryAt = Time.realtimeSinceStartup + 1f;
 
@@ -986,7 +987,8 @@ namespace SeamlessInteriors
             // The interior's own apertures, found by glass material. This reads the clone's mesh
             // renderers with includeInactive true, so it works before the clone is switched on.
             double lapShellWindows = lapTimer.Elapsed.TotalMilliseconds;
-            var interiorOpenings = WithoutViewOutOnly(FindInteriorWindowOpenings(instance));
+            var allRoomOpenings = FindInteriorWindowOpenings(instance);
+            var interiorOpenings = WithoutViewOutOnly(allRoomOpenings);
             double lapRoomOpenings = lapTimer.Elapsed.TotalMilliseconds;
 
             Transform shell = instance.ExteriorShell.transform;
@@ -1105,6 +1107,8 @@ namespace SeamlessInteriors
                 s_OutsideInApertureGlass.Add(real ? interiorOpenings[best].GlassCenter : Vector3.zero);
                 s_OutsideInApertureInteriorSize.Add(real ? new Vector2(interiorOpenings[best].Width, interiorOpenings[best].Height) : Vector2.zero);
                 s_OutsideInApertureOpenings.Add(real ? interiorOpenings[best] : default(InteriorWindowOpening));
+                // The number the room knows it by, in the list the views out keep (view-out-only glass included).
+                s_OI.ApertureRoomWindow.Add(real ? allRoomOpenings.FindIndex(o => o.PaneRoot == interiorOpenings[best].PaneRoot && o.GlassCenter == interiorOpenings[best].GlassCenter) : -1);
 
                 // EACH PAIR'S TWO SIZES, SAID AT LOAD. Counting and pairing were both right at Safe House A
                 // and the log had nothing to say, while the owner could see at once that "they just

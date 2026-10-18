@@ -1265,6 +1265,9 @@ namespace SeamlessInteriors
             try
             {
                 string id = WindowCoverLayers ? s_WindowPortalInstanceId : null;
+                // The raised sash made for the view from outside holds the glass cut in half until it is
+                // taken down; measured then, the lower pane got no frost (owner, 2026-10-18).
+                if (id != null && id != s_CoverLayersInstance && HasOutsideSashes(id)) return;
                 if (id != s_CoverLayersInstance || (id != null && s_CoverLayers.Count != s_WindowPortalOpenings.Count))
                 {
                     TeardownWindowCoverLayers();

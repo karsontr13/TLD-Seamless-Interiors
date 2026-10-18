@@ -118,6 +118,7 @@ namespace SeamlessInteriors
             public List<Mesh> PaneSplitMeshes = new List<Mesh>();      // the clones, to destroy at restore
             public List<GameObject> Backings = new List<GameObject>();
             public List<InteriorWindowOpening> ApertureOpenings = new List<InteriorWindowOpening>();
+            public List<int> ApertureRoomWindow = new List<int>();   // the paired room window's number, -1 for none
             public List<GameObject> BarCaps = new List<GameObject>();
             public List<float> BarFront = new List<float>();
             public float BarCapsApplied = float.NaN;
