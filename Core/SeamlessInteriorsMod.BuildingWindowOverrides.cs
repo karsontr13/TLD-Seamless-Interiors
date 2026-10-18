@@ -218,7 +218,7 @@ namespace SeamlessInteriors
         // Room openings with no glass at all, placed by hand beside a found room window. See RoomHandOpening.
         public RoomHandOpening[] RoomOpeningsByHand;
 
-        // Room windows the player can open, and how each opens. Unlisted windows stay shut. See WindowSashes.cs.
+        // Room windows the player can open beyond those whose model opens anyway (SLIDE_UP_WINDOW_MODELS). See WindowSashes.cs.
         public OpenableWindow[] OpenableWindows;
     }
 
@@ -444,14 +444,6 @@ namespace SeamlessInteriors
                 "STRSPAWN_CampOffice_Prefab", new BuildingWindowOverride
                 {
                     ViewFromOutsideStartsCm = 9.5f,
-                    // Every room window but the short one (2) is a sash window sliding up (owner, 2026-10-18).
-                    OpenableWindows = new[]
-                    {
-                        new OpenableWindow { RoomWindow = 0 }, new OpenableWindow { RoomWindow = 1 },
-                        new OpenableWindow { RoomWindow = 3 }, new OpenableWindow { RoomWindow = 4 },
-                        new OpenableWindow { RoomWindow = 5 }, new OpenableWindow { RoomWindow = 6 },
-                        new OpenableWindow { RoomWindow = 7 },
-                    },
                     // Window 0 is short and has no bar; its room window has one. Owner, 2026-09-30.
                     DriftSillOnly = new[] { 0 },
                     // The game put a drift over window 5 and none over window 7, the same size on the

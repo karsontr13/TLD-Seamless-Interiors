@@ -19,7 +19,7 @@ namespace SeamlessInteriors
     {
         // ─── OPENING A WINDOW ───
         //
-        // Owner, 2026-10-18: windows listed in the building's row (OpenableWindows) open and close by
+        // Owner, 2026-10-18: windows of a sash model (SLIDE_UP_WINDOW_MODELS), or listed in the building's row, open and close by
         // holding the interact key on the glass; the frost stays as it was. The game's window has no
         // sash of its own (frame and meeting rail are one mesh), so the lower sash is built here from
         // the frame's measure and slides up on the room side; the frame's rail keeps its outer half.
@@ -36,6 +36,7 @@ namespace SeamlessInteriors
         private const float SASH_SLIDE_SHARE = 0.95f;
         // 6 mm still showed a strip from below; 3 cm passed by the owner's eye (2026-10-18).
         private const float SASH_GLASS_INTO_RAIL = 0.03f;
+        private const float SASH_EDGE_OFF_GLASS = 0.05f;
         // The frame's room-side trim strip in GLB_WoodWallNatural_C01_Flat, so the sash matches its colour.
         private const float SASH_UV_U0 = 0.25f, SASH_UV_V0 = 0.303f, SASH_UV_PER_M = 0.27f;
         private const float SASH_OPEN_HOLD_SECONDS = 1f;
@@ -145,17 +146,17 @@ namespace SeamlessInteriors
             SeamlessInteriorInstance instance;
             if (!ActiveInteriors.TryGetValue(s_WindowPortalInstanceId, out instance) || instance == null) return;
             BuildingWindowOverride row;
-            if (!TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out row) || row.OpenableWindows == null) return;
+            if (!TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out row)) row = null;
 
-            foreach (var entry in row.OpenableWindows)
+            for (int i = 0; i < s_WindowPortalOpenings.Count; i++)
             {
-                if (entry == null || entry.RoomWindow < 0 || entry.RoomWindow >= s_WindowPortalOpenings.Count) continue;
+                if (!IsOpenableWindow(row, i, s_WindowPortalOpenings[i])) continue;
                 string why;
-                var sash = BuildSlideUpSash(s_WindowPortalOpenings[entry.RoomWindow], entry.RoomWindow, true, out why);
+                var sash = BuildSlideUpSash(s_WindowPortalOpenings[i], i, true, out why);
                 if (sash == null)
                 {
-                    MelonLogger.Warning($"[PENCERE-KANAT] {s_WindowPortalInstanceId}: oda penceresi {entry.RoomWindow} kanatsiz kaldi: {why}",
-                                        $"[WINDOW-SASH] {s_WindowPortalInstanceId}: room window {entry.RoomWindow} got no sash: {why}");
+                    MelonLogger.Warning($"[PENCERE-KANAT] {s_WindowPortalInstanceId}: oda penceresi {i} kanatsiz kaldi: {why}",
+                                        $"[WINDOW-SASH] {s_WindowPortalInstanceId}: room window {i} got no sash: {why}");
                     continue;
                 }
                 s_WindowSashes.Add(sash);
@@ -170,22 +171,35 @@ namespace SeamlessInteriors
         {
             MeshFilter best = null;
             float bestArea = 0f;
-            for (int c = 0; c < opening.PaneRoot.childCount; c++)
+            // Trapper's frame is the window object itself, 30 cm deep, with a flat painted view behind it.
+            for (int c = -1; c < opening.PaneRoot.childCount; c++)
             {
-                var child = opening.PaneRoot.GetChild(c);
+                var child = c < 0 ? opening.PaneRoot : opening.PaneRoot.GetChild(c);
                 var mf = child.GetComponent<MeshFilter>();
                 var renderer = child.GetComponent<MeshRenderer>();
                 if (mf == null || renderer == null || mf.sharedMesh == null || !mf.sharedMesh.isReadable) continue;
                 if (opening.Glass != null && opening.Glass.Contains(renderer)) continue;
                 if (opening.Frost != null && opening.Frost.Contains(renderer)) continue;
-                if (child.name.Contains("Snow")) continue;
-                var b = renderer.bounds;
-                float depth = Mathf.Abs(Vector3.Dot(b.size, opening.Outward));
-                if (depth > 0.25f) continue;
-                float area = b.size.sqrMagnitude - depth * depth;
+                if (opening.Backdrop == renderer || child.name.Contains("Snow")) continue;
+                // Measured on the mesh: a world box of a window on a slanted wall is far deeper than the window.
+                float depth = MeshExtentAlong(mf, opening.Outward);
+                if (depth > 0.35f || depth < 0.01f) continue;
+                float area = MeshExtentAlong(mf, opening.Right) * MeshExtentAlong(mf, opening.Up);
                 if (area > bestArea) { bestArea = area; best = mf; }
             }
             return best;
+        }
+
+        private static float MeshExtentAlong(MeshFilter mf, Vector3 axis)
+        {
+            float lo = float.MaxValue, hi = float.MinValue;
+            var t = mf.transform;
+            foreach (var v in mf.sharedMesh.vertices)
+            {
+                float d = Vector3.Dot(t.TransformPoint(v), axis);
+                lo = Mathf.Min(lo, d); hi = Mathf.Max(hi, d);
+            }
+            return hi - lo;
         }
 
         private static Vector3[] CopyVerts(Mesh mesh)
@@ -249,6 +263,18 @@ namespace SeamlessInteriors
                 if (r < 0f) left = Mathf.Max(left, r); else right = Mathf.Min(right, r);
                 if (u < seam) bottom = Mathf.Max(bottom, u);
             }
+            // Trapper's frame is not one flat face on the room side: its room-most points stand at one side
+            // only, so the edges read from them missed the glass by 10 cm one way and 20 cm the other. An edge
+            // more than a few centimetres off the glass's own is taken from the glass instead.
+            float gLeft = float.MaxValue, gRight = float.MinValue;
+            foreach (var v in glassVerts)
+            {
+                float r = Vector3.Dot(glassMf.transform.TransformPoint(v) - origin, R);
+                gLeft = Mathf.Min(gLeft, r); gRight = Mathf.Max(gRight, r);
+            }
+            if (left == float.MinValue || Mathf.Abs(left - gLeft) > SASH_EDGE_OFF_GLASS) left = gLeft;
+            if (right == float.MaxValue || Mathf.Abs(right - gRight) > SASH_EDGE_OFF_GLASS) right = gRight;
+            if (bottom == float.MinValue || Mathf.Abs(bottom - lowest) > SASH_EDGE_OFF_GLASS) bottom = lowest;
             if (left == float.MinValue || right == float.MaxValue || bottom == float.MinValue || right - left < 0.2f || seam - bottom < 0.2f)
             { why = "the frame's opening could not be read"; return null; }
 
@@ -259,8 +285,9 @@ namespace SeamlessInteriors
             {
                 Vector3 p = world[i] - origin;
                 float r = Vector3.Dot(p, R), u = Vector3.Dot(p, U);
-                // The rail runs into the jambs, past the opening's sides.
-                if (r < left - 0.1f || r > right + 0.1f || Mathf.Abs(u - seam) > 0.15f) continue;
+                // The rail runs into the jambs, past the opening's sides. Room side only: Trapper's outer trim
+                // is ragged round the seam.
+                if (Vector3.Dot(p, O) >= 0f || r < left - 0.1f || r > right + 0.1f || Mathf.Abs(u - seam) > 0.15f) continue;
                 railLow = Mathf.Min(railLow, u); railHigh = Mathf.Max(railHigh, u);
             }
             float sashTop = seam + SASH_RAIL_OVER_SEAM;
@@ -274,6 +301,8 @@ namespace SeamlessInteriors
             // The glass runs on below the frame's sill, so raised it showed a strip under the rail (owner,
             // 2026-10-18): it goes up until its bottom edge is behind the rail.
             if (railLow < railHigh) sash.Slide = Mathf.Min(Mathf.Max(sash.Slide, railLow + SASH_GLASS_INTO_RAIL - lowest), seam - bottom + 0.03f);
+            // Trapper's upper pane is shorter than the lower, so raised it ran past the head (owner, 2026-10-18).
+            sash.Slide = Mathf.Min(sash.Slide, highest - SASH_GLASS_INTO_RAIL - sashTop);
 
             // The frame's rail keeps its outer half, so the sash passes it on the room side.
             if (cutFrame)
@@ -604,7 +633,7 @@ namespace SeamlessInteriors
                         var layer = a < b.Covers.Count ? b.Covers[a] : null;
 
                         // Open or shut: the sash is part of the window (owner, 2026-10-18).
-                        bool sashHere = row != null && IsOpenableWindow(row, room) && a < b.ApertureOpenings.Count
+                        bool sashHere = roomShown && room >= 0 && a < b.ApertureOpenings.Count && IsOpenableWindow(row, room, b.ApertureOpenings[a])
                                      && KeepOutsideSash(b.InstanceId, room, b.ApertureOpenings[a], layer, open);
 
                         // Open, the building's cover is cut at the rail and the sash carries its lower part up. Shut, the
@@ -637,9 +666,37 @@ namespace SeamlessInteriors
             }
         }
 
-        private static bool IsOpenableWindow(BuildingWindowOverride row, int roomWindow)
+        // Window models that are sash windows sliding up, wherever they stand (owner, 2026-10-18): Camp
+        // Office's and Trapper's tall one; Trapper's single Obj_WindowCabinB stays shut (owner). Matched on
+        // the window object or a child of it, so LOD names count.
+        private static readonly string[] SLIDE_UP_WINDOW_MODELS =
         {
-            if (row.OpenableWindows == null) return false;
+            "OBJ_LakeCabinWindowA", "OBJ_LakeCabinWindowB", "Obj_WindowCabinA2",
+        };
+
+        private static bool IsSlideUpWindowModel(InteriorWindowOpening opening)
+        {
+            var pr = opening.PaneRoot;
+            if (pr == null) return false;
+            if (StartsWithModel(pr.name)) return true;
+            for (int c = 0; c < pr.childCount; c++) if (StartsWithModel(pr.GetChild(c).name)) return true;
+            return false;
+        }
+
+        private static bool StartsWithModel(string name)
+        {
+            foreach (var model in SLIDE_UP_WINDOW_MODELS)
+                if (name.StartsWith(model, System.StringComparison.OrdinalIgnoreCase)
+                    && (name.Length == model.Length || !char.IsLetterOrDigit(name[model.Length]))) return true;
+            return false;
+        }
+
+        // By its model, or listed in the building's row (row may be null).
+        private static bool IsOpenableWindow(BuildingWindowOverride row, int roomWindow, InteriorWindowOpening opening)
+        {
+            if (opening.ViewOutOnly) return false;
+            if (IsSlideUpWindowModel(opening)) return true;
+            if (row == null || row.OpenableWindows == null) return false;
             foreach (var entry in row.OpenableWindows) if (entry != null && entry.RoomWindow == roomWindow) return true;
             return false;
         }
