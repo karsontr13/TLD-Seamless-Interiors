@@ -156,7 +156,7 @@ namespace SeamlessInteriors
                         if (owner != null)
                         {
                             List<string> list;
-                            if (!perKey.TryGetValue(owner.Key, out list)) perKey[owner.Key] = list = new List<string>();
+                            if (!perKey.TryGetValue(owner.ExportKey, out list)) perKey[owner.ExportKey] = list = new List<string>();
                             list.Add(ToInteriorRecord(record, owner));
                         }
                         else kept.Add(record);
@@ -221,7 +221,7 @@ namespace SeamlessInteriors
             Quaternion local = room.ToLocal(world);
 
             // SC+ matches the native scene with Contains(save key), so an instanced interior needs its full key.
-            record = SetJsonString(record, "nativeScene", room.Key);
+            record = SetJsonString(record, "nativeScene", room.ExportKey);
             record = SetJsonString(record, "currentScene", room.Scene);
             record = SetJsonObject(record, "originalPos", Vector3Json(room.ToLocal(JsonVector(record, "originalPos"))));
             record = SetJsonObject(record, "currentPos", Vector3Json(room.ToLocal(JsonVector(record, "currentPos"))));

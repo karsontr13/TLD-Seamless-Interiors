@@ -285,6 +285,7 @@ namespace SeamlessInteriors
 
         // The scene's ids and the clone's place, for "Prepare for uninstall" (VanillaIndex.cs).
         public VanillaRoomFacts VanillaFacts;
+        public bool VanillaFactsRetaken;
 
         // Items put back by the door after falling under the room, waiting for its floor colliders.
         public readonly System.Collections.Generic.List<UnityEngine.GameObject> GearToSettle = new System.Collections.Generic.List<UnityEngine.GameObject>();

@@ -75,6 +75,7 @@ namespace SeamlessInteriors
             var usedKeys = new HashSet<string>();
             var exported = new List<VanillaRoomFacts>();
             var fireCache = new Dictionary<string, Dictionary<string, string>>();
+            var regionCache = new Dictionary<string, RegionSave>();
 
             foreach (var cfg in SupportedInteriors)
             {
@@ -100,12 +101,25 @@ namespace SeamlessInteriors
                         MelonLogger.Warning($"[KALDIRMA] {id}: bu bina icin dizin yok, atlandi.", $"[UNINSTALL] {id}: no index for this building, skipped.");
                         continue;
                     }
-                    if (!usedKeys.Add(facts.Key))
+                    // The door of the town layout this save has (Milton's random houses).
+                    bool absent, guessed;
+                    var regionSave = RegionSaveOf(saveName, facts.Region, regionCache);
+                    string key = facts.KeyFor(regionSave.Choices, regionSave.Doors, out absent, out guessed);
+                    if (absent)
                     {
-                        MelonLogger.Warning($"[KALDIRMA] {id}: '{facts.Key}' anahtari baska binada, atlandi.", $"[UNINSTALL] {id}: key '{facts.Key}' already used, skipped.");
+                        MelonLogger.Msg($"[KALDIRMA] {id}: bu kayittaki yerlesimde bu ev yok, atlandi.", $"[UNINSTALL] {id}: not part of this save's town layout, skipped.");
+                        continue;
+                    }
+                    if (guessed && key != null && key != facts.Scene)
+                        MelonLogger.Warning($"[KALDIRMA] {id}: kapinin bu kayittaki kimligi bulunamadi, dizindeki kullanildi ({key}).",
+                                            $"[UNINSTALL] {id}: the door's id in this save was not found, the index's is used ({key}).");
+                    if (string.IsNullOrEmpty(key) || !usedKeys.Add(key))
+                    {
+                        MelonLogger.Warning($"[KALDIRMA] {id}: '{key}' anahtari baska binada, atlandi.", $"[UNINSTALL] {id}: key '{key}' already used, skipped.");
                         failed++;
                         continue;
                     }
+                    facts.ExportKey = key;
 
                     string summary;
                     string json = BuildVanillaSceneJson(saveName, id, facts, FireRecordsOf(saveName, facts.Region, fireCache), out summary);
@@ -117,16 +131,16 @@ namespace SeamlessInteriors
                         continue;
                     }
 
-                    BackUpVanillaKey(saveName, id, facts.Key);
-                    if (!SaveGameSlots.SaveDataToSlot(slot, facts.Key, fmt))
+                    BackUpVanillaKey(saveName, id, key);
+                    if (!SaveGameSlots.SaveDataToSlot(slot, key, fmt))
                     {
-                        MelonLogger.Warning($"[KALDIRMA] {id}: oyun '{facts.Key}' kaydini kabul etmedi.", $"[UNINSTALL] {id}: the game refused the record '{facts.Key}'.");
+                        MelonLogger.Warning($"[KALDIRMA] {id}: oyun '{key}' kaydini kabul etmedi.", $"[UNINSTALL] {id}: the game refused the record '{key}'.");
                         failed++;
                         continue;
                     }
 
                     try { File.WriteAllText(GetExportFilePath(saveName, id, "_vanilla_export.json"), json); } catch { }
-                    MelonLogger.Msg($"[KALDIRMA] {id} -> '{facts.Key}': {summary}", $"[UNINSTALL] {id} -> '{facts.Key}': {summary}");
+                    MelonLogger.Msg($"[KALDIRMA] {id} -> '{key}': {summary}", $"[UNINSTALL] {id} -> '{key}': {summary}");
                     exported.Add(facts);
                     written++;
                 }
@@ -277,8 +291,9 @@ namespace SeamlessInteriors
             try { doors = LoadScene.m_LoadScenesList; } catch { }
             if (doors == null) return null;
 
-            LoadScene best = null, anyInClone = null;
-            float bestDist = 60f;
+            // A door of a town layout the save did not pick is switched off; the live one wins.
+            LoadScene best = null, bestOff = null, anyInClone = null;
+            float bestDist = 60f, bestOffDist = 60f;
             for (int i = 0; i < doors.Count; i++)
             {
                 LoadScene d = doors[i];
@@ -291,9 +306,11 @@ namespace SeamlessInteriors
                     continue;
                 }
                 float dist = Vector3.Distance(d.transform.position, instance.Config.FallbackPosition);
-                if (dist < bestDist) { bestDist = dist; best = d; }
+                if (d.gameObject.activeInHierarchy) { if (dist < bestDist) { bestDist = dist; best = d; } }
+                else if (dist < bestOffDist) { bestOffDist = dist; bestOff = d; }
             }
             if (best != null) return best;
+            if (bestOff != null) return bestOff;
             return shared ? null : anyInClone;
         }
 
@@ -604,6 +621,64 @@ namespace SeamlessInteriors
             openClosers = oc.Count > 0 ? "{\"strings\":[" + string.Join(",", oc) + "]}" : null;
             brokenDecor = "{\"m_DataList\":[" + string.Join(",", br) + "]}";
             return bd.Count + hv.Count + oc.Count + br.Count;
+        }
+
+        // What the region's own entry in the save says: its RandomSpawnObject choices (town layouts) and its
+        // doors' ids, which differ from save to save. Both null when the region has no entry.
+        private class RegionSave
+        {
+            public Dictionary<string, HashSet<string>> Choices;
+            public List<KeyValuePair<Vector3, string>> Doors;
+        }
+
+        private static RegionSave RegionSaveOf(string saveName, string region, Dictionary<string, RegionSave> cache)
+        {
+            RegionSave result;
+            if (cache.TryGetValue(region, out result)) return result;
+            result = new RegionSave();
+            cache[region] = result;
+            try
+            {
+                string raw;
+                if (!TryLoadSlotString(saveName, region, false, out raw)) return result;
+                result.Choices = ReadVariantChoices(ExtractNestedJsonField(raw, "m_RandomSpawnObjectManagerSerialized"));
+
+                // {"strings":["{\"m_Position\":[..],\"m_GUID\":\"..\",..}", ..]}
+                result.Doors = new List<KeyValuePair<Vector3, string>>();
+                string triggers = ExtractNestedJsonField(raw, "m_LoadSceneTriggersSerialized");
+                if (!string.IsNullOrEmpty(triggers))
+                    foreach (var element in SplitJsonArray(ExtractJsonArrayOf(triggers, "strings")))
+                    {
+                        string door = UnwrapJsonStringElement(element);
+                        Vector3 pos;
+                        string guid = ExtractString(door ?? "", "\"m_GUID\":\"", "\"");
+                        if (!string.IsNullOrEmpty(guid) && TryReadTopVector(door, "m_Position", out pos))
+                            result.Doors.Add(new KeyValuePair<Vector3, string>(pos, guid));
+                    }
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Warning($"[KALDIRMA] {region}: bolge kaydi okunamadi - {ex.Message}", $"[UNINSTALL] {region}: region record could not be read - {ex.Message}");
+            }
+            return result;
+        }
+
+        // The [..] value of a top-level array field, brackets included.
+        private static string ExtractJsonArrayOf(string json, string field)
+        {
+            int start = FindTopField(json, field);
+            if (start < 0 || start >= json.Length || json[start] != '[') return "[]";
+            int depth = 0;
+            bool inString = false;
+            for (int i = start; i < json.Length; i++)
+            {
+                char c = json[i];
+                if (inString) { if (c == '\\') i++; else if (c == '"') inString = false; continue; }
+                if (c == '"') inString = true;
+                else if (c == '[') depth++;
+                else if (c == ']' && --depth == 0) return json.Substring(start, i - start + 1);
+            }
+            return "[]";
         }
 
         // Fires of a clone are saved with the region (SI registers them with the game's FireManager).
