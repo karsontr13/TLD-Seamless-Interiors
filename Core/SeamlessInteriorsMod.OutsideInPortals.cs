@@ -1400,6 +1400,8 @@ namespace SeamlessInteriors
         {
             // NO Clear() HERE. See the comment on s_OutsideInDisabledColliders: this runs every
             // frame, and rebuilding the record each time is what loses the restore information.
+            // Solid while something thrown in through a window settles (ShootThroughWindow.cs).
+            if (RoomHeldSolidForThrownIn(interior)) return;
             var colliders = interior.GetComponentsInChildren<Collider>(true);
             for (int i = 0; i < colliders.Length; i++)
             {

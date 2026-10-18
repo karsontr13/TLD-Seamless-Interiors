@@ -561,6 +561,7 @@ namespace SeamlessInteriors
             TickWindowSashes();        // windows that open (see SeamlessInteriorsMod.WindowSashes.cs)
             TickShotWindowColliders(); // and their glass let shots through while open (SeamlessInteriorsMod.ShootThroughWindow.cs)
             TickThrownThroughWindows(); // and thrown torches and flares out
+            TickThrownIn();            // and what was thrown in from outside settles on a solid floor
             TickOpenWindowAir();       // and the cold and wind they let in (SeamlessInteriorsMod.OpenWindowAir.cs)
 
             // Room objects a building's row hides stay hidden. (see HideRoomObjectsByRow)

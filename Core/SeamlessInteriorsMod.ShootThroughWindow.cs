@@ -54,8 +54,127 @@ namespace SeamlessInteriors
             return s_WindowPortalDelta[opening] + s_WindowPortalOpenings[opening].Outward * (viewStart + SHOT_PAST_SHELL_GLASS);
         }
 
+        // ─── AND FROM OUTSIDE IN ───
+        // Owner, 2026-10-18: a stone, torch or flare thrown at an open window from outside lands in the room.
+        // The building's window is matched to its room window as the views in are (Apertures, Delta); a
+        // line through the open part of it goes on from just inside the room's glass.
+        private const float THROWN_IN_PAST_ROOM_GLASS = 0.2f;
+        // A room seen from outside has no collision (DisableInteriorCollisionForOutsideIn), so a stone
+        // thrown in fell through its floor (live, 2026-10-18). Only a parked room is let in, and it is
+        // made solid until what came in lies still; then that thing is laid at rest as gear lies.
+        private const float THROWN_IN_STILL_SPEED = 0.05f;
+        private const float THROWN_IN_STILL_SECONDS = 0.5f;
+        private const float THROWN_IN_MAX_SECONDS = 8f;
+        private static readonly System.Collections.Generic.List<Rigidbody> s_ThrownIn = new System.Collections.Generic.List<Rigidbody>();
+        private static readonly System.Collections.Generic.List<float> s_ThrownInSince = new System.Collections.Generic.List<float>();
+        private static readonly System.Collections.Generic.List<float> s_ThrownInStill = new System.Collections.Generic.List<float>();
+        private static OutsideInBuilding s_ThrownInRoom;
+
+        internal static bool RoomHeldSolidForThrownIn(GameObject interior)
+        {
+            return s_ThrownIn.Count > 0 && s_ThrownInRoom != null && s_ThrownInRoom.Instance != null && s_ThrownInRoom.Instance.MasterInterior == interior;
+        }
+
+        private static void HoldRoomSolidFor(OutsideInBuilding b, Rigidbody rb)
+        {
+            if (!s_ThrownIn.Contains(rb)) { s_ThrownIn.Add(rb); s_ThrownInSince.Add(Time.time); s_ThrownInStill.Add(-1f); }
+            s_ThrownInRoom = b;
+            foreach (var c in b.DisabledColliders) if (c != null) c.enabled = true;
+            ShowThrownInView(b, rb, false);
+        }
+
+        // The view in draws only the room's layer, so a flare thrown in lit the room unseen (owner,
+        // 2026-10-18). Its renderers join the room's layer and the room's own record, which gives them
+        // back their layers when the room is handed back. A layer moves the object's collider too, and
+        // two of the room layers do not collide with themselves: in flight only parts with no solid
+        // collider move, the rest once it lies at rest.
+        private static void ShowThrownInView(OutsideInBuilding b, Rigidbody rb, bool atRest)
+        {
+            if (b == null || rb == null) return;
+            foreach (var r in rb.GetComponentsInChildren<Renderer>(true))
+            {
+                if (r == null) continue;
+                var go = r.gameObject;
+                if (go.layer == b.Layer) continue;
+                if (!atRest && HasSolidCollider(go)) continue;
+                b.Relayered.Add(r);
+                b.SavedLayers.Add(go.layer);
+                go.layer = b.Layer;
+            }
+        }
+
+        private static bool HasSolidCollider(GameObject go)
+        {
+            foreach (var c in go.GetComponents<Collider>()) if (c != null && !c.isTrigger) return true;
+            return false;
+        }
+
+        // Every frame.
+        private static void TickThrownIn()
+        {
+            if (s_ThrownIn.Count == 0) return;
+            for (int i = s_ThrownIn.Count - 1; i >= 0; i--)
+            {
+                var rb = s_ThrownIn[i];
+                bool done = rb == null || rb.isKinematic || Time.time - s_ThrownInSince[i] > THROWN_IN_MAX_SECONDS;
+                if (!done && rb.velocity.magnitude < THROWN_IN_STILL_SPEED)
+                {
+                    if (s_ThrownInStill[i] < 0f) s_ThrownInStill[i] = Time.time;
+                    done = Time.time - s_ThrownInStill[i] > THROWN_IN_STILL_SECONDS;
+                }
+                else if (!done) s_ThrownInStill[i] = -1f;
+                if (!done) continue;
+                if (rb != null)
+                {
+                    rb.velocity = Vector3.zero; rb.angularVelocity = Vector3.zero; rb.isKinematic = true;
+                    if (s_ThrownInRoom != null && s_ThrownInRoom.Borrowed) ShowThrownInView(s_ThrownInRoom, rb, true);
+                }
+                s_ThrownIn.RemoveAt(i); s_ThrownInSince.RemoveAt(i); s_ThrownInStill.RemoveAt(i);
+            }
+            // The room handed back while something settled: its own restore puts the colliders right.
+            if (s_ThrownInRoom == null || !s_ThrownInRoom.Borrowed) { s_ThrownIn.Clear(); s_ThrownInSince.Clear(); s_ThrownInStill.Clear(); }
+            if (s_ThrownIn.Count == 0) s_ThrownInRoom = null;
+        }
+
+        private static bool FindOutsideOpenWindowCrossing(Vector3 from, Vector3 dir, float maxT, out Vector3 inRoom, out int roomWindow, out OutsideInBuilding room)
+        {
+            inRoom = Vector3.zero; roomWindow = -1; room = null;
+            float bestT = float.MaxValue;
+            foreach (var held in s_OutsideSashes)
+            {
+                var sash = held.Sash;
+                if (sash == null || sash.Shown <= 0.5f) continue;
+                foreach (var b in s_OutsideInBuildings)
+                {
+                    if (b == null || !b.Borrowed || b.InstanceId != held.InstanceId) continue;
+                    if (b.Instance == null || b.Instance.Config == null || !b.Instance.Config.IsParked) continue;
+                    for (int a = 0; a < b.ApertureRoomWindow.Count && a < b.Apertures.Count && a < b.ApertureOpenings.Count; a++)
+                    {
+                        if (b.ApertureRoomWindow[a] != held.RoomWindow) continue;
+                        var ap = b.Apertures[a];
+                        float facing = Vector3.Dot(dir, ap.Outward);
+                        if (facing > -0.05f) continue;   // only going in
+                        float t = Vector3.Dot(ap.Center - from, ap.Outward) / facing;
+                        if (t <= 0f || t >= bestT || t > maxT) continue;
+                        // The same place on the room's glass, judged by the room's own sash.
+                        var opening = b.ApertureOpenings[a];
+                        Vector3 p = from + dir * t + ap.Delta;
+                        float r = Vector3.Dot(p - opening.GlassCenter, sash.Right);
+                        float u = Vector3.Dot(p - opening.GlassCenter, sash.Up);
+                        if (r < sash.EdgeLeft || r > sash.EdgeRight || u < sash.EdgeBottom || u > sash.EdgeBottom + sash.Slide * sash.Shown) continue;
+                        bestT = t;
+                        roomWindow = held.RoomWindow;
+                        room = b;
+                        inRoom = opening.GlassCenter + sash.Right * r + sash.Up * u - opening.Outward * THROWN_IN_PAST_ROOM_GLASS;
+                    }
+                }
+            }
+            return roomWindow >= 0;
+        }
+
         private static bool AnyWindowOpenForShots()
         {
+            foreach (var held in s_OutsideSashes) if (held.Sash != null && held.Sash.Shown > 0.5f) return true;
             foreach (var sash in s_WindowSashes) if (sash.Shown > 0.5f) return true;
             return false;
         }
@@ -193,7 +312,18 @@ namespace SeamlessInteriors
                 float len = seg.magnitude;
                 if (len < 0.01f) return false;
                 int best = FindOpenWindowCrossing(from, seg / len, len, out float t, out Vector3 hit);
-                if (best < 0) return false;
+                if (best < 0)
+                {
+                    if (!FindOutsideOpenWindowCrossing(from, seg / len, len, out Vector3 inRoom, out int roomWindow, out OutsideInBuilding room)) return false;
+                    HoldRoomSolidFor(room, rb);
+                    Vector3 inShift = inRoom - cur;
+                    rb.position += inShift;
+                    projectile.transform.position = inRoom;
+                    // Swept from inside the room, or the sweep would cross the room's wall over the window.
+                    if (arrow != null) arrow.m_LastPosition = inRoom;
+                    MelonLogger.Msg($"[ATIS] {projectile.name} disaridan {roomWindow} numarali oda penceresinden iceri.", $"[SHOT] {projectile.name} carried in from outside through room window {roomWindow}.");
+                    return true;
+                }
 
                 Vector3 shift = WindowCrossingShift(best);
                 rb.position += shift;
