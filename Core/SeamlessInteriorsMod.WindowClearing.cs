@@ -70,6 +70,7 @@ namespace SeamlessInteriors
             public bool SoundFading;
             public bool Frosted = true;
             public Vector3 Position;
+            public readonly List<Collider> Doors = new List<Collider>();   // door colliders over this glass
         }
 
         private static readonly List<CleanTarget> s_CleanTargets = new List<CleanTarget>();
@@ -101,6 +102,7 @@ namespace SeamlessInteriors
                     if (key != null) BuildCleanTargets();
                 }
 
+                TickDoorWindowCleanKey();
                 GuardCleanTargetFromDoor();
 
                 // Which windows can be wiped changes slowly: asked four times a second, not every frame
@@ -208,8 +210,51 @@ namespace SeamlessInteriors
 
         private static void ReleaseCleanDoor()
         {
-            if (s_CleanDoorSuppressed != null) s_CleanDoorSuppressed.enabled = true;
+            if (s_CleanDoorSuppressed != null && !s_DoorWindowCleanDoors.Contains(s_CleanDoorSuppressed)) s_CleanDoorSuppressed.enabled = true;
             s_CleanDoorSuppressed = null;
+        }
+
+        // A DOOR'S WINDOW SITS INSIDE THE DOOR'S OWN COLLIDER. Community Hall's front door: a solid
+        // 1.6 x 3 x 2 m box around the glass, so the crosshair always found the door (owner, 2026-10-18).
+        // His pick: a key turns those doors over to cleaning, and pressing it again gives them back.
+        private static bool s_DoorWindowCleanMode;
+        private static readonly List<Collider> s_DoorWindowCleanDoors = new List<Collider>();
+
+        private static void TickDoorWindowCleanKey()
+        {
+            KeyCode key = s_PrefDoorWindowCleanKey?.Value ?? KeyCode.Z;
+            if (key == KeyCode.None || !Input.GetKeyDown(key)) return;
+            bool anyDoorGlass = false;
+            foreach (var t in s_CleanTargets) if (t.Doors.Count > 0) { anyDoorGlass = true; break; }
+            if (!anyDoorGlass && !s_DoorWindowCleanMode) return;
+
+            SetDoorWindowCleanMode(!s_DoorWindowCleanMode);
+            s_LightingModeMessage = s_DoorWindowCleanMode ? "Door windows: cleaning" : "Doors: enter and exit";
+            s_LightingModeMessageTimer = 2.5f;
+        }
+
+        private static void SetDoorWindowCleanMode(bool on)
+        {
+            ReleaseCleanDoor();
+            foreach (var door in s_DoorWindowCleanDoors) if (door != null) door.enabled = true;
+            s_DoorWindowCleanDoors.Clear();
+            s_DoorWindowCleanMode = on;
+            if (!on) return;
+            foreach (var t in s_CleanTargets)
+                foreach (var door in t.Doors)
+                    if (door != null && door.enabled && !s_DoorWindowCleanDoors.Contains(door)) { door.enabled = false; s_DoorWindowCleanDoors.Add(door); }
+        }
+
+        // The doors (LoadScene) whose collider covers this target's glass. Community Hall's is a 13 cm slab
+        // 8 cm in front of the target, so the search reaches 30 cm either side of the glass.
+        private const float DOOR_OVER_GLASS_REACH = 0.3f;
+
+        private static void FindDoorsOverGlass(CleanTarget target, BoxCollider box)
+        {
+            var half = new Vector3(box.size.x * 0.5f, box.size.y * 0.5f, DOOR_OVER_GLASS_REACH);
+            var hits = Physics.OverlapBox(target.Position, half, target.Go.transform.rotation, ~0, QueryTriggerInteraction.Collide);
+            foreach (var c in hits)
+                if (c != null && c != box && c.GetComponent<LoadScene>() != null && !target.Doors.Contains(c)) target.Doors.Add(c);
         }
 
         // What the targets are built for: null when there is nothing to clean or the setting is off.
@@ -309,6 +354,7 @@ namespace SeamlessInteriors
             hold.AddEventCallback(InteractionEventType.HoldCancelled, cancelled);
             hold.AddEventCallback(InteractionEventType.HoldEnd, done);
 
+            FindDoorsOverGlass(target, box);
             s_CleanTargets.Add(target);
         }
 
@@ -368,6 +414,13 @@ namespace SeamlessInteriors
                     ClearWindowSnow(id, target.Index, false);
                 }
                 if (target.Go != null) target.Go.SetActive(false);
+                // A cleaned door window gives its door straight back (owner, 2026-10-18: he could not go out after).
+                if (s_DoorWindowCleanMode && target.Doors.Count > 0)
+                {
+                    SetDoorWindowCleanMode(false);
+                    s_LightingModeMessage = "Doors: enter and exit";
+                    s_LightingModeMessageTimer = 2.5f;
+                }
 
                 MelonLogger.Msg($"[PENCERE-TEMIZLE] {id}: {(target.Inside ? "oda" : "bina")} penceresi {target.Index} elle temizlendi.",
                                 $"[WINDOW-CLEAN] {id}: {(target.Inside ? "room" : "building")} window {target.Index} cleaned by hand.");
@@ -381,7 +434,7 @@ namespace SeamlessInteriors
 
         private static void DestroyCleanTargets()
         {
-            ReleaseCleanDoor();
+            SetDoorWindowCleanMode(false);
             s_CleanHeldTarget = null;
             s_CleanStateNextAt = 0f;
             for (int i = 0; i < s_CleanTargets.Count; i++)

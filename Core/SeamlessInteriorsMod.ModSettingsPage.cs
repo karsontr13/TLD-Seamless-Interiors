@@ -103,6 +103,10 @@ namespace SeamlessInteriors
             [ModSettings.Description("Look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window is clean from inside and outside, and is kept with your save.")]
             public bool CleanWindowsByHand = true;
 
+            [ModSettings.Name("Door window cleaning key")]
+            [ModSettings.Description("A door's window cannot be cleaned while the door takes the interact button. This key switches the doors with a window to cleaning; press it again to use the doors.")]
+            public KeyCode DoorWindowCleanKey = KeyCode.Z;
+
             [ModSettings.Name("Frost and snow build up")]
             [ModSettings.Description("On: frost slowly grows back over a cleaned window and snow piles up against the glass while it snows. Off: windows look as in the base game until cleaned, and a cleaned window frosts over again all at once.")]
             public bool FrostAndSnowBuildUp = true;
@@ -190,6 +194,7 @@ namespace SeamlessInteriors
                 InteriorLighting = (s_PrefInteriorLightingMode?.Value ?? 0) == 1 ? LightingChoice.DarkAtmosphere : LightingChoice.OutdoorLighting;
                 SeeThroughWindows = s_PrefEnableWindowPortals?.Value ?? true;
                 CleanWindowsByHand = s_PrefCleanWindowsByHand?.Value ?? true;
+                DoorWindowCleanKey = s_PrefDoorWindowCleanKey?.Value ?? KeyCode.Z;
                 FrostAndSnowBuildUp = s_PrefWindowFrostSnowBuildUp?.Value ?? true;
                 WindowFrostReturnsAfter = Mathf.Clamp(s_PrefWindowFrostReturnHours?.Value ?? 48f, 0f, 240f);
                 WindowsStartClean = s_PrefClearWindowPanes?.Value ?? false;
@@ -215,6 +220,7 @@ namespace SeamlessInteriors
                 Set(s_PrefInteriorLightingMode, InteriorLighting == LightingChoice.DarkAtmosphere ? 1 : 0);
                 Set(s_PrefEnableWindowPortals, SeeThroughWindows);
                 Set(s_PrefCleanWindowsByHand, CleanWindowsByHand);
+                Set(s_PrefDoorWindowCleanKey, DoorWindowCleanKey);
                 if (s_PrefWindowFrostSnowBuildUp != null && s_PrefWindowFrostSnowBuildUp.Value != FrostAndSnowBuildUp) MarkWindowCoverDirty();
                 Set(s_PrefWindowFrostSnowBuildUp, FrostAndSnowBuildUp);
                 Set(s_PrefWindowFrostReturnHours, WindowFrostReturnsAfter);

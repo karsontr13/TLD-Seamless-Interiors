@@ -96,6 +96,7 @@ namespace SeamlessInteriors
         private static MelonPreferences_Entry<float> s_PrefWindowPortalResolutionScale;
         private static MelonPreferences_Entry<bool> s_PrefClearWindowPanes;
         private static MelonPreferences_Entry<bool> s_PrefCleanWindowsByHand;
+        private static MelonPreferences_Entry<KeyCode> s_PrefDoorWindowCleanKey;
 
         public static bool IsChimneySmokeEnabled => s_PrefEnableChimneySmoke?.Value ?? true;
         public static bool IsWindowGlowEnabled => s_PrefEnableWindowGlow?.Value ?? true;
@@ -334,6 +335,14 @@ namespace SeamlessInteriors
                 true,
                 "Clean Windows By Hand",
                 "Look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window is clean from inside and outside, is kept with the save, and frosts over again after a while (see Windows Frost Over Again After)."
+            );
+
+            // A door's own collider covers its window (WindowClearing.cs). New key, 2026-10-18.
+            s_PrefDoorWindowCleanKey = s_PrefCategory.CreateEntry<KeyCode>(
+                "DoorWindowCleanKey",
+                KeyCode.Z,
+                "Door Window Cleaning Key",
+                "A door's window cannot be cleaned while the door takes the interact button. This key switches the doors with a window to cleaning; press it again to use the doors."
             );
 
             // How long a cleaned window stays clean (WindowFrostState.cs). New key, 2026-10-10.
