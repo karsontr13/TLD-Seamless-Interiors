@@ -639,6 +639,7 @@ namespace SeamlessInteriors
             s_RoomWindowCleanedHour.Clear();
             s_WindowSnowFrom.Clear();
             s_RoomWindowSnowFrom.Clear();
+            s_RoomWindowOpen.Clear();
             s_WindowFrostFires.Clear();
             s_WindowStateLoaded.Clear();
             s_WindowStateSaveName = null;
@@ -663,6 +664,7 @@ namespace SeamlessInteriors
                 s_RoomWindowCleanedHour.Clear();
                 s_WindowSnowFrom.Clear();
                 s_RoomWindowSnowFrom.Clear();
+                s_RoomWindowOpen.Clear();
                 s_WindowFrostFires.Clear();
                 s_WindowStateLoaded.Clear();
             }
@@ -702,6 +704,11 @@ namespace SeamlessInteriors
                 var roomSnowFrom = new Dictionary<int, float>();
                 ReadWindowValues(json, "\"roomSnowFrom\"", roomSnowFrom);
                 if (roomSnowFrom.Count > 0) s_RoomWindowSnowFrom[instanceId] = roomSnowFrom;
+
+                // Absent from files written before 2026-10-18: every window shut.
+                var open = new Dictionary<int, bool>();
+                ReadWindowList(json, "\"roomOpen\"", true, open);
+                if (open.Count > 0) s_RoomWindowOpen[instanceId] = new HashSet<int>(open.Keys);
 
                 if (s_DebugBounds)
                     MelonLogger.Msg($"[PENCERE-LOAD] {instanceId}: {building.Count} pencerenin, {room.Count} yalniz oda penceresinin durumu okundu.",
@@ -804,13 +811,17 @@ namespace SeamlessInteriors
             Dictionary<int, float> snowFrom, roomSnowFrom;
             bool anySnow = s_WindowSnowFrom.TryGetValue(instanceId, out snowFrom) && snowFrom.Count > 0;
             bool anyRoomSnow = s_RoomWindowSnowFrom.TryGetValue(instanceId, out roomSnowFrom) && roomSnowFrom.Count > 0;
+            HashSet<int> openSet;
+            var openList = new List<int>();
+            if (s_RoomWindowOpen.TryGetValue(instanceId, out openSet)) openList.AddRange(openSet);
+            openList.Sort();
 
             string path = GetWindowStateSavePath(instanceId);
             if (path == null) return;
 
             // Nothing recorded and nothing on disk: leave it that way. An untouched building gets
             // no file.
-            if (!any && !anyRoom && !anySnow && !anyRoomSnow && !SaveFiles.Exists(path)) return;
+            if (!any && !anyRoom && !anySnow && !anyRoomSnow && openList.Count == 0 && !SaveFiles.Exists(path)) return;
 
             var cleanedList = new List<int>();
             var frostedList = new List<int>();
@@ -837,7 +848,8 @@ namespace SeamlessInteriors
             string json = "{\"v\":1,\"cleaned\":[" + string.Join(",", cleanedList) + "],\"frosted\":[" + string.Join(",", frostedList) + "]"
                         + ",\"roomCleaned\":[" + string.Join(",", roomCleanedList) + "],\"roomFrosted\":[" + string.Join(",", roomFrostedList) + "]"
                         + ",\"cleanedAt\":[" + WriteWindowHours(cleanedList, hours) + "],\"roomCleanedAt\":[" + WriteWindowHours(roomCleanedList, roomHours) + "]"
-                        + ",\"snowFrom\":[" + WriteWindowValues(snowFrom) + "],\"roomSnowFrom\":[" + WriteWindowValues(roomSnowFrom) + "]}";
+                        + ",\"snowFrom\":[" + WriteWindowValues(snowFrom) + "],\"roomSnowFrom\":[" + WriteWindowValues(roomSnowFrom) + "]"
+                        + ",\"roomOpen\":[" + string.Join(",", openList) + "]}";
             JsonWriteCache.Write(path, json);
 
             if (s_DebugBounds)

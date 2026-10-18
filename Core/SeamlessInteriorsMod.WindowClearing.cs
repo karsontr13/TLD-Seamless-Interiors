@@ -104,6 +104,7 @@ namespace SeamlessInteriors
 
                 TickDoorWindowCleanKey();
                 GuardCleanTargetFromDoor();
+                TickRightClickClean();
 
                 // Which windows can be wiped changes slowly: asked four times a second, not every frame
                 // for every window (27 at the farmhouse; the walk was the feature's largest steady cost).
@@ -120,8 +121,14 @@ namespace SeamlessInteriors
                         if (t.Inside && WindowCoverLayers && !frosted) { float f, s; GetRoomPaneCover(t.Index, out f, out s); frosted = f >= 0.2f; }
                         // Outside, a window wiped from inside still has its snow to wipe.
                         if (!t.Inside && WindowCoverLayers && !frosted) { float f, s; GetWindowCover(s_OutsideInInstanceId, t.Index, false, out f, out s); frosted = f >= 0.2f || s > 0.02f; }
-                        if (t.Frosted != frosted || t.Go.activeSelf != frosted) t.Go.SetActive(frosted);
+                        // An open window's snow outside can be wiped from inside.
+                        bool sash = IsSashTarget(t);
+                        if (sash && !frosted && IsSashOpen(t.Index)) { float f, s; GetRoomPaneCover(t.Index, out f, out s); frosted = s > 0.02f; }
+                        // A window that opens keeps its target, frosted or not.
+                        bool shown = frosted || sash;
+                        if (t.Go.activeSelf != shown) t.Go.SetActive(shown);
                         t.Frosted = frosted;
+                        if (sash) SetSashHoldText(t);
                     }
                 }
 
@@ -137,7 +144,7 @@ namespace SeamlessInteriors
                     // this one is made to. The game's own interact release, which follows the player's
                     // bindings; proven live with the fire release and the raw mouse button beside it,
                     // all three seeing the same release (2026-10-01).
-                    if (frosted && t.Hold != null && t.Hold.IsActive && InputManager.GetInteractReleased(t.Hold))
+                    if ((frosted || IsSashTarget(t)) && t.Hold != null && t.Hold.IsActive && InputManager.GetInteractReleased(t.Hold))
                     {
                         t.Cancelled = true;
                         t.Hold.CancelHold();
@@ -182,7 +189,7 @@ namespace SeamlessInteriors
                 float reach = CLEAN_DOOR_GUARD_REACH * CLEAN_DOOR_GUARD_REACH;
                 foreach (var t in s_CleanTargets)
                 {
-                    if (!t.Frosted) continue;
+                    if (t.Go == null || !t.Go.activeSelf) continue;
                     float dx = t.Position.x - eye.x, dy = t.Position.y - eye.y, dz = t.Position.z - eye.z;
                     if (dx * dx + dy * dy + dz * dz < reach) { near = true; break; }
                 }
@@ -347,7 +354,7 @@ namespace SeamlessInteriors
             hold.m_DefaultHoldTime = CLEAN_WINDOW_HOLD_SECONDS;
 
             var target = new CleanTarget { Go = go, Inside = inside, Index = index, Hold = hold, Position = center };
-            System.Action<BaseInteraction> begin = (bi) => { target.Cancelled = false; s_CleanHeldTarget = target; StartCleanSound(target); };
+            System.Action<BaseInteraction> begin = (bi) => { target.Cancelled = false; s_CleanHeldTarget = target; if (!IsSashTarget(target)) StartCleanSound(target); };
             System.Action<BaseInteraction> cancelled = (bi) => { target.Cancelled = true; StopCleanSound(target); if (s_CleanHeldTarget == target) s_CleanHeldTarget = null; };
             System.Action<BaseInteraction> done = (bi) => { StopCleanSound(target); OnWindowCleanedByHand(target); if (s_CleanHeldTarget == target) s_CleanHeldTarget = null; s_CleanStateNextAt = 0f; };
             hold.AddEventCallback(InteractionEventType.HoldBegin, begin);
@@ -399,6 +406,18 @@ namespace SeamlessInteriors
                 target.Cancelled = false;
                 return;
             }
+            // On a window that opens, the interact hold opens or shuts it; the right button cleans (owner, 2026-10-18).
+            if (IsSashTarget(target))
+            {
+                ToggleWindowOpen(target.Index, target.Go);
+                SetSashHoldText(target);
+                return;
+            }
+            CleanTargetNow(target);
+        }
+
+        private static void CleanTargetNow(CleanTarget target)
+        {
             try
             {
                 string id;
@@ -406,6 +425,14 @@ namespace SeamlessInteriors
                 {
                     id = s_WindowPortalInstanceId;
                     SetWindowPaneCleared(target.Index, true);
+                    // Through an open window the snow outside is in reach too.
+                    if (IsSashOpen(target.Index))
+                    {
+                        int window = target.Index < s_WindowPortalSpot.Count ? s_WindowPortalSpot[target.Index] : -1;
+                        if (window >= 0) ClearWindowSnow(id, window, false);
+                        else ClearWindowSnow(id, target.Index, true);
+                        MarkWindowCoverDirty();
+                    }
                 }
                 else
                 {
@@ -432,8 +459,88 @@ namespace SeamlessInteriors
             }
         }
 
+        private static bool IsSashTarget(CleanTarget target) { return target.Inside && SashOf(target.Index) != null; }
+
+        // The ring's text and time follow what the hold will do to the window.
+        private static void SetSashHoldText(CleanTarget target)
+        {
+            if (target.Hold == null) return;
+            string text = IsSashOpen(target.Index) ? "Closing" : "Opening";
+            if (target.Hold.HoldText != text) target.Hold.HoldText = text;
+            if (target.Hold.HoldTime != SASH_OPEN_HOLD_SECONDS) target.Hold.HoldTime = SASH_OPEN_HOLD_SECONDS;
+        }
+
+        // ─── THE RIGHT BUTTON CLEANS ───
+        // Owner, 2026-10-18: held on a frosted window with nothing in hand, the same time and sound as the
+        // interact hold. On a window that opens it is the way to clean; elsewhere both work.
+        private const float RIGHT_CLEAN_REACH = 2.5f;
+        private static CleanTarget s_RightCleanTarget;
+        private static float s_RightCleanStart;
+        private static bool s_RightCleanNeedsRelease;
+
+        private static void TickRightClickClean()
+        {
+            bool held = Input.GetMouseButton(1);
+            if (!held) s_RightCleanNeedsRelease = false;
+            CleanTarget aimed = held && !s_RightCleanNeedsRelease && HandsEmptyForCleaning() ? CleanTargetUnderCrosshair() : null;
+            if (aimed != null && !aimed.Frosted) aimed = null;
+            if (aimed != s_RightCleanTarget)
+            {
+                if (s_RightCleanTarget != null) StopCleanSound(s_RightCleanTarget);
+                s_RightCleanTarget = aimed;
+                if (aimed == null) return;
+                s_RightCleanStart = Time.realtimeSinceStartup;
+                StartCleanSound(aimed);
+            }
+            if (aimed == null) return;
+
+            float k = (Time.realtimeSinceStartup - s_RightCleanStart) / CLEAN_WINDOW_HOLD_SECONDS;
+            s_LightingModeMessage = CLEAN_WINDOW_HOLD + " " + Mathf.RoundToInt(Mathf.Clamp01(k) * 100f) + "%";
+            s_LightingModeMessageTimer = 1f;
+            if (aimed.SoundId != 0 && !aimed.SoundFading && k >= 1f - CLEAN_WINDOW_SOUND_FADE_SECONDS / CLEAN_WINDOW_HOLD_SECONDS)
+            {
+                aimed.SoundFading = true;
+                try { AkSoundEngine.StopPlayingID(aimed.SoundId, (int)(CLEAN_WINDOW_SOUND_FADE_SECONDS * 1000f), AkCurveInterpolation.AkCurveInterpolation_Linear); } catch { }
+            }
+            if (k < 1f) return;
+
+            StopCleanSound(aimed);
+            s_RightCleanTarget = null;
+            s_RightCleanNeedsRelease = true;
+            s_LightingModeMessageTimer = 0f;
+            CleanTargetNow(aimed);
+            s_CleanStateNextAt = 0f;
+        }
+
+        private static bool HandsEmptyForCleaning()
+        {
+            var pm = GameManager.GetPlayerManagerComponent();
+            return pm != null && pm.m_ItemInHands == null;
+        }
+
+        // The nearest target on the crosshair's line, unless something solid stands before it.
+        private static CleanTarget CleanTargetUnderCrosshair()
+        {
+            Camera main = GameManager.GetMainCamera();
+            if (main == null) return null;
+            Collider best = null;
+            float target = float.MaxValue, solid = float.MaxValue;
+            foreach (var hit in Physics.RaycastAll(main.transform.position, main.transform.forward, RIGHT_CLEAN_REACH, ~0, QueryTriggerInteraction.Collide))
+            {
+                var c = hit.collider;
+                if (c == null) continue;
+                if (c.name.StartsWith("SI_CleanWindow_")) { if (hit.distance < target) { target = hit.distance; best = c; } }
+                else if (!c.isTrigger && c.gameObject.layer != vp_Layer.Player && hit.distance < solid) solid = hit.distance;
+            }
+            if (best == null || target >= solid) return null;
+            foreach (var t in s_CleanTargets) if (t.Go == best.gameObject) return t;
+            return null;
+        }
+
         private static void DestroyCleanTargets()
         {
+            if (s_RightCleanTarget != null) StopCleanSound(s_RightCleanTarget);
+            s_RightCleanTarget = null;
             SetDoorWindowCleanMode(false);
             s_CleanHeldTarget = null;
             s_CleanStateNextAt = 0f;
