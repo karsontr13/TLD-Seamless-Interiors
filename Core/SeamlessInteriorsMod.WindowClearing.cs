@@ -586,5 +586,39 @@ namespace SeamlessInteriors
             }
             s_CleanTargets.Clear();
         }
+
+        // The game's crosshair ray skips the targets' layer and finds them only when it hits nothing; close to
+        // a Coastal Highway window it hit the room's perimeter blocker behind the glass (owner, 2026-10-18).
+        // Mask read from PlayerManager.GetInteractiveObjectUnderCrosshairs.
+        private const int CROSSHAIR_RAY_MASK = 0x83F9040;
+
+        internal static GameObject CleanTargetBeforeCrosshairHit(float range, GameObject found)
+        {
+            if (s_CleanTargets.Count == 0) return found;
+            try
+            {
+                Camera main = GameManager.GetMainCamera();
+                if (main == null) return found;
+                Ray ray = new Ray(main.transform.position, main.transform.forward);
+                RaycastHit hit;
+                if (!Physics.Raycast(ray, out hit, range, 1 << vp_Layer.InteractivePropNoCollidePlayer, QueryTriggerInteraction.Ignore)) return found;
+                CleanTarget target = null;
+                foreach (var t in s_CleanTargets) if (t.Go == hit.collider.gameObject) { target = t; break; }
+                if (target == null || target.Go == found) return found;
+                RaycastHit gameHit;
+                if (Physics.Raycast(ray, out gameHit, range, CROSSHAIR_RAY_MASK) && gameHit.distance < hit.distance) return found;
+                return target.Go;
+            }
+            catch { return found; }
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(PlayerManager), nameof(PlayerManager.GetInteractiveObjectUnderCrosshairs))]
+    public class CleanTargetCrosshairPatch
+    {
+        public static void Postfix(float __0, ref GameObject __result)
+        {
+            __result = SeamlessInteriorsMod.CleanTargetBeforeCrosshairHit(__0, __result);
+        }
     }
 }

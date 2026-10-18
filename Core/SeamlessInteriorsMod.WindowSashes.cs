@@ -212,14 +212,16 @@ namespace SeamlessInteriors
 
         private static WindowSash BuildSash(InteriorWindowOpening opening, int index, bool cutFrame, out string why)
         {
-            if (IsSlideRightWindowModel(opening)) return BuildSlideRightSash(opening, index, out why);
+            if (IsSlideRightWindowModel(opening)) return BuildPaneSash(opening, index, false, out why);
+            if (IsWindowModel(opening, PANE_SLIDE_UP_WINDOW_MODELS)) return BuildPaneSash(opening, index, true, out why);
             return BuildSlideUpSash(opening, index, cutFrame, out why);
         }
 
-        // The left pane on a sash that slides right, in front of the frame's face. The sash keeps the
-        // slide-up layout with its axes turned: its Up is the window's right, its Right the window's up.
-        // The frame is part of the building's window mesh, so it is found by its post between the panes.
-        private static WindowSash BuildSlideRightSash(InteriorWindowOpening opening, int index, out string why)
+        // Windows with a pane per sash and the frame in the building's window mesh (Coastal Highway): the
+        // left or lower pane goes on a sash that slides in front of the frame's face. A is the way it
+        // slides, B across it; a side slider's sash has its axes turned (its Up is the window's right).
+        // The frame is found by its post between the panes.
+        private static WindowSash BuildPaneSash(InteriorWindowOpening opening, int index, bool up, out string why)
         {
             why = null;
             Transform pr = opening.PaneRoot;
@@ -235,7 +237,7 @@ namespace SeamlessInteriors
                 }
             if (glassMf == null || glassRenderer == null) { why = "no readable glass"; return null; }
 
-            Vector3 origin = opening.GlassCenter, R = opening.Right, U = opening.Up, O = opening.Outward;
+            Vector3 origin = opening.GlassCenter, A = up ? opening.Up : opening.Right, B = up ? opening.Right : opening.Up, O = opening.Outward;
             // The panes: the widest stretch across the window that no glass triangle covers is the post.
             var glassVerts = CopyVerts(glassMf.sharedMesh);
             var across = new float[glassVerts.Length];
@@ -243,8 +245,8 @@ namespace SeamlessInteriors
             for (int i = 0; i < glassVerts.Length; i++)
             {
                 Vector3 p = glassMf.transform.TransformPoint(glassVerts[i]) - origin;
-                across[i] = Vector3.Dot(p, R);
-                float u = Vector3.Dot(p, U);
+                across[i] = Vector3.Dot(p, A);
+                float u = Vector3.Dot(p, B);
                 gBottom = Mathf.Min(gBottom, u); gTop = Mathf.Max(gTop, u);
             }
             var spans = new List<Vector2>();
@@ -262,7 +264,7 @@ namespace SeamlessInteriors
                 if (s.x > gRight && s.x - gRight > postR - postL) { postL = gRight; postR = s.x; }
                 gRight = Mathf.Max(gRight, s.y);
             }
-            if (postR - postL < 0.02f || postL - gLeft < 0.2f || gRight - postR < 0.2f) { why = "not two panes side by side"; return null; }
+            if (postR - postL < 0.02f || postL - gLeft < 0.2f || gRight - postR < 0.2f) { why = "not two panes"; return null; }
             float seam = (postL + postR) * 0.5f;
 
             // The frame's room face on the post, and its material and colour there.
@@ -272,7 +274,7 @@ namespace SeamlessInteriors
             if (pr.parent != null)
                 foreach (var mf in pr.parent.GetComponentsInChildren<MeshFilter>(true))
                 {
-                    if (mf == glassMf || mf.transform.IsChildOf(pr) || mf.sharedMesh == null || !mf.sharedMesh.isReadable || mf.name.StartsWith("SI_")) continue;
+                    if (mf == glassMf || mf.transform.IsChildOf(pr) || mf.sharedMesh == null || !mf.sharedMesh.isReadable || mf.name.StartsWith("SI_") || mf.name.Contains("Glass")) continue;
                     var renderer = mf.GetComponent<MeshRenderer>();
                     if (renderer == null || !renderer.bounds.Contains(origin)) continue;
                     var verts = mf.sharedMesh.vertices;
@@ -280,39 +282,70 @@ namespace SeamlessInteriors
                     for (int i = 0; i < verts.Length; i++)
                     {
                         Vector3 p = mf.transform.TransformPoint(verts[i]) - origin;
-                        float r = Vector3.Dot(p, R), u = Vector3.Dot(p, U), o = Vector3.Dot(p, O);
+                        float r = Vector3.Dot(p, A), u = Vector3.Dot(p, B), o = Vector3.Dot(p, O);
                         if (r < postL - 0.005f || r > postR + 0.005f || u < gBottom - 0.02f || u > gTop + 0.02f || o > 0.01f || o < -0.15f) continue;
                         if (o < face) { face = o; frameMf = mf; frameUv = i < uvs.Length ? uvs[i] : Vector2.zero; }
                     }
                 }
             if (frameMf == null) { why = "no frame post between the panes"; return null; }
+            // A corner's colour lay on the texture's dark outline (owner, 2026-10-18: too dark); the post's middle is the frame's.
+            frameUv = FaceUvAt(frameMf, origin, A, B, O, new Vector2(seam, (gBottom + gTop) * 0.5f), frameUv);
 
-            // Over the frame round the left pane by a few centimetres, so no gap shows at its edges.
+            // Over the frame round the moving pane by a few centimetres, so no gap shows at its edges.
             const float OVER = 0.03f;
-            var sash = new WindowSash { Opening = index, PaneRoot = pr, Up = R, Right = U, Outward = O, Seam = seam };
+            var sash = new WindowSash { Opening = index, PaneRoot = pr, Up = A, Right = B, Outward = O, Seam = seam };
             float o1 = face - SASH_DEPTH_GAP, o0 = o1 - 0.024f;
             sash.SashMid = (o0 + o1) * 0.5f;
             sash.EdgeLeft = gBottom - OVER; sash.EdgeRight = gTop + OVER; sash.EdgeBottom = gLeft - OVER;
             sash.RailTop = postL + OVER;
-            // Its left edge stops at the post, clear of the left pane.
+            // Its back edge stops at the post, clear of the pane it opens.
             sash.Slide = postL - sash.EdgeBottom;
 
             sash.Go = new GameObject("SI_Sash");
             sash.Go.layer = frameMf.gameObject.layer;
             sash.Go.transform.SetParent(pr, false);
-            sash.SashMesh = BuildSashMesh(pr, origin, U, R, O, sash.EdgeLeft, sash.EdgeRight, sash.EdgeBottom, sash.RailTop, o0, o1);
-            var flat = new Vector2[sash.SashMesh.vertexCount];
-            for (int i = 0; i < flat.Length; i++) flat[i] = frameUv;
-            sash.SashMesh.uv = flat;
+            sash.SashMesh = BuildSashMesh(pr, origin, B, A, O, sash.EdgeLeft, sash.EdgeRight, sash.EdgeBottom, sash.RailTop, o0, o1);
+            // Each bar is laid on the post's face as the frame textures it, along and across, so it carries the
+            // frame's grain and wear: one point was a flat colour, and one line of it streaked (owner, 2026-10-18).
+            float postIn = postL + 0.005f, bStart = sash.EdgeLeft + 0.04f;
+            Vector2 uv0 = FaceUvAt(frameMf, origin, A, B, O, new Vector2(postIn, bStart), frameUv);
+            Vector2 perB = (FaceUvAt(frameMf, origin, A, B, O, new Vector2(postIn, bStart + 0.3f), uv0) - uv0) / 0.3f;
+            Vector2 perA = (FaceUvAt(frameMf, origin, A, B, O, new Vector2(postIn + 0.02f, bStart), uv0) - uv0) / 0.02f;
+            float postSpan = Mathf.Max(postR - postL - 0.01f, 0.005f);
+            var local = sash.SashMesh.vertices;
+            var barUv = new Vector2[local.Length];
+            // BuildSashMesh: 24 points a bar; the two rails first (along B), then the two stiles (along A).
+            for (int bar = 0; bar * 24 < local.Length; bar++)
+            {
+                Vector3 along = bar < 2 ? B : A, crossAxis = bar < 2 ? A : B;
+                float loAlong = float.MaxValue, loAcross = float.MaxValue;
+                for (int i = bar * 24; i < bar * 24 + 24; i++)
+                {
+                    Vector3 p = pr.TransformPoint(local[i]) - origin;
+                    loAlong = Mathf.Min(loAlong, Vector3.Dot(p, along));
+                    loAcross = Mathf.Min(loAcross, Vector3.Dot(p, crossAxis) + Vector3.Dot(p, O));
+                }
+                for (int i = bar * 24; i < bar * 24 + 24; i++)
+                {
+                    Vector3 p = pr.TransformPoint(local[i]) - origin;
+                    // A face spans the bar's length and one of its width or depth; the other is fixed on it.
+                    float d = Vector3.Dot(p, along) - loAlong, c = Vector3.Dot(p, crossAxis) + Vector3.Dot(p, O) - loAcross;
+                    barUv[i] = uv0 + perB * d + perA * Mathf.Repeat(c, postSpan);
+                }
+            }
+            sash.SashMesh.uv = barUv;
             sash.Go.AddComponent<MeshFilter>().sharedMesh = sash.SashMesh;
-            sash.Go.AddComponent<MeshRenderer>().sharedMaterial = frameMf.GetComponent<MeshRenderer>().sharedMaterial;
+            var frameRenderer = frameMf.GetComponent<MeshRenderer>();
+            var sashRenderer = sash.Go.AddComponent<MeshRenderer>();
+            sashRenderer.sharedMaterial = frameRenderer.sharedMaterial;
+            sashRenderer.lightProbeUsage = frameRenderer.lightProbeUsage;
 
             sash.GlassMf = glassMf;
             sash.GlassRenderer = glassRenderer;
             sash.GlassOwn = glassMf.sharedMesh;
-            sash.GlassUpper = CutMeshAtSeam(sash.GlassOwn, glassMf.transform, origin, R, seam, true);
-            sash.GlassLower = CutMeshAtSeam(sash.GlassOwn, glassMf.transform, origin, R, seam, false);
-            KeepInsideSash(sash.GlassLower, glassMf.transform, origin, U, R, sash);
+            sash.GlassUpper = CutMeshAtSeam(sash.GlassOwn, glassMf.transform, origin, A, seam, true);
+            sash.GlassLower = CutMeshAtSeam(sash.GlassOwn, glassMf.transform, origin, A, seam, false);
+            KeepInsideSash(sash.GlassLower, glassMf.transform, origin, B, A, sash);
             glassMf.sharedMesh = sash.GlassUpper;
             var lowGlassGo = new GameObject("SI_SashGlass");
             lowGlassGo.layer = glassMf.gameObject.layer;
@@ -324,6 +357,39 @@ namespace SeamlessInteriors
             sash.LowGlass = lowGlassGo.AddComponent<MeshRenderer>();
             FollowGlass(sash);
             return sash;
+        }
+
+        // The texture point on the room-most face of the mesh at (a, b), or fallback when no face lies there.
+        private static Vector2 FaceUvAt(MeshFilter mf, Vector3 origin, Vector3 A, Vector3 B, Vector3 O, Vector2 at, Vector2 fallback)
+        {
+            var verts = mf.sharedMesh.vertices;
+            var uvs = mf.sharedMesh.uv;
+            var tris = mf.sharedMesh.triangles;
+            if (uvs.Length != verts.Length) return fallback;
+            var w = new Vector2[verts.Length];
+            var o = new float[verts.Length];
+            for (int i = 0; i < verts.Length; i++)
+            {
+                Vector3 p = mf.transform.TransformPoint(verts[i]) - origin;
+                w[i] = new Vector2(Vector3.Dot(p, A), Vector3.Dot(p, B));
+                o[i] = Vector3.Dot(p, O);
+            }
+            float best = float.MaxValue;
+            Vector2 uv = fallback;
+            for (int t = 0; t + 2 < tris.Length; t += 3)
+            {
+                int a = tris[t], b = tris[t + 1], c = tris[t + 2];
+                // Flat faces facing the room only, near the glass.
+                if (o[a] > 0.01f || o[a] < -0.15f || Mathf.Abs(o[a] - o[b]) > 0.003f || Mathf.Abs(o[a] - o[c]) > 0.003f || o[a] >= best) continue;
+                Vector2 e0 = w[b] - w[a], e1 = w[c] - w[a], e2 = at - w[a];
+                float d = e0.x * e1.y - e1.x * e0.y;
+                if (Mathf.Abs(d) < 1e-8f) continue;
+                float l1 = (e2.x * e1.y - e1.x * e2.y) / d, l2 = (e0.x * e2.y - e2.x * e0.y) / d;
+                if (l1 < 0f || l2 < 0f || l1 + l2 > 1f) continue;
+                best = o[a];
+                uv = uvs[a] * (1f - l1 - l2) + uvs[b] * l1 + uvs[c] * l2;
+            }
+            return uv;
         }
 
         // cutFrame: the frame's rail gives up its room half so the sash can pass it. Off for the view from
@@ -818,6 +884,8 @@ namespace SeamlessInteriors
 
         // Two panes side by side; the left one slides right (owner, 2026-10-18, Coastal Highway house).
         private static readonly string[] SLIDE_RIGHT_WINDOW_MODELS = { "STR_GlassPane_Single" };
+        // Two panes one over the other, a pane per sash; the lower one slides up (owner, 2026-10-18).
+        private static readonly string[] PANE_SLIDE_UP_WINDOW_MODELS = { "STR_GlassPaneVertical_Single" };
 
         private static bool IsSlideUpWindowModel(InteriorWindowOpening opening) { return IsWindowModel(opening, SLIDE_UP_WINDOW_MODELS); }
         private static bool IsSlideRightWindowModel(InteriorWindowOpening opening) { return IsWindowModel(opening, SLIDE_RIGHT_WINDOW_MODELS); }
@@ -843,7 +911,7 @@ namespace SeamlessInteriors
         private static bool IsOpenableWindow(BuildingWindowOverride row, int roomWindow, InteriorWindowOpening opening)
         {
             if (opening.ViewOutOnly) return false;
-            if (IsSlideUpWindowModel(opening) || IsSlideRightWindowModel(opening)) return true;
+            if (IsSlideUpWindowModel(opening) || IsSlideRightWindowModel(opening) || IsWindowModel(opening, PANE_SLIDE_UP_WINDOW_MODELS)) return true;
             if (row == null || row.OpenableWindows == null) return false;
             foreach (var entry in row.OpenableWindows) if (entry != null && entry.RoomWindow == roomWindow) return true;
             return false;
