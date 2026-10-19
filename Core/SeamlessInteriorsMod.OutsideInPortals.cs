@@ -988,6 +988,8 @@ namespace SeamlessInteriors
             // renderers with includeInactive true, so it works before the clone is switched on.
             double lapShellWindows = lapTimer.Elapsed.TotalMilliseconds;
             var allRoomOpenings = FindInteriorWindowOpenings(instance);
+            // The room seen through its windows is squared too, entered or not (owner, 2026-10-19).
+            SquareHallWindows(allRoomOpenings);
             var interiorOpenings = WithoutViewOutOnly(allRoomOpenings);
             double lapRoomOpenings = lapTimer.Elapsed.TotalMilliseconds;
 
@@ -1125,6 +1127,7 @@ namespace SeamlessInteriors
                 }
             }
 
+            SquareHallShell(instance, s_OutsideInApertures, s_OI.ApertureRoomWindow, allRoomOpenings);
             double lapApertures = lapTimer.Elapsed.TotalMilliseconds;
             MelonLogger.Msg($"[DIS-ICE] {id}: kurulumun turlari, ms: kabuk pencereleri {lapShellWindows:F1}, oda aciklilari {(lapRoomOpenings - lapShellWindows):F1}, merkezler {(lapCenters - lapRoomOpenings):F1}, eslestirme {(lapPairing - lapCenters):F1}, egim {(lapTilt - lapPairing):F1}, pencere dongusu {(lapApertures - lapTilt):F1}; {spots.Length} bina penceresi, {interiorOpenings.Count} oda acikligi.",
                             $"[OUTSIDE-IN] {id}: setup laps, ms: building windows {lapShellWindows:F1}, room openings {(lapRoomOpenings - lapShellWindows):F1}, centers {(lapCenters - lapRoomOpenings):F1}, pairing {(lapPairing - lapCenters):F1}, tilt {(lapTilt - lapPairing):F1}, window loop {(lapApertures - lapTilt):F1}; {spots.Length} building windows, {interiorOpenings.Count} room openings.");

@@ -141,9 +141,9 @@ namespace SeamlessInteriors
             inRoom = Vector3.zero; roomWindow = -1; room = null;
             float bestT = float.MaxValue;
             foreach (var held in s_OutsideSashes)
+            foreach (var sash in SashesOf(held))
             {
-                var sash = held.Sash;
-                if (sash == null || sash.Shown <= 0.5f) continue;
+                if (sash.Shown <= 0.5f) continue;
                 foreach (var b in s_OutsideInBuildings)
                 {
                     if (b == null || !b.Borrowed || b.InstanceId != held.InstanceId) continue;
@@ -174,9 +174,16 @@ namespace SeamlessInteriors
 
         private static bool AnyWindowOpenForShots()
         {
-            foreach (var held in s_OutsideSashes) if (held.Sash != null && held.Sash.Shown > 0.5f) return true;
+            foreach (var held in s_OutsideSashes) foreach (var sash in SashesOf(held)) if (sash.Shown > 0.5f) return true;
             foreach (var sash in s_WindowSashes) if (sash.Shown > 0.5f) return true;
             return false;
+        }
+
+        // The hall's casement opens on its own, apart from the first sash (owner, 2026-10-19: no way in by it).
+        private static System.Collections.Generic.IEnumerable<WindowSash> SashesOf(OutsideSash held)
+        {
+            if (held.Extra != null) { foreach (var s in held.Extra) if (s != null) yield return s; }
+            else if (held.Sash != null) yield return held.Sash;
         }
 
         internal static void MaybeSendShotThroughWindow(vp_Bullet bullet)

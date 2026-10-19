@@ -112,6 +112,13 @@ namespace SeamlessInteriors
 
         private static int StateOf(WindowSash sash) { return sash.StateId >= 0 ? sash.StateId : sash.Opening; }
 
+        // Any of the window's sashes open: the hall's casement is its own state (owner, 2026-10-19: no snow wiped through it).
+        private static bool IsAnySashOpen(int opening)
+        {
+            foreach (var sash in s_WindowSashes) if (sash.Opening == opening && IsRoomWindowOpen(s_WindowPortalInstanceId, StateOf(sash))) return true;
+            return false;
+        }
+
         private static WindowSash SashOfState(int state)
         {
             for (int i = 0; i < s_WindowSashes.Count; i++) if (StateOf(s_WindowSashes[i]) == state) return s_WindowSashes[i];
@@ -148,7 +155,7 @@ namespace SeamlessInteriors
                     if (sash.Go == null || sash.PaneRoot == null) { s_WindowSashesKey = null; return; }   // gone with its scene
                     // A hinged pair's frost is cut by its first sash for both.
                     if (sash.HingedPanes == null) FollowFrostLayer(sash);
-                    else if (StateOf(sash) == sash.Opening) FollowHallFrost(sash);
+                    else if (IsFirstHingedSash(sash)) FollowHallFrost(sash);
                     FollowGlass(sash);
                     SlideSash(sash, IsRoomWindowOpen(s_WindowPortalInstanceId, StateOf(sash)) ? 1f : 0f, now);
                 }
@@ -1162,7 +1169,7 @@ namespace SeamlessInteriors
         // The raised sash stands behind the upper pane, so from outside an open window is its lower pane
         // with no frost on it (owner, 2026-10-18: it looked shut). The outside frost is cut between the
         // building's own two panes; the snow on the sill stays.
-        private class OutsideOpenCut { public GameObject Frost; public Mesh Own, Cut; public float Seam; }   // Seam: up the texture, 0..1
+        private class OutsideOpenCut { public GameObject Frost; public Mesh Own, Cut; public float Seam; public int Mask; }   // Seam: up the texture, 0..1; Mask: the hall's open panes
         private static readonly Dictionary<WindowCoverLayer, OutsideOpenCut> s_OutsideOpenCuts = new Dictionary<WindowCoverLayer, OutsideOpenCut>();
         private static readonly List<WindowCoverLayer> s_OutsideOpenStale = new List<WindowCoverLayer>();
         private static bool s_OutsideOpenFailed;
@@ -1173,6 +1180,8 @@ namespace SeamlessInteriors
         private class OutsideSash
         {
             public string InstanceId; public int RoomWindow; public WindowSash Sash; public bool Wanted; public float RetryAt;
+            public List<WindowSash> Extra;   // the hall's sashes, Sash first
+            public List<GameObject> HallCovers; public List<Mesh> HallCoverMeshes; public int CoverMask;
             // The sash's pane, the lower part of the window's outside cover (owner, 2026-10-18: like cleaned glass).
             public GameObject Cover, CoverFor; public Mesh CoverMesh;
         }
@@ -1212,7 +1221,19 @@ namespace SeamlessInteriors
                         // Open, the building's cover is cut at the rail and the sash carries its lower part up. Shut, the
                         // whole cover is the glass: it stands on the snow bank's plane, and the sash's own pane drawn
                         // back in the room left a gap behind the bank that no fill closed well (owner, 2026-10-18).
-                        if (layer != null && layer.FrostGo != null)
+                        bool hall = room >= 0 && a < b.ApertureOpenings.Count && IsHallWindow(b.ApertureOpenings[a]);
+                        if (layer != null && layer.FrostGo != null && hall)
+                        {
+                            // The hall's cover loses the cells of whichever of its panes stand open.
+                            int mask = (open ? 1 : 0) | (IsRoomWindowOpen(b.InstanceId, room + CASEMENT_STATE) ? 2 : 0);
+                            OutsideOpenCut had;
+                            bool cut = s_OutsideOpenCuts.TryGetValue(layer, out had);
+                            if (cut && had.Mask != mask) { UncutOutsideFrost(layer); cut = false; }
+                            if (mask != 0 && !cut) CutHallOutsideFrost(layer, mask);
+                            if (sashHere) KeepHallSashCovers(b.InstanceId, room, layer, b.ApertureOpenings[a]);
+                            ShowMullionTop(a, (mask & 2) == 0);
+                        }
+                        else if (layer != null && layer.FrostGo != null)
                         {
                             bool wantCut = open;
                             bool cut = s_OutsideOpenCuts.ContainsKey(layer);
@@ -1225,9 +1246,14 @@ namespace SeamlessInteriors
                 for (int i = s_OutsideSashes.Count - 1; i >= 0; i--)
                 {
                     var held = s_OutsideSashes[i];
-                    if (held.Wanted && (held.Sash == null || (held.Sash.Go != null && held.Sash.PaneRoot != null))) { if (held.Sash != null) FollowGlass(held.Sash); continue; }
+                    if (held.Wanted && (held.Sash == null || (held.Sash.Go != null && held.Sash.PaneRoot != null)))
+                    {
+                        if (held.Extra != null) foreach (var s in held.Extra) FollowGlass(s);
+                        else if (held.Sash != null) FollowGlass(held.Sash);
+                        continue;
+                    }
                     DropSashCover(held);
-                    if (held.Sash != null) TeardownSash(held.Sash);
+                    TeardownOutsideSash(held);
                     s_OutsideSashes.RemoveAt(i);
                 }
             }
@@ -1293,8 +1319,8 @@ namespace SeamlessInteriors
         {
             // The room's own sash, there until the frame after the player leaves, still holds the glass cut.
             if (opening.PaneRoot == null) return false;
-            // The hall's hinged sashes are not built for the view from outside yet.
-            if (IsHallWindow(opening)) return false;
+            // The hall's pair of hinged sashes.
+            if (IsHallWindow(opening)) return KeepOutsideHallSashes(instanceId, roomWindow, opening);
             foreach (var inside in s_WindowSashes) if (inside.PaneRoot == opening.PaneRoot) return false;
 
             OutsideSash kept = null;
@@ -1385,6 +1411,7 @@ namespace SeamlessInteriors
             if (held.Cover != null) Object.Destroy(held.Cover);
             if (held.CoverMesh != null) Object.Destroy(held.CoverMesh);
             held.Cover = null; held.CoverMesh = null; held.CoverFor = null;
+            DropHallSashCovers(held);
         }
 
         private static bool HasOutsideSashes(string instanceId)
@@ -1395,7 +1422,7 @@ namespace SeamlessInteriors
 
         private static void TeardownOutsideSashes()
         {
-            foreach (var held in s_OutsideSashes) { DropSashCover(held); if (held.Sash != null) TeardownSash(held.Sash); }
+            foreach (var held in s_OutsideSashes) { DropSashCover(held); TeardownOutsideSash(held); }
             s_OutsideSashes.Clear();
         }
 

@@ -124,7 +124,7 @@ namespace SeamlessInteriors
                         if (!t.Inside && WindowCoverLayers && !frosted) { float f, s; GetWindowCover(s_OutsideInInstanceId, t.Index, false, out f, out s); frosted = f >= 0.2f || s > 0.02f; }
                         // An open window's snow outside can be wiped from inside.
                         bool sash = IsSashTarget(t);
-                        if (sash && !frosted && IsSashOpen(t.Index)) { float f, s; GetRoomPaneCover(t.Index, out f, out s); frosted = s > 0.02f; }
+                        if (sash && !frosted && IsAnySashOpen(t.Index)) { float f, s; GetRoomPaneCover(t.Index, out f, out s); frosted = s > 0.02f; }
                         // A window that opens keeps its target, frosted or not.
                         bool shown = frosted || sash;
                         if (t.Go.activeSelf != shown) t.Go.SetActive(shown);
@@ -460,7 +460,7 @@ namespace SeamlessInteriors
                     id = s_WindowPortalInstanceId;
                     SetWindowPaneCleared(target.Index, true);
                     // Through an open window the snow outside is in reach too.
-                    if (IsSashOpen(target.Index))
+                    if (IsAnySashOpen(target.Index))
                     {
                         int window = target.Index < s_WindowPortalSpot.Count ? s_WindowPortalSpot[target.Index] : -1;
                         if (window >= 0) ClearWindowSnow(id, window, false);

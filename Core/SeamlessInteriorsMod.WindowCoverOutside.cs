@@ -78,8 +78,8 @@ namespace SeamlessInteriors
                 layer.Panes = new List<float[]>();
                 foreach (var p in shape.Panes) layer.Panes.Add((float[])p.Clone());
                 layer.Center = pane.Center + pane.Outward * pane.Toward; layer.Right = across; layer.Up = pane.Up; layer.Outward = pane.Outward;
-                tMeasure += CoverMs(t0); t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 var opening = a < s_OI.ApertureOpenings.Count ? s_OI.ApertureOpenings[a] : default(InteriorWindowOpening);
+                tMeasure += CoverMs(t0); t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 MakeCoverBank(layer, CoverBankMaterial(opening), "SeamlessInteriors_OutsideSnow_" + a);
                 // Built one a frame from TickOutsideCovers: all at once they stalled the dressing.
                 tBank += CoverMs(t0);
