@@ -1210,7 +1210,9 @@ namespace SeamlessInteriors
         // Inside, the frost and the bank take the outdoor ambient the window views are drawn with (owner,
         // 2026-10-13). Read off the views themselves first, it jumped with what each view happened to show:
         // 0.17 to 0.7 within a tenth of a second at Community Hall, the frost flickering with every step.
-        private const float COVER_OUTDOOR_FROST = 0.85f, COVER_OUTDOOR_BANK = 3f;
+        // The bank as bright as the frost: three times over-lit it white with blue blots, unlike the same bank seen
+        // from outside (owner, Community Hall at night, 2026-10-19).
+        private const float COVER_OUTDOOR_FROST = 0.85f, COVER_OUTDOOR_BANK = 1f;
         // The last light, for layers made between two reads.
         private static Color s_CoverLight = new Color(0.3f, 0.3f, 0.3f, 1f), s_CoverBankLight = Color.white;
         private static readonly MaterialPropertyBlock s_CoverBankTint = new MaterialPropertyBlock();
@@ -1229,8 +1231,6 @@ namespace SeamlessInteriors
             float level = (outdoor.r + outdoor.g + outdoor.b) / 3f;
             float k = Mathf.Clamp(level * COVER_OUTDOOR_FROST, 0.02f, 1.1f) / Mathf.Max(level, 0.0001f);
             frost = new Color(outdoor.r * k, outdoor.g * k, outdoor.b * k, 1f);
-            // The bank is lit by the dark room as well; three times the frost's colour brings it to the frost's
-            // brightness (owner, Camp Office by day, 2026-10-13).
             bank = new Color(frost.r * COVER_OUTDOOR_BANK, frost.g * COVER_OUTDOOR_BANK, frost.b * COVER_OUTDOOR_BANK, 1f);
         }
 
