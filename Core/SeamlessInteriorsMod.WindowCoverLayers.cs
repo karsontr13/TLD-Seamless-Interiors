@@ -50,6 +50,7 @@ namespace SeamlessInteriors
             public CoverTables Tables;
             // Zero where a bar barely proud of the glass would be drawn over; null for none.
             public float[] FrostMask;
+            public List<Vector2> Outline;   // a shaped pane's glass, triangles in across and up about Center
             // Panes in metres from Center along Right and Up: left, right, bottom, top, 1 when a bar sits above.
             public List<float[]> Panes;
             public Vector3 Center, Right, Up, Outward;
@@ -216,6 +217,9 @@ namespace SeamlessInteriors
             // it looked like a cut-out from the side (owner, 2026-10-13).
             layer.Center = center; layer.Right = opening.Right; layer.Up = opening.Up; layer.Outward = opening.Outward;
             layer.Panes = CoverPanes(opening, center, width, height);
+            // A shaped pane's frost stops at its glass (Coastal House E's gable window, owner 2026-10-19).
+            Vector3 offset = center - opening.GlassCenter;
+            layer.FrostMask = ShapedGlassFrostMask(opening, layer.FrostSize, Vector3.Dot(offset, opening.Right), Vector3.Dot(offset, opening.Up), width, height, false);
             if (roomSide)
             {
                 // Turned half round on its upright: across and out both reverse, so the panes are read mirrored.
@@ -223,6 +227,17 @@ namespace SeamlessInteriors
                 foreach (var p in layer.Panes) { float left = p[0]; p[0] = -p[1]; p[1] = -left; }
                 layer.BankStandOff = COVER_ROOM_SIDE_STAND_OFF;
                 layer.BankDepth = COVER_ROOM_SIDE_DEPTH; layer.BankReach = COVER_ROOM_SIDE_REACH;
+            }
+            // A shaped pane's bank stays under its glass's outline, in the layer's own across and up.
+            var outline = ShapedGlassOutline(opening);
+            if (outline != null)
+            {
+                layer.Outline = new List<Vector2>(outline.Count);
+                foreach (var p in outline)
+                {
+                    Vector3 at = opening.GlassCenter + opening.Right * p.x + opening.Up * p.y - layer.Center;
+                    layer.Outline.Add(new Vector2(Vector3.Dot(at, layer.Right), Vector3.Dot(at, layer.Up)));
+                }
             }
             MakeCoverBank(layer, CoverBankMaterial(opening), "SeamlessInteriors_WindowSnow_" + index);
             StartCoverTables(layer, width / height);
@@ -1067,6 +1082,7 @@ namespace SeamlessInteriors
                     float level = snow * (fullTop + 0.03f - gap) + shape * roll;
                     float cap = fullTop - gap * snow;
                     tops[i] = flat ? hb : hb + C01(level < cap ? level : cap) * ph;
+                    if (layer.Outline != null && !flat) tops[i] = Mathf.Max(hb, Mathf.Min(tops[i], OutlineTop(layer.Outline, x0 + pw * i / nx, tops[i])));
                 }
 
                 int front = v;

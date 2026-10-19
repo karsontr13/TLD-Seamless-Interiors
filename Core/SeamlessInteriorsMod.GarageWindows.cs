@@ -36,7 +36,9 @@ namespace SeamlessInteriors
         }
 
         // The hall's and the garage's windows: hinged sashes on shared glass.
-        private static bool IsHingedWindow(InteriorWindowOpening opening) { return IsHallWindow(opening) || IsGarageWindow(opening); }
+        private static bool IsHingedWindow(InteriorWindowOpening opening) { return IsHallWindow(opening) || IsGarageWindow(opening) || IsSingleCasementWindow(opening); }
+        // The hinged windows that open all their glass at once.
+        private static bool OpensWhole(InteriorWindowOpening opening) { return IsGarageWindow(opening) || IsSingleCasementWindow(opening); }
 
         // The window's two columns of glass, (left, right, bottom, top) from its centre, and the height where each
         // column's two panes meet. Only a window of four panes, two to a column, counts.

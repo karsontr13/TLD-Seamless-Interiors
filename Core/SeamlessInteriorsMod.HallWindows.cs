@@ -667,6 +667,7 @@ namespace SeamlessInteriors
         {
             why = null;
             if (IsGarageWindow(opening)) return BuildGarageSashes(opening, index, out why);
+            if (IsSingleCasementWindow(opening)) return BuildSingleCasement(opening, index, out why);
             MeshFilter glassMf;
             List<Vector4> lower, upper;
             if (!HallPanes(opening, out glassMf, out lower, out upper)) { why = "its panes could not be read"; return null; }

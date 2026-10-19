@@ -1229,9 +1229,9 @@ namespace SeamlessInteriors
                             OutsideOpenCut had;
                             bool cut = s_OutsideOpenCuts.TryGetValue(layer, out had);
                             if (cut && had.Mask != mask) { UncutOutsideFrost(layer); cut = false; }
-                            if (mask != 0 && !cut) CutHallOutsideFrost(layer, mask, IsGarageWindow(b.ApertureOpenings[a]));
+                            if (mask != 0 && !cut) CutHallOutsideFrost(layer, mask, OpensWhole(b.ApertureOpenings[a]));
                             if (sashHere) KeepHallSashCovers(b.InstanceId, room, layer, b.ApertureOpenings[a]);
-                            ShowMullionTop(b.Instance, a, IsGarageWindow(b.ApertureOpenings[a]) ? mask == 0 : (mask & 2) == 0);
+                            ShowMullionTop(b.Instance, a, OpensWhole(b.ApertureOpenings[a]) ? mask == 0 : (mask & 2) == 0);
                         }
                         else if (layer != null && layer.FrostGo != null)
                         {

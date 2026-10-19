@@ -1991,6 +1991,30 @@ namespace SeamlessInteriors
                 new Vector2(1f, 0f)
             };
             mesh.triangles = new int[] { 0, 1, 2, 0, 2, 3 };
+            // A shaped pane (Coastal House E's gable window) is drawn in its own outline: the square showed past the frame.
+            var outline = ShapedGlassOutline(opening);
+            if (outline != null)
+            {
+                var verts = new Vector3[outline.Count];
+                var uvs = new Vector2[outline.Count];
+                var order = new int[outline.Count];
+                // The outline is about the glass's centre; the quad's about its own, out on the view's plane.
+                Vector3 shift = opening.PortalCenter - opening.GlassCenter;
+                float shiftR = Vector3.Dot(shift, opening.Right), shiftU = Vector3.Dot(shift, opening.Up);
+                for (int i = 0; i < outline.Count; i++)
+                {
+                    float r = outline[i].x - shiftR, u = outline[i].y - shiftU;
+                    verts[i] = opening.PortalCenter + opening.Right * r + opening.Up * u;
+                    uvs[i] = new Vector2(Mathf.Clamp01(r / opening.Width + 0.5f), Mathf.Clamp01(u / opening.Height + 0.5f));
+                    order[i] = i;
+                }
+                // Facing the room, as the quad's own winding does.
+                for (int i = 0; i + 2 < order.Length; i += 3)
+                    if (Vector3.Dot(Vector3.Cross(verts[i + 1] - verts[i], verts[i + 2] - verts[i]), Vector3.Cross(pc - pa, pd - pa)) < 0f) { order[i + 1] = i + 2; order[i + 2] = i + 1; }
+                mesh.vertices = verts;
+                mesh.uv = uvs;
+                mesh.triangles = order;
+            }
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
@@ -2004,6 +2028,117 @@ namespace SeamlessInteriors
             renderer.enabled = false;
 
             return quad;
+        }
+
+        // The window's glass as triangles (across, up from its centre) when it is not a rectangle: less than this
+        // share of its bounding box. Null for an ordinary pane.
+        private const float SHAPED_GLASS_SHARE = 0.92f;
+
+        private static List<Vector2> ShapedGlassOutline(InteriorWindowOpening opening)
+        {
+            var mf = opening.PaneRoot != null ? opening.PaneRoot.GetComponent<MeshFilter>() : null;
+            if (mf == null || mf.sharedMesh == null || !mf.sharedMesh.isReadable || opening.GlassWidth < 0.05f || opening.GlassHeight < 0.05f) return null;
+            var world = WorldVerts(mf);
+            int[] tris = mf.sharedMesh.triangles;
+            Vector3 c = opening.GlassCenter, R = opening.Right, U = opening.Up, O = opening.Outward;
+            float halfW = opening.GlassWidth * 0.5f + 0.02f, halfH = opening.GlassHeight * 0.5f + 0.02f;
+            var points = new List<Vector2>();
+            for (int t = 0; t + 2 < tris.Length; t += 3)
+            {
+                var p = new Vector2[3];
+                bool own = true;
+                for (int k = 0; k < 3 && own; k++)
+                {
+                    Vector3 d = world[tris[t + k]] - c;
+                    p[k] = new Vector2(Vector3.Dot(d, R), Vector3.Dot(d, U));
+                    own = Mathf.Abs(Vector3.Dot(d, O)) < 0.03f && Mathf.Abs(p[k].x) < halfW && Mathf.Abs(p[k].y) < halfH;
+                }
+                if (own) points.AddRange(p);
+            }
+            if (points.Count == 0) return null;
+            // Judged by the glass's outline, so panes split by bars still count as one rectangle.
+            float x0 = float.MaxValue, x1 = float.MinValue, y0 = float.MaxValue, y1 = float.MinValue;
+            foreach (var p in points) { x0 = Mathf.Min(x0, p.x); x1 = Mathf.Max(x1, p.x); y0 = Mathf.Min(y0, p.y); y1 = Mathf.Max(y1, p.y); }
+            float box = (x1 - x0) * (y1 - y0);
+            if (box <= 0f) return null;
+            return HullArea(points) / box < SHAPED_GLASS_SHARE ? points : null;
+        }
+
+        // The convex outline's area (monotone chain).
+        private static float HullArea(List<Vector2> points)
+        {
+            var sorted = new List<Vector2>(points);
+            sorted.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
+            var hull = new List<Vector2>();
+            for (int pass = 0; pass < 2; pass++)
+            {
+                int start = hull.Count;
+                for (int i = 0; i < sorted.Count; i++)
+                {
+                    var p = sorted[pass == 0 ? i : sorted.Count - 1 - i];
+                    while (hull.Count >= start + 2)
+                    {
+                        Vector2 a = hull[hull.Count - 2], b = hull[hull.Count - 1];
+                        if ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x) > 0f) break;
+                        hull.RemoveAt(hull.Count - 1);
+                    }
+                    hull.Add(p);
+                }
+                hull.RemoveAt(hull.Count - 1);
+            }
+            float area = 0f;
+            for (int i = 0; i < hull.Count; i++)
+            {
+                Vector2 a = hull[i], b = hull[(i + 1) % hull.Count];
+                area += a.x * b.y - b.x * a.y;
+            }
+            return Mathf.Abs(area) * 0.5f;
+        }
+
+        // The frost texture left out past a shaped pane's glass: (x, y) over the cover's width and height, centred on
+        // `centre` (across, up from the glass's centre). Null for an ordinary pane.
+        private static float[] ShapedGlassFrostMask(InteriorWindowOpening opening, int size, float centreAcross, float centreUp, float width, float height, bool mirrored)
+        {
+            var outline = ShapedGlassOutline(opening);
+            if (outline == null) return null;
+            var mask = new float[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                float u = centreUp + ((y + 0.5f) / size - 0.5f) * height;
+                for (int x = 0; x < size; x++)
+                {
+                    float r = centreAcross + ((x + 0.5f) / size - 0.5f) * width;
+                    if (mirrored) r = 2f * centreAcross - r;
+                    var pt = new Vector2(r, u);
+                    for (int k = 0; k + 2 < outline.Count; k += 3)
+                        if (InTriangle(pt, outline[k], outline[k + 1], outline[k + 2])) { mask[y * size + x] = 1f; break; }
+                }
+            }
+            return mask;
+        }
+
+        // The outline's top at this across, or `none` where it does not reach.
+        private static float OutlineTop(List<Vector2> outline, float x, float none)
+        {
+            float top = float.MinValue;
+            for (int k = 0; k + 2 < outline.Count; k += 3)
+                for (int e = 0; e < 3; e++)
+                {
+                    Vector2 a = outline[k + e], b = outline[k + (e + 1) % 3];
+                    if ((x < a.x && x < b.x) || (x > a.x && x > b.x)) continue;
+                    float y = Mathf.Abs(b.x - a.x) < 1e-5f ? Mathf.Max(a.y, b.y) : Mathf.Lerp(a.y, b.y, (x - a.x) / (b.x - a.x));
+                    top = Mathf.Max(top, y);
+                }
+            return top == float.MinValue ? none : top;
+        }
+
+        private static bool InTriangle(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+        {
+            float d1 = (p.x - b.x) * (a.y - b.y) - (a.x - b.x) * (p.y - b.y);
+            float d2 = (p.x - c.x) * (b.y - c.y) - (b.x - c.x) * (p.y - c.y);
+            float d3 = (p.x - a.x) * (c.y - a.y) - (c.x - a.x) * (p.y - a.y);
+            bool negative = d1 < 0f || d2 < 0f || d3 < 0f, positive = d1 > 0f || d2 > 0f || d3 > 0f;
+            return !(negative && positive);
         }
 
         // A ROOM IS COPIED FROM ANOTHER ROOM, AND THE COPY TAKES WHATEVER THE FIRST ONE IS WEARING.
