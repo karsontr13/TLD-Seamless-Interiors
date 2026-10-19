@@ -149,7 +149,7 @@ namespace SeamlessInteriors
                             var pieces = lod0 ? new List<MullionPiece>() : null;
                             moved += SquareNarrowWindow(ap.Center, ap.Right, ap.Up, ap.Outward * -1f, ap.Width, ap.Height,
                                 new[] { world }, new[] { local }, new[] { toLocal }, new[] { tris }, new[] { uv }, (set, i) => glass.Contains(i), 0f, caps, pieces);
-                            if (pieces != null && pieces.Count > 0) AddMullionTop(mf, pieces[0], a);
+                            if (pieces != null && pieces.Count > 0) AddMullionTop(mf, pieces[0], a, MullionTopKey(instance, a));
                         }
                         mf.sharedMesh.uv = uv;
                     }
@@ -161,7 +161,7 @@ namespace SeamlessInteriors
                         foreach (int a in narrow)
                         {
                             var made = mf.transform.Find(MULLION_TOP + a);
-                            if (made != null) s_HallMullionTops[a] = made.gameObject;
+                            if (made != null) s_HallMullionTops[MullionTopKey(instance, a)] = made.gameObject;
                         }
                 }
                 if (s_DebugBounds)
@@ -278,13 +278,17 @@ namespace SeamlessInteriors
 
         private const string MULLION_TOP = "SI_MullionTop_";
         // By the building's window: the upper mullion shown outside while its casements are shut.
-        private static readonly Dictionary<int, GameObject> s_HallMullionTops = new Dictionary<int, GameObject>();
+        private static readonly Dictionary<string, GameObject> s_HallMullionTops = new Dictionary<string, GameObject>();
+        private static string MullionTopKey(SeamlessInteriorInstance instance, int aperture)
+        {
+            return (instance != null && instance.ExteriorShell != null ? instance.ExteriorShell.GetInstanceID() : 0) + ":" + aperture;
+        }
 
-        private static void AddMullionTop(MeshFilter shellMf, MullionPiece piece, int aperture)
+        private static void AddMullionTop(MeshFilter shellMf, MullionPiece piece, int aperture, string key)
         {
             Transform t = shellMf.transform;
             var old = t.Find(MULLION_TOP + aperture);
-            if (old != null) { s_HallMullionTops[aperture] = old.gameObject; return; }
+            if (old != null) { s_HallMullionTops[key] = old.gameObject; return; }
             var shellRenderer = shellMf.GetComponent<MeshRenderer>();
             if (shellRenderer == null) return;
             var verts = new Vector3[piece.World.Count];
@@ -307,14 +311,14 @@ namespace SeamlessInteriors
             renderer.lightProbeUsage = shellRenderer.lightProbeUsage;
             renderer.lightmapIndex = shellRenderer.lightmapIndex;
             renderer.lightmapScaleOffset = shellRenderer.lightmapScaleOffset;
-            s_HallMullionTops[aperture] = go;
+            s_HallMullionTops[key] = go;
         }
 
         // Every frame from the open windows' tick: the top stands while the window's casements are shut.
-        private static void ShowMullionTop(int aperture, bool shut)
+        private static void ShowMullionTop(SeamlessInteriorInstance instance, int aperture, bool shut)
         {
             GameObject top;
-            if (s_HallMullionTops.TryGetValue(aperture, out top) && top != null && top.activeSelf != shut) top.SetActive(shut);
+            if (s_HallMullionTops.TryGetValue(MullionTopKey(instance, aperture), out top) && top != null && top.activeSelf != shut) top.SetActive(shut);
         }
 
         // Squares the mullion on the window's middle and levels the transom; the mullion's upper part is taken down
@@ -662,6 +666,7 @@ namespace SeamlessInteriors
         private static List<WindowSash> BuildHallSashes(InteriorWindowOpening opening, int index, out string why)
         {
             why = null;
+            if (IsGarageWindow(opening)) return BuildGarageSashes(opening, index, out why);
             MeshFilter glassMf;
             List<Vector4> lower, upper;
             if (!HallPanes(opening, out glassMf, out lower, out upper)) { why = "its panes could not be read"; return null; }
@@ -693,7 +698,7 @@ namespace SeamlessInteriors
 
         // A sash over the given panes, hinged on their bottom edge (tilting in) or on a side (swinging in).
         private static WindowSash BuildHingedSash(InteriorWindowOpening opening, int index, int state, List<Vector4> panes, bool side, bool hingeRight,
-                                                  MeshFilter glassMf, MeshFilter frameMf, float mullionLeft, float mullionRight, float mullionBottom)
+                                                  MeshFilter glassMf, MeshFilter frameMf, float mullionLeft, float mullionRight, float mullionBottom, float bar = SASH_BAR)
         {
             Transform pr = opening.PaneRoot;
             string name = "SI_Sash_" + state + (hingeRight ? "R" : "");
@@ -727,10 +732,10 @@ namespace SeamlessInteriors
             sash.Go = new GameObject(name);
             sash.Go.layer = frameMf.gameObject.layer;
             sash.Go.transform.SetParent(pr, false);
-            sash.SashMesh = BuildSegmentedSashMesh(pr, origin, R, U, O, bays, u0, u1, o0, o1);
+            sash.SashMesh = BuildSegmentedSashMesh(pr, origin, R, U, O, bays, u0, u1, o0, o1, bar);
             // Textured from the left mullion's face, its middle half: the transom's strip is narrow and edged with
             // painted lines, which streaked the bars (owner, 2026-10-19).
-            LayBarFacesOnFrame(sash.SashMesh, pr, frameMf, origin, R, U, O, mullionLeft + 0.02f, mullionBottom + 0.06f);
+            LayBarFacesOnFrame(sash.SashMesh, pr, frameMf, origin, R, U, O, mullionLeft + 0.02f, mullionBottom + 0.06f, bar != SASH_BAR);
             sash.Go.AddComponent<MeshFilter>().sharedMesh = sash.SashMesh;
             var frameRenderer = frameMf.GetComponent<MeshRenderer>();
             var sashRenderer = sash.Go.AddComponent<MeshRenderer>();
@@ -763,7 +768,7 @@ namespace SeamlessInteriors
 
         // Each face of each bar laid on the frame's face from (a0, b0), along it and across it by the face's own
         // size: wrapping the texture across a narrow strip tore it inside faces (owner, 2026-10-19).
-        private static void LayBarFacesOnFrame(Mesh sashMesh, Transform pr, MeshFilter frameMf, Vector3 origin, Vector3 A, Vector3 B, Vector3 O, float a0, float b0)
+        private static void LayBarFacesOnFrame(Mesh sashMesh, Transform pr, MeshFilter frameMf, Vector3 origin, Vector3 A, Vector3 B, Vector3 O, float a0, float b0, bool continuous = false)
         {
             var frame = new FrameFaces(frameMf, origin, A, B, O);
             int tri;
@@ -774,6 +779,10 @@ namespace SeamlessInteriors
             var world = new Vector3[local.Length];
             for (int i = 0; i < local.Length; i++) world[i] = pr.TransformPoint(local[i]) - origin;
             var uv = new Vector2[local.Length];
+            // Continuous: each piece starts where the one before it ended, wrapped within the mullion's clear lower part, and
+            // whole: a wrap inside a piece stretched it (garage, owner 2026-10-19).
+            float allA = float.MaxValue, allB = float.MaxValue;
+            for (int i = 0; i < world.Length; i++) { allA = Mathf.Min(allA, Vector3.Dot(world[i], A)); allB = Mathf.Min(allB, Vector3.Dot(world[i], B)); }
             // 24 points a box, 4 a face; a box runs along whichever of A and B it is longer in.
             for (int bar = 0; bar * 24 < local.Length; bar++)
             {
@@ -786,6 +795,13 @@ namespace SeamlessInteriors
                 bool alongA = a0Max - a0Min > b0Max - b0Min;
                 Vector3 along = alongA ? A : B, cross = alongA ? B : A;
                 float lo = alongA ? a0Min : b0Min;
+                if (continuous)
+                {
+                    float pieceLength = alongA ? a0Max - a0Min : b0Max - b0Min;
+                    float start = (lo - (alongA ? allA : allB)) % GARAGE_BAR_SPAN;
+                    if (start + pieceLength > GARAGE_BAR_SPAN) start = Mathf.Max(GARAGE_BAR_SPAN - pieceLength, 0f);
+                    lo -= start;
+                }
                 for (int f = 0; f < 6; f++)
                 {
                     int s = bar * 24 + f * 4;
@@ -815,12 +831,12 @@ namespace SeamlessInteriors
         private const float HINGED_BAR_PIECE = 0.2f;
 
         private static Mesh BuildSegmentedSashMesh(Transform pr, Vector3 origin, Vector3 R, Vector3 U, Vector3 O,
-                                                   float[] bays, float u0, float u1, float o0, float o1)
+                                                   float[] bays, float u0, float u1, float o0, float o1, float barWidth = SASH_BAR)
         {
             var verts = new List<Vector3>();
             var uvs = new List<Vector2>();
             var tris = new List<int>();
-            float w = SASH_BAR;
+            float w = barWidth;
             System.Action<float, float, float, float, bool> bar = (r0, r1, v0, v1, alongR) =>
             {
                 float from = alongR ? r0 : v0, to = alongR ? r1 : v1;
@@ -1160,9 +1176,9 @@ namespace SeamlessInteriors
 
         // The cover quad without the cells of its lower row (mask 1, the hoppers) and its upper middle pane (mask 2;
         // on a narrow window the whole upper row, the strip between its panes with it).
-        private static void CutHallOutsideFrost(WindowCoverLayer layer, int mask)
+        private static void CutHallOutsideFrost(WindowCoverLayer layer, int mask, bool whole = false)
         {
-            if (layer.Panes == null || layer.Panes.Count < 2) return;
+            if (layer.Panes == null || (layer.Panes.Count < 2 && !whole)) return;
             var mf = layer.FrostGo.GetComponent<MeshFilter>();
             if (mf == null || mf.sharedMesh == null) return;
             var v = CopyVerts(mf.sharedMesh);
@@ -1190,6 +1206,8 @@ namespace SeamlessInteriors
                 if (row.x < row.y) open.Add(new Vector4(float.MinValue, float.MaxValue, row.z, float.MaxValue));
             }
             else if ((mask & 2) != 0 && upperMiddle != null) open.Add(new Vector4(upperMiddle[0], upperMiddle[1], upperMiddle[2], upperMiddle[3]));
+            // The garage's pair opens the whole window.
+            if (whole) { open.Clear(); open.Add(new Vector4(float.MinValue, float.MaxValue, float.MinValue, float.MaxValue)); }
             if (open.Count == 0) return;
 
             Transform t = mf.transform;

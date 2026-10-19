@@ -179,7 +179,7 @@ namespace SeamlessInteriors
             {
                 if (!IsOpenableWindow(row, i, s_WindowPortalOpenings[i])) continue;
                 string why;
-                if (IsHallWindow(s_WindowPortalOpenings[i]))
+                if (IsHingedWindow(s_WindowPortalOpenings[i]))
                 {
                     var hinged = BuildHallSashes(s_WindowPortalOpenings[i], i, out why);
                     if (hinged != null) s_WindowSashes.AddRange(hinged);
@@ -1221,7 +1221,7 @@ namespace SeamlessInteriors
                         // Open, the building's cover is cut at the rail and the sash carries its lower part up. Shut, the
                         // whole cover is the glass: it stands on the snow bank's plane, and the sash's own pane drawn
                         // back in the room left a gap behind the bank that no fill closed well (owner, 2026-10-18).
-                        bool hall = room >= 0 && a < b.ApertureOpenings.Count && IsHallWindow(b.ApertureOpenings[a]);
+                        bool hall = room >= 0 && a < b.ApertureOpenings.Count && IsHingedWindow(b.ApertureOpenings[a]);
                         if (layer != null && layer.FrostGo != null && hall)
                         {
                             // The hall's cover loses the cells of whichever of its panes stand open.
@@ -1229,9 +1229,9 @@ namespace SeamlessInteriors
                             OutsideOpenCut had;
                             bool cut = s_OutsideOpenCuts.TryGetValue(layer, out had);
                             if (cut && had.Mask != mask) { UncutOutsideFrost(layer); cut = false; }
-                            if (mask != 0 && !cut) CutHallOutsideFrost(layer, mask);
+                            if (mask != 0 && !cut) CutHallOutsideFrost(layer, mask, IsGarageWindow(b.ApertureOpenings[a]));
                             if (sashHere) KeepHallSashCovers(b.InstanceId, room, layer, b.ApertureOpenings[a]);
-                            ShowMullionTop(a, (mask & 2) == 0);
+                            ShowMullionTop(b.Instance, a, IsGarageWindow(b.ApertureOpenings[a]) ? mask == 0 : (mask & 2) == 0);
                         }
                         else if (layer != null && layer.FrostGo != null)
                         {
@@ -1306,7 +1306,7 @@ namespace SeamlessInteriors
         private static bool IsOpenableWindow(BuildingWindowOverride row, int roomWindow, InteriorWindowOpening opening)
         {
             if (opening.ViewOutOnly) return false;
-            if (IsSlideUpWindowModel(opening) || IsSlideRightWindowModel(opening) || IsWindowModel(opening, PANE_SLIDE_UP_WINDOW_MODELS) || IsHallWindow(opening)) return true;
+            if (IsSlideUpWindowModel(opening) || IsSlideRightWindowModel(opening) || IsWindowModel(opening, PANE_SLIDE_UP_WINDOW_MODELS) || IsHingedWindow(opening)) return true;
             if (row == null || row.OpenableWindows == null) return false;
             foreach (var entry in row.OpenableWindows) if (entry != null && entry.RoomWindow == roomWindow) return true;
             return false;
@@ -1320,7 +1320,7 @@ namespace SeamlessInteriors
             // The room's own sash, there until the frame after the player leaves, still holds the glass cut.
             if (opening.PaneRoot == null) return false;
             // The hall's pair of hinged sashes.
-            if (IsHallWindow(opening)) return KeepOutsideHallSashes(instanceId, roomWindow, opening);
+            if (IsHingedWindow(opening)) return KeepOutsideHallSashes(instanceId, roomWindow, opening);
             foreach (var inside in s_WindowSashes) if (inside.PaneRoot == opening.PaneRoot) return false;
 
             OutsideSash kept = null;
@@ -1508,6 +1508,7 @@ namespace SeamlessInteriors
                 if (sash.GlassUpper != null) Object.Destroy(sash.GlassUpper);
                 if (sash.GlassLower != null) Object.Destroy(sash.GlassLower);
                 if (sash.SharedGlass) ShowSharedGlass(sash);
+                ShowFrameTriangles(sash);
             }
             catch { }
         }

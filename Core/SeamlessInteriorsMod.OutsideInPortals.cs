@@ -1128,6 +1128,7 @@ namespace SeamlessInteriors
             }
 
             SquareHallShell(instance, s_OutsideInApertures, s_OI.ApertureRoomWindow, allRoomOpenings);
+            SplitGarageShellTransoms(instance, s_OutsideInApertures, s_OI.ApertureRoomWindow, allRoomOpenings);
             double lapApertures = lapTimer.Elapsed.TotalMilliseconds;
             MelonLogger.Msg($"[DIS-ICE] {id}: kurulumun turlari, ms: kabuk pencereleri {lapShellWindows:F1}, oda aciklilari {(lapRoomOpenings - lapShellWindows):F1}, merkezler {(lapCenters - lapRoomOpenings):F1}, eslestirme {(lapPairing - lapCenters):F1}, egim {(lapTilt - lapPairing):F1}, pencere dongusu {(lapApertures - lapTilt):F1}; {spots.Length} bina penceresi, {interiorOpenings.Count} oda acikligi.",
                             $"[OUTSIDE-IN] {id}: setup laps, ms: building windows {lapShellWindows:F1}, room openings {(lapRoomOpenings - lapShellWindows):F1}, centers {(lapCenters - lapRoomOpenings):F1}, pairing {(lapPairing - lapCenters):F1}, tilt {(lapTilt - lapPairing):F1}, window loop {(lapApertures - lapTilt):F1}; {spots.Length} building windows, {interiorOpenings.Count} room openings.");
