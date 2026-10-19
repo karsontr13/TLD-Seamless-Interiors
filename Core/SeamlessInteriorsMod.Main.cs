@@ -96,6 +96,8 @@ namespace SeamlessInteriors
         private static MelonPreferences_Entry<float> s_PrefWindowPortalResolutionScale;
         private static MelonPreferences_Entry<bool> s_PrefClearWindowPanes;
         private static MelonPreferences_Entry<bool> s_PrefCleanWindowsByHand;
+        private static MelonPreferences_Entry<bool> s_PrefOpenableWindows;
+        internal static bool OpenableWindows => s_PrefOpenableWindows?.Value ?? true;
         private static MelonPreferences_Entry<KeyCode> s_PrefDoorWindowCleanKey;
 
         public static bool IsChimneySmokeEnabled => s_PrefEnableChimneySmoke?.Value ?? true;
@@ -335,6 +337,14 @@ namespace SeamlessInteriors
                 true,
                 "Clean Windows By Hand",
                 "Look at a frosted window up close and hold the interact button to scrape it clear. A cleaned window is clean from inside and outside, is kept with the save, and frosts over again after a while (see Windows Frost Over Again After)."
+            );
+
+            // Windows that open and shut by a hold (WindowSashes.cs). New key, 2026-10-19: the owner wants it the player's choice.
+            s_PrefOpenableWindows = s_PrefCategory.CreateEntry<bool>(
+                "OpenableWindows",
+                true,
+                "Openable Windows",
+                "Hold the interact button on a window that opens to open or shut it: cold air and wind come in, and you can shoot or throw through it. Off: every window stays shut, as in the base game."
             );
 
             // A door's own collider covers its window (WindowClearing.cs). New key, 2026-10-18.

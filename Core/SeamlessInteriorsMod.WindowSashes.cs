@@ -132,7 +132,8 @@ namespace SeamlessInteriors
             if (s_WindowSashesFailed) return;
             try
             {
-                string key = s_WindowPortalInstanceId == null ? null : s_WindowPortalInstanceId + ":" + s_WindowPortalOpenings.Count;
+                // Turned off in the settings, the sashes go and every window stays shut.
+                string key = s_WindowPortalInstanceId == null || !OpenableWindows ? null : s_WindowPortalInstanceId + ":" + s_WindowPortalOpenings.Count;
                 // The cover layers measure the game's own window (glass panes, bars, posts), so the sash
                 // waits until they are built and steps aside while they are built again: measured with the
                 // sash in place, its stiles read as posts and its cut glass lost the lower pane (2026-10-18).
@@ -1211,7 +1212,7 @@ namespace SeamlessInteriors
                     for (int a = 0; a < count; a++)
                     {
                         int room = a < b.ApertureRoomWindow.Count ? b.ApertureRoomWindow[a] : -1;
-                        bool open = room >= 0 && IsRoomWindowOpen(b.InstanceId, room);
+                        bool open = OpenableWindows && room >= 0 && IsRoomWindowOpen(b.InstanceId, room);
 
                         var layer = a < b.Covers.Count ? b.Covers[a] : null;
 
@@ -1226,7 +1227,7 @@ namespace SeamlessInteriors
                         if (layer != null && layer.FrostGo != null && hall)
                         {
                             // The hall's cover loses the cells of whichever of its panes stand open.
-                            int mask = (open ? 1 : 0) | (IsRoomWindowOpen(b.InstanceId, room + CASEMENT_STATE) ? 2 : 0);
+                            int mask = (open ? 1 : 0) | (OpenableWindows && IsRoomWindowOpen(b.InstanceId, room + CASEMENT_STATE) ? 2 : 0);
                             OutsideOpenCut had;
                             bool cut = s_OutsideOpenCuts.TryGetValue(layer, out had);
                             if (cut && had.Mask != mask) { UncutOutsideFrost(layer); cut = false; }
@@ -1318,6 +1319,7 @@ namespace SeamlessInteriors
         // True while the window has its sash standing in the borrowed room.
         private static bool KeepOutsideSash(string instanceId, int roomWindow, InteriorWindowOpening opening, WindowCoverLayer layer, bool open)
         {
+            if (!OpenableWindows) return false;
             // The room's own sash, there until the frame after the player leaves, still holds the glass cut.
             if (opening.PaneRoot == null) return false;
             // The hall's pair of hinged sashes.
