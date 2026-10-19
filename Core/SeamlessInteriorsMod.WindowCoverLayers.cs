@@ -25,6 +25,8 @@ namespace SeamlessInteriors
         // How far at most the rounded outer face bulges past the top's edge.
         private const float BANK_ROUND_REACH = 0.016f;
         private const float BANK_DEPTH = 0.018f, BANK_SLUMP = 0.45f;
+        // Seen from the room, a 1.8 cm bank read as a thin cut-out: a 10 cm mound with a gentle top (owner's "C", 2026-10-20).
+        private const float BANK_ROOM_VIEW_DEPTH = 0.075f, BANK_ROOM_VIEW_REACH = 0.025f, BANK_ROOM_VIEW_SLUMP = 0.12f;
         // Texture per metre, as the buildings' own snow is laid (0.09; at 2 the blots of the texture showed).
         private const float BANK_UV = 0.09f;
         private const float BANK_SIDE_WIDTH = 0.15f, BANK_SIDE_RISE = 0.35f, BANK_TOP_GAPS = 0.08f, BANK_DRIFT = 2.5f;
@@ -60,6 +62,7 @@ namespace SeamlessInteriors
             public int FillNext = -1;
             // The bank's depth out from the glass, its rounded face, and how it meets the bars.
             public float BankDepth = BANK_DEPTH, BankReach = BANK_ROUND_REACH, BankTuck = BANK_TUCK, BankUnderBar = BANK_UNDER_BAR;
+            public float BankSlump = BANK_SLUMP;
             // How far from the glass the bank's flat face stands.
             public float BankStandOff = 0.004f;
             // The bank's mesh arrays and the noise its shape takes, kept between rebuilds.
@@ -227,6 +230,10 @@ namespace SeamlessInteriors
                 foreach (var p in layer.Panes) { float left = p[0]; p[0] = -p[1]; p[1] = -left; }
                 layer.BankStandOff = COVER_ROOM_SIDE_STAND_OFF;
                 layer.BankDepth = COVER_ROOM_SIDE_DEPTH; layer.BankReach = COVER_ROOM_SIDE_REACH;
+            }
+            else
+            {
+                layer.BankDepth = BANK_ROOM_VIEW_DEPTH; layer.BankReach = BANK_ROOM_VIEW_REACH; layer.BankSlump = BANK_ROOM_VIEW_SLUMP;
             }
             // A shaped pane's bank stays under its glass's outline, in the layer's own across and up.
             var outline = ShapedGlassOutline(opening);
@@ -1199,7 +1206,7 @@ namespace SeamlessInteriors
         {
             int edgeRow = row < BANK_ROWS ? row : BANK_ROWS;
             float zl = (float)edgeRow / BANK_ROWS;
-            height = bottom + (top - bottom) * (1f - BANK_SLUMP * zl * zl + wobble);
+            height = bottom + (top - bottom) * (1f - layer.BankSlump * zl * zl + wobble);
             outward = layer.BankStandOff + layer.BankDepth * zl;
             if (row <= BANK_ROWS) return;
             float rise = height - bottom;
@@ -1228,7 +1235,9 @@ namespace SeamlessInteriors
         // 0.17 to 0.7 within a tenth of a second at Community Hall, the frost flickering with every step.
         // The bank as bright as the frost: three times over-lit it white with blue blots, unlike the same bank seen
         // from outside (owner, Community Hall at night, 2026-10-19).
-        private const float COVER_OUTDOOR_FROST = 0.85f, COVER_OUTDOOR_BANK = 1f;
+        // The thick mound's room-facing side read dark grey at 1x; 2.2x with a little more blue (owner's "C", 2026-10-20).
+        private const float COVER_OUTDOOR_FROST = 0.85f, COVER_OUTDOOR_BANK = 2.2f, COVER_OUTDOOR_BANK_BLUE = 2.4f;
+        private const float COVER_BANK_TINT_MAX = 1.2f, COVER_BANK_TINT_MAX_BLUE = 1.3f;
         // The last light, for layers made between two reads.
         private static Color s_CoverLight = new Color(0.3f, 0.3f, 0.3f, 1f), s_CoverBankLight = Color.white;
         private static readonly MaterialPropertyBlock s_CoverBankTint = new MaterialPropertyBlock();
@@ -1247,7 +1256,8 @@ namespace SeamlessInteriors
             float level = (outdoor.r + outdoor.g + outdoor.b) / 3f;
             float k = Mathf.Clamp(level * COVER_OUTDOOR_FROST, 0.02f, 1.1f) / Mathf.Max(level, 0.0001f);
             frost = new Color(outdoor.r * k, outdoor.g * k, outdoor.b * k, 1f);
-            bank = new Color(frost.r * COVER_OUTDOOR_BANK, frost.g * COVER_OUTDOOR_BANK, frost.b * COVER_OUTDOOR_BANK, 1f);
+            bank = new Color(Mathf.Min(frost.r * COVER_OUTDOOR_BANK, COVER_BANK_TINT_MAX), Mathf.Min(frost.g * COVER_OUTDOOR_BANK, COVER_BANK_TINT_MAX),
+                             Mathf.Min(frost.b * COVER_OUTDOOR_BANK_BLUE, COVER_BANK_TINT_MAX_BLUE), 1f);
         }
 
         // The rock-snow material has no _Color: its snow colour is what is darkened.
