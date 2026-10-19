@@ -311,33 +311,7 @@ namespace SeamlessInteriors
             sash.SashMesh = BuildSashMesh(pr, origin, B, A, O, sash.EdgeLeft, sash.EdgeRight, sash.EdgeBottom, sash.RailTop, o0, o1);
             // Each bar is laid on the post's face as the frame textures it, along and across, so it carries the
             // frame's grain and wear: one point was a flat colour, and one line of it streaked (owner, 2026-10-18).
-            float postIn = postL + 0.005f, bStart = sash.EdgeLeft + 0.04f;
-            Vector2 uv0 = FaceUvAt(frameMf, origin, A, B, O, new Vector2(postIn, bStart), frameUv);
-            Vector2 perB = (FaceUvAt(frameMf, origin, A, B, O, new Vector2(postIn, bStart + 0.3f), uv0) - uv0) / 0.3f;
-            Vector2 perA = (FaceUvAt(frameMf, origin, A, B, O, new Vector2(postIn + 0.02f, bStart), uv0) - uv0) / 0.02f;
-            float postSpan = Mathf.Max(postR - postL - 0.01f, 0.005f);
-            var local = sash.SashMesh.vertices;
-            var barUv = new Vector2[local.Length];
-            // BuildSashMesh: 24 points a bar; the two rails first (along B), then the two stiles (along A).
-            for (int bar = 0; bar * 24 < local.Length; bar++)
-            {
-                Vector3 along = bar < 2 ? B : A, crossAxis = bar < 2 ? A : B;
-                float loAlong = float.MaxValue, loAcross = float.MaxValue;
-                for (int i = bar * 24; i < bar * 24 + 24; i++)
-                {
-                    Vector3 p = pr.TransformPoint(local[i]) - origin;
-                    loAlong = Mathf.Min(loAlong, Vector3.Dot(p, along));
-                    loAcross = Mathf.Min(loAcross, Vector3.Dot(p, crossAxis) + Vector3.Dot(p, O));
-                }
-                for (int i = bar * 24; i < bar * 24 + 24; i++)
-                {
-                    Vector3 p = pr.TransformPoint(local[i]) - origin;
-                    // A face spans the bar's length and one of its width or depth; the other is fixed on it.
-                    float d = Vector3.Dot(p, along) - loAlong, c = Vector3.Dot(p, crossAxis) + Vector3.Dot(p, O) - loAcross;
-                    barUv[i] = uv0 + perB * d + perA * Mathf.Repeat(c, postSpan);
-                }
-            }
-            sash.SashMesh.uv = barUv;
+            LayBarsOnFrame(sash.SashMesh, pr, frameMf, origin, A, B, O, postL, postR, sash.EdgeLeft + 0.04f, frameUv);
             sash.Go.AddComponent<MeshFilter>().sharedMesh = sash.SashMesh;
             var frameRenderer = frameMf.GetComponent<MeshRenderer>();
             var sashRenderer = sash.Go.AddComponent<MeshRenderer>();
@@ -363,37 +337,128 @@ namespace SeamlessInteriors
             return sash;
         }
 
+        // Each bar is laid on the frame's face as the frame textures it, along and across, so it carries the
+        // frame's grain and wear: one point was a flat colour, and one line of it streaked (owner, 2026-10-18).
+        // A is across the post or rail (it spans postLow..postHigh), B along it from bStart; both from the sash's centre.
+        private static void LayBarsOnFrame(Mesh sashMesh, Transform pr, MeshFilter frameMf, Vector3 origin, Vector3 A, Vector3 B, Vector3 O,
+                                           float postLow, float postHigh, float bStart, Vector2 fallback)
+        {
+            var frame = new FrameFaces(frameMf, origin, A, B, O);
+            float postIn = postLow + 0.005f;
+            int tri;
+            Vector2 uv0 = frame.UvAt(new Vector2(postIn, bStart), fallback, out tri);
+            Vector2 perB = (frame.UvAt(new Vector2(postIn, bStart + 0.3f), uv0, out tri) - uv0) / 0.3f;
+            Vector2 perA = (frame.UvAt(new Vector2(postIn + 0.02f, bStart), uv0, out tri) - uv0) / 0.02f;
+            float postSpan = Mathf.Max(postHigh - postLow - 0.01f, 0.005f);
+            var local = sashMesh.vertices;
+            var barUv = new Vector2[local.Length];
+            // BuildSashMesh: 24 points a bar; the two rails first (along B), then the two stiles (along A).
+            for (int bar = 0; bar * 24 < local.Length; bar++)
+            {
+                Vector3 along = bar < 2 ? B : A, crossAxis = bar < 2 ? A : B;
+                float loAlong = float.MaxValue, loAcross = float.MaxValue;
+                for (int i = bar * 24; i < bar * 24 + 24; i++)
+                {
+                    Vector3 p = pr.TransformPoint(local[i]) - origin;
+                    loAlong = Mathf.Min(loAlong, Vector3.Dot(p, along));
+                    loAcross = Mathf.Min(loAcross, Vector3.Dot(p, crossAxis) + Vector3.Dot(p, O));
+                }
+                for (int i = bar * 24; i < bar * 24 + 24; i++)
+                {
+                    Vector3 p = pr.TransformPoint(local[i]) - origin;
+                    // A face spans the bar's length and one of its width or depth; the other is fixed on it.
+                    float d = Vector3.Dot(p, along) - loAlong, c = Vector3.Dot(p, crossAxis) + Vector3.Dot(p, O) - loAcross;
+                    barUv[i] = uv0 + perB * d + perA * Mathf.Repeat(c, postSpan);
+                }
+            }
+            sashMesh.uv = barUv;
+        }
+
+        // A mesh's points in world space, worked out here from its matrix: one engine call a point froze the game
+        // on a house's whole interior mesh (12 000 points, Grey Mother's).
+        private static Vector3[] WorldVerts(MeshFilter mf)
+        {
+            var m = mf.transform.localToWorldMatrix;
+            var v = mf.sharedMesh.vertices;
+            var w = new Vector3[v.Length];
+            for (int i = 0; i < v.Length; i++)
+            {
+                float x = v[i].x, y = v[i].y, z = v[i].z;
+                w[i] = new Vector3(m.m00 * x + m.m01 * y + m.m02 * z + m.m03,
+                                   m.m10 * x + m.m11 * y + m.m12 * z + m.m13,
+                                   m.m20 * x + m.m21 * y + m.m22 * z + m.m23);
+            }
+            return w;
+        }
+
+        // A frame mesh's room-facing flat faces, in (A, B) from origin, to read its texture and material at a point.
+        private sealed class FrameFaces
+        {
+            private readonly Vector2[] w, uvs;
+            private readonly float[] o;
+            private readonly int[] tris;
+            public readonly Mesh Mesh;
+
+            public FrameFaces(MeshFilter mf, Vector3 origin, Vector3 A, Vector3 B, Vector3 O)
+            {
+                Mesh = mf.sharedMesh;
+                var world = WorldVerts(mf);
+                uvs = Mesh.uv;
+                tris = Mesh.triangles;
+                w = new Vector2[world.Length];
+                o = new float[world.Length];
+                for (int i = 0; i < world.Length; i++)
+                {
+                    Vector3 p = world[i] - origin;
+                    w[i] = new Vector2(Vector3.Dot(p, A), Vector3.Dot(p, B));
+                    o[i] = Vector3.Dot(p, O);
+                }
+            }
+
+            // The texture point on the room-most face at (a, b), or fallback when no face lies there; tri is that
+            // face's first index in the triangle list, or -1.
+            public Vector2 UvAt(Vector2 at, Vector2 fallback, out int tri)
+            {
+                tri = -1;
+                if (uvs.Length != w.Length) return fallback;
+                float best = float.MaxValue;
+                Vector2 uv = fallback;
+                for (int t = 0; t + 2 < tris.Length; t += 3)
+                {
+                    int a = tris[t], b = tris[t + 1], c = tris[t + 2];
+                    // Flat faces facing the room only, near the glass.
+                    if (o[a] > 0.01f || o[a] < -0.15f || Mathf.Abs(o[a] - o[b]) > 0.003f || Mathf.Abs(o[a] - o[c]) > 0.003f || o[a] >= best) continue;
+                    Vector2 e0 = w[b] - w[a], e1 = w[c] - w[a], e2 = at - w[a];
+                    float d = e0.x * e1.y - e1.x * e0.y;
+                    if (Mathf.Abs(d) < 1e-8f) continue;
+                    float l1 = (e2.x * e1.y - e1.x * e2.y) / d, l2 = (e0.x * e2.y - e2.x * e0.y) / d;
+                    if (l1 < 0f || l2 < 0f || l1 + l2 > 1f) continue;
+                    best = o[a];
+                    tri = t;
+                    uv = uvs[a] * (1f - l1 - l2) + uvs[b] * l1 + uvs[c] * l2;
+                }
+                return uv;
+            }
+
+            // The material of the sub-mesh holding the face starting at tri, or fallback.
+            public Material MaterialOf(int tri, MeshRenderer renderer, Material fallback)
+            {
+                if (tri < 0 || renderer == null) return fallback;
+                var mats = renderer.sharedMaterials;
+                for (int s = 0; s < Mesh.subMeshCount && s < mats.Length; s++)
+                {
+                    var sub = Mesh.GetSubMesh(s);
+                    if (tri >= sub.indexStart && tri < sub.indexStart + sub.indexCount) return mats[s] ?? fallback;
+                }
+                return fallback;
+            }
+        }
+
         // The texture point on the room-most face of the mesh at (a, b), or fallback when no face lies there.
         private static Vector2 FaceUvAt(MeshFilter mf, Vector3 origin, Vector3 A, Vector3 B, Vector3 O, Vector2 at, Vector2 fallback)
         {
-            var verts = mf.sharedMesh.vertices;
-            var uvs = mf.sharedMesh.uv;
-            var tris = mf.sharedMesh.triangles;
-            if (uvs.Length != verts.Length) return fallback;
-            var w = new Vector2[verts.Length];
-            var o = new float[verts.Length];
-            for (int i = 0; i < verts.Length; i++)
-            {
-                Vector3 p = mf.transform.TransformPoint(verts[i]) - origin;
-                w[i] = new Vector2(Vector3.Dot(p, A), Vector3.Dot(p, B));
-                o[i] = Vector3.Dot(p, O);
-            }
-            float best = float.MaxValue;
-            Vector2 uv = fallback;
-            for (int t = 0; t + 2 < tris.Length; t += 3)
-            {
-                int a = tris[t], b = tris[t + 1], c = tris[t + 2];
-                // Flat faces facing the room only, near the glass.
-                if (o[a] > 0.01f || o[a] < -0.15f || Mathf.Abs(o[a] - o[b]) > 0.003f || Mathf.Abs(o[a] - o[c]) > 0.003f || o[a] >= best) continue;
-                Vector2 e0 = w[b] - w[a], e1 = w[c] - w[a], e2 = at - w[a];
-                float d = e0.x * e1.y - e1.x * e0.y;
-                if (Mathf.Abs(d) < 1e-8f) continue;
-                float l1 = (e2.x * e1.y - e1.x * e2.y) / d, l2 = (e0.x * e2.y - e2.x * e0.y) / d;
-                if (l1 < 0f || l2 < 0f || l1 + l2 > 1f) continue;
-                best = o[a];
-                uv = uvs[a] * (1f - l1 - l2) + uvs[b] * l1 + uvs[c] * l2;
-            }
-            return uv;
+            int tri;
+            return new FrameFaces(mf, origin, A, B, O).UvAt(at, fallback, out tri);
         }
 
         // cutFrame: the frame's rail gives up its room half so the sash can pass it. Off for the view from
@@ -415,6 +480,30 @@ namespace SeamlessInteriors
             if (glassMf == null || glassRenderer == null) { why = "no readable glass"; return null; }
 
             Vector3 origin = opening.GlassCenter, R = opening.Right, U = opening.Up, O = opening.Outward;
+            // Coastal House H: each pane is its own glass object, one over the other (owner, 2026-10-18). The
+            // lower one rides on the sash whole; the upper one is left as it is.
+            MeshFilter upperGlassMf = null;
+            float paneGapLow = 0f, paneGapHigh = 0f;
+            if (opening.Glass != null && opening.Glass.Count >= 2)
+            {
+                MeshFilter low = null, high = null;
+                float lowTop = float.MaxValue, highBottom = float.MinValue;
+                foreach (var g in opening.Glass)
+                {
+                    var mf = g != null ? g.GetComponent<MeshFilter>() : null;
+                    if (mf == null || mf.sharedMesh == null || !mf.sharedMesh.isReadable) continue;
+                    float lo = float.MaxValue, hi = float.MinValue;
+                    foreach (var v in mf.sharedMesh.vertices) { float u = Vector3.Dot(mf.transform.TransformPoint(v) - origin, U); lo = Mathf.Min(lo, u); hi = Mathf.Max(hi, u); }
+                    if (hi < 0.02f && (low == null || hi < lowTop)) { low = mf; lowTop = hi; }
+                    else if (lo > -0.02f && (high == null || lo > highBottom)) { high = mf; highBottom = lo; }
+                }
+                if (low != null && high != null)
+                {
+                    glassMf = low; glassRenderer = low.GetComponent<MeshRenderer>(); upperGlassMf = high;
+                    paneGapLow = lowTop; paneGapHigh = highBottom;
+                    if (glassRenderer == null) { why = "no readable glass"; return null; }
+                }
+            }
             // The farmhouse parlour's bay: its three windows are one glass mesh and one frame mesh beside it
             // (owner, 2026-10-18). Each window takes its own part of them; its sash is named for it.
             var glassSource = OriginalGlassMesh(glassMf.sharedMesh);
@@ -437,6 +526,8 @@ namespace SeamlessInteriors
             if (glassVerts.Length < 4) { why = "no glass of its own"; return null; }
             var heights = new List<float>();
             foreach (var v in glassVerts) heights.Add(Vector3.Dot(glassMf.transform.TransformPoint(v) - origin, U));
+            if (upperGlassMf != null)
+                foreach (var v in upperGlassMf.sharedMesh.vertices) heights.Add(Vector3.Dot(upperGlassMf.transform.TransformPoint(v) - origin, U));
             heights.Sort();
             float lowest = heights[0], highest = heights[heights.Count - 1];
             float seam = float.NaN;
@@ -448,12 +539,11 @@ namespace SeamlessInteriors
             var frameVerts = CopyVerts(frameMf.sharedMesh);
             var frameT = frameMf.transform;
             float roomFace = float.MaxValue;
-            var world = new Vector3[frameVerts.Length];
+            var world = WorldVerts(frameMf);
             // A frame beside the glass may hold other windows' frames too: only this window's part counts.
             var near = new bool[frameVerts.Length];
             for (int i = 0; i < frameVerts.Length; i++)
             {
-                world[i] = frameT.TransformPoint(frameVerts[i]);
                 near[i] = !frameBeside || IsNearOpening(world[i] - origin, opening, R, U, O);
                 if (near[i]) roomFace = Mathf.Min(roomFace, Vector3.Dot(world[i] - origin, O));
             }
@@ -502,6 +592,9 @@ namespace SeamlessInteriors
                 if (Vector3.Dot(p, O) >= 0f || !InBays(r, bays, left, right, 0.1f) || Mathf.Abs(u - seam) > 0.15f) continue;
                 railLow = Mathf.Min(railLow, u); railHigh = Mathf.Max(railHigh, u);
             }
+            // Two panes of their own: the rail is the gap between them. Read from the frame, Grey Mother's took
+            // in a mullion's end 14 cm above it.
+            if (upperGlassMf != null) { railLow = paneGapLow; railHigh = paneGapHigh; }
             float sashTop = seam + SASH_RAIL_OVER_SEAM;
             if (railLow < railHigh) { seam = (railLow + railHigh) * 0.5f; sashTop = railHigh; }
             // A bay's sides are where its rail meets the jamb or post: the glass runs 2 cm into them, and a
@@ -541,8 +634,9 @@ namespace SeamlessInteriors
                     if (Mathf.Abs(Vector3.Dot(p, U) - seam) < 0.1f && InBays(Vector3.Dot(p, R), bays, left, right, 0.01f))
                         railFace = Mathf.Min(railFace, Vector3.Dot(p, O));
                 }
+                // Coastal House H's frame is one flat face: the sash stands proud of it.
                 o1 = railFace - SASH_DEPTH_GAP;
-                o0 = Mathf.Max(o1 - 0.024f, roomFace + SASH_DEPTH_GAP);
+                o0 = o1 - 0.024f;
                 cutFrame = false;
             }
             sash.SashMid = (o0 + o1) * 0.5f;
@@ -584,8 +678,22 @@ namespace SeamlessInteriors
                 for (int b = 0; b < bays.Length; b += 2) { sash.Bays[b] = bays[b] + SASH_INSET; sash.Bays[b + 1] = bays[b + 1] - SASH_INSET; }
             }
             sash.SashMesh = BuildSashMesh(pr, origin, R, U, O, sash.Bays ?? new[] { sash.EdgeLeft, sash.EdgeRight }, sash.EdgeBottom, sashTop, o0, o1);
+            var frameRenderer = frameMf.GetComponent<MeshRenderer>();
+            var sashMaterial = frameRenderer.sharedMaterial;
+            // A frame beside the glass is not the wood strip SASH_UV reads: the bars take its own texture, and
+            // the material of the part the rail is in (Grey Mother's frame is in the house's 7-material mesh).
+            if (frameBeside && railLow < railHigh)
+            {
+                LayBarsOnFrame(sash.SashMesh, pr, frameMf, origin, U, R, O, railLow, railHigh, left + 0.04f, Vector2.zero);
+                int tri;
+                var faces = new FrameFaces(frameMf, origin, U, R, O);
+                faces.UvAt(new Vector2(seam, (left + right) * 0.5f), Vector2.zero, out tri);
+                sashMaterial = faces.MaterialOf(tri, frameRenderer, sashMaterial);
+            }
             sash.Go.AddComponent<MeshFilter>().sharedMesh = sash.SashMesh;
-            sash.Go.AddComponent<MeshRenderer>().sharedMaterial = frameMf.GetComponent<MeshRenderer>().sharedMaterial;
+            var sashRenderer = sash.Go.AddComponent<MeshRenderer>();
+            sashRenderer.sharedMaterial = sashMaterial;
+            if (frameBeside) sashRenderer.lightProbeUsage = frameRenderer.lightProbeUsage;
 
             // The glass: its upper pane stays, its lower pane rides on the sash.
             sash.GlassMf = glassMf;
@@ -693,16 +801,24 @@ namespace SeamlessInteriors
             MeshFilter best = null;
             int bestCount = 7;
             Vector3 origin = opening.GlassCenter, R = opening.Right, U = opening.Up, O = opening.Outward;
-            for (int c = 0; c < pr.parent.childCount; c++)
-            {
-                var child = pr.parent.GetChild(c);
-                if (child == pr || child.name.Contains("Glass") || child.name.Contains("Glow") || child.name.Contains("Shadow") || child.name.StartsWith("SI_")) continue;
-                var mf = child.GetComponent<MeshFilter>();
-                if (mf == null || mf.sharedMesh == null || !mf.sharedMesh.isReadable || child.GetComponent<MeshRenderer>() == null) continue;
-                int count = 0;
-                foreach (var v in mf.sharedMesh.vertices) if (IsNearOpening(mf.transform.TransformPoint(v) - origin, opening, R, U, O)) count++;
-                if (count > bestCount) { bestCount = count; best = mf; }
-            }
+            // Beside the window object, beside the group holding the house's glass (Coastal House H), or the
+            // group itself (Grey Mother's: the house's interior mesh holds the frames, its panes under it).
+            var candidates = new List<Transform> { pr.parent };
+            var places = pr.parent.parent != null ? new[] { pr.parent, pr.parent.parent } : new[] { pr.parent };
+            foreach (var place in places)
+                for (int c = 0; c < place.childCount; c++) if (place.GetChild(c) != pr.parent) candidates.Add(place.GetChild(c));
+            foreach (var child in candidates)
+                {
+                    if (child == pr || child.name.Contains("Glass") || child.name.Contains("Glow") || child.name.Contains("Shadow")
+                        || child.name.Contains("Walls") || child.name.StartsWith("SI_")) continue;
+                    var mf = child.GetComponent<MeshFilter>();
+                    var renderer = child.GetComponent<MeshRenderer>();
+                    if (mf == null || mf.sharedMesh == null || !mf.sharedMesh.isReadable || renderer == null) continue;
+                    if (opening.Glass != null && opening.Glass.Contains(renderer)) continue;
+                    int count = 0;
+                    foreach (var p in WorldVerts(mf)) if (IsNearOpening(p - origin, opening, R, U, O)) count++;
+                    if (count > bestCount) { bestCount = count; best = mf; }
+                }
             return best;
         }
 
@@ -1102,6 +1218,7 @@ namespace SeamlessInteriors
         {
             "OBJ_LakeCabinWindowA", "OBJ_LakeCabinWindowB", "Obj_WindowCabinA2", "STR_FarmHouseWindowA", "STR_FarmHouseWindowB", "STR_FarmHouseWindowC",
             "STR_FarmHouseWindowDoubleA", "STR_FarmHouseWindowDoubleB", "STR_FarmHouseParlourRoomWindowGlass",
+            "STR_CoastalHouseHWindowsGlass", "STR_GreyMothersHouseInt",
         };
 
         // Two panes side by side; the left one slides right (owner, 2026-10-18, Coastal Highway house).
@@ -1117,6 +1234,8 @@ namespace SeamlessInteriors
             var pr = opening.PaneRoot;
             if (pr == null) return false;
             if (StartsWithModel(pr.name, models)) return true;
+            // Coastal House H and Grey Mother's number their panes (Object022, GlassPane029); their group carries the model.
+            if (pr.parent != null && StartsWithModel(pr.parent.name, models)) return true;
             for (int c = 0; c < pr.childCount; c++) if (StartsWithModel(pr.GetChild(c).name, models)) return true;
             return false;
         }
