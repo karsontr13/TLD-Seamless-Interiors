@@ -4,7 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(SeamlessInteriors.SeamlessInteriorsMod), "SeamlessInteriors", "2.3.1", "Hamsi Buglama")]
+[assembly: MelonInfo(typeof(SeamlessInteriors.SeamlessInteriorsMod), "SeamlessInteriors", "2.4.0", "Hamsi Buglama")]
 [assembly: MelonGame("Hinterland", "TheLongDark")]
 // The in-game settings page needs ModSettings; without it the mod runs on its preferences file alone.
 [assembly: MelonOptionalDependencies("ModSettings")]
