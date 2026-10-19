@@ -36,7 +36,7 @@ namespace SeamlessInteriors
         }
 
         // The hall's and the garage's windows: hinged sashes on shared glass.
-        private static bool IsHingedWindow(InteriorWindowOpening opening) { return IsHallWindow(opening) || IsGarageWindow(opening) || IsSingleCasementWindow(opening); }
+        private static bool IsHingedWindow(InteriorWindowOpening opening) { return IsHallWindow(opening) || IsGarageWindow(opening) || IsSingleCasementWindow(opening) || IsRadarUpperCasement(opening); }
         // The hinged windows that open all their glass at once.
         private static bool OpensWhole(InteriorWindowOpening opening) { return IsGarageWindow(opening) || IsSingleCasementWindow(opening); }
 
@@ -183,7 +183,7 @@ namespace SeamlessInteriors
                     pieceRenderer.lightmapIndex = renderer.lightmapIndex;
                     pieceRenderer.lightmapScaleOffset = renderer.lightmapScaleOffset;
                     // The sash's bars wear the transom's material: the frame's first one may be another part's.
-                    if (materials != null && s < materials.Length) sash.Go.GetComponent<MeshRenderer>().sharedMaterial = materials[s];
+                    if (materials != null && s < materials.Length) SetSashMaterial(sash, materials[s]);
                 }
             }
             if (hidden.Count > 0) HideFrameTriangles(mesh, sash, hidden);

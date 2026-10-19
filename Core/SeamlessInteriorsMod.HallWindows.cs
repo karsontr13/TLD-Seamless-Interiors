@@ -16,6 +16,14 @@ namespace SeamlessInteriors
         internal const int CASEMENT_STATE = 1000;
         private const float HOPPER_ANGLE = 35f, CASEMENT_ANGLE = 80f;
         private const float HINGED_SASH_DEPTH = 0.034f;
+        // The strip on the hinge jamb: this far into the jamb, this far out over the opening.
+        private const float HINGE_STRIP_TUCK = 0.006f, HINGE_STRIP_WIDTH = 0.02f;
+
+        private static void SetSashMaterial(WindowSash sash, Material material)
+        {
+            sash.Go.GetComponent<MeshRenderer>().sharedMaterial = material;
+            if (sash.HingeStrip != null) sash.HingeStrip.GetComponent<MeshRenderer>().sharedMaterial = material;
+        }
         // The hall's window parts, across its 1.67 m: mullions within these of the middle, the transom in this band.
         private const float HALL_MULLION_NEAR = 0.19f, HALL_MULLION_FAR = 0.42f;
         private const float HALL_TRANSOM_LOW = -0.37f, HALL_TRANSOM_HIGH = -0.17f;
@@ -668,6 +676,7 @@ namespace SeamlessInteriors
             why = null;
             if (IsGarageWindow(opening)) return BuildGarageSashes(opening, index, out why);
             if (IsSingleCasementWindow(opening)) return BuildSingleCasement(opening, index, out why);
+            if (IsRadarUpperCasement(opening)) return BuildRadarCasement(opening, index, out why);
             MeshFilter glassMf;
             List<Vector4> lower, upper;
             if (!HallPanes(opening, out glassMf, out lower, out upper)) { why = "its panes could not be read"; return null; }
@@ -699,7 +708,7 @@ namespace SeamlessInteriors
 
         // A sash over the given panes, hinged on their bottom edge (tilting in) or on a side (swinging in).
         private static WindowSash BuildHingedSash(InteriorWindowOpening opening, int index, int state, List<Vector4> panes, bool side, bool hingeRight,
-                                                  MeshFilter glassMf, MeshFilter frameMf, float mullionLeft, float mullionRight, float mullionBottom, float bar = SASH_BAR)
+                                                  MeshFilter glassMf, MeshFilter frameMf, float mullionLeft, float mullionRight, float mullionBottom, float bar = SASH_BAR, float barSpan = GARAGE_BAR_SPAN)
         {
             Transform pr = opening.PaneRoot;
             string name = "SI_Sash_" + state + (hingeRight ? "R" : "");
@@ -736,12 +745,41 @@ namespace SeamlessInteriors
             sash.SashMesh = BuildSegmentedSashMesh(pr, origin, R, U, O, bays, u0, u1, o0, o1, bar);
             // Textured from the left mullion's face, its middle half: the transom's strip is narrow and edged with
             // painted lines, which streaked the bars (owner, 2026-10-19).
-            LayBarFacesOnFrame(sash.SashMesh, pr, frameMf, origin, R, U, O, mullionLeft + 0.02f, mullionBottom + 0.06f, bar != SASH_BAR);
+            LayBarFacesOnFrame(sash.SashMesh, pr, frameMf, origin, R, U, O, mullionLeft + 0.02f, mullionBottom + 0.06f, bar != SASH_BAR ? barSpan : 0f);
             sash.Go.AddComponent<MeshFilter>().sharedMesh = sash.SashMesh;
             var frameRenderer = frameMf.GetComponent<MeshRenderer>();
             var sashRenderer = sash.Go.AddComponent<MeshRenderer>();
             sashRenderer.sharedMaterial = frameRenderer.sharedMaterial;
             sashRenderer.lightProbeUsage = frameRenderer.lightProbeUsage;
+
+            // A strip on the hinge jamb, where the turned sash leaves it: a sliver of the view showed there (owner,
+            // 2026-10-19). Shut, it lies inside the sash.
+            {
+                var sv = new List<Vector3>(); var su = new List<Vector2>(); var stris = new List<int>();
+                float edge = side ? (hingeRight ? bays[bays.Length - 1] : bays[0]) : u0;
+                float into = side && hingeRight ? -1f : 1f;
+                float e0 = edge - HINGE_STRIP_TUCK * into, e1 = edge + HINGE_STRIP_WIDTH * into;
+                float lo = Mathf.Min(e0, e1), hi = Mathf.Max(e0, e1);
+                if (side) AddSashBar(sv, su, stris, lo, hi, u0, u1, o0 + 0.002f, -0.001f);
+                else AddSashBar(sv, su, stris, bays[0], bays[bays.Length - 1], lo, hi, o0 + 0.002f, -0.001f);
+                var local = new Vector3[sv.Count];
+                for (int i = 0; i < local.Length; i++) local[i] = pr.InverseTransformPoint(origin + R * sv[i].x + U * sv[i].y + O * sv[i].z);
+                WindSashFaces(local, stris);
+                var stripMesh = new Mesh { name = "SI_HingeStrip" };
+                stripMesh.vertices = local;
+                stripMesh.uv = su.ToArray();
+                stripMesh.triangles = stris.ToArray();
+                stripMesh.RecalculateNormals();
+                stripMesh.RecalculateBounds();
+                LayBarFacesOnFrame(stripMesh, pr, frameMf, origin, R, U, O, mullionLeft + 0.02f, mullionBottom + 0.06f, bar != SASH_BAR ? barSpan : 0f);
+                sash.HingeStrip = new GameObject("SI_HingeStrip");
+                sash.HingeStrip.layer = sash.Go.layer;
+                sash.HingeStrip.transform.SetParent(pr, false);
+                sash.HingeStrip.AddComponent<MeshFilter>().sharedMesh = stripMesh;
+                var stripRenderer = sash.HingeStrip.AddComponent<MeshRenderer>();
+                stripRenderer.sharedMaterial = frameRenderer.sharedMaterial;
+                stripRenderer.lightProbeUsage = frameRenderer.lightProbeUsage;
+            }
 
             // Its panes' glass rides on it; the shared glass gives those triangles up.
             sash.GlassMf = glassMf;
@@ -769,13 +807,23 @@ namespace SeamlessInteriors
 
         // Each face of each bar laid on the frame's face from (a0, b0), along it and across it by the face's own
         // size: wrapping the texture across a narrow strip tore it inside faces (owner, 2026-10-19).
-        private static void LayBarFacesOnFrame(Mesh sashMesh, Transform pr, MeshFilter frameMf, Vector3 origin, Vector3 A, Vector3 B, Vector3 O, float a0, float b0, bool continuous = false)
+        private static void LayBarFacesOnFrame(Mesh sashMesh, Transform pr, MeshFilter frameMf, Vector3 origin, Vector3 A, Vector3 B, Vector3 O, float a0, float b0, float span = 0f)
         {
             var frame = new FrameFaces(frameMf, origin, A, B, O);
             int tri;
-            Vector2 uv0 = frame.UvAt(new Vector2(a0, b0), Vector2.zero, out tri);
-            Vector2 perB = (frame.UvAt(new Vector2(a0, b0 + 0.3f), uv0, out tri) - uv0) / 0.3f;
-            Vector2 perA = (frame.UvAt(new Vector2(a0 + 0.03f, b0), uv0, out tri) - uv0) / 0.03f;
+            Vector2 uv0 = Vector2.zero, perB = Vector2.zero, perA = Vector2.zero;
+            // Taken from one face: where the sample's step across reached the next face, the texture jumped and
+            // streaked the bars (radar station, owner 2026-10-19). The point moves along until it holds.
+            foreach (float shift in new[] { 0f, -0.02f, 0.02f, -0.04f, 0.04f, -0.06f, 0.06f })
+            {
+                int t0, t1, t2;
+                Vector2 at0 = frame.UvAt(new Vector2(a0 + shift, b0), Vector2.zero, out t0);
+                Vector2 alongB = (frame.UvAt(new Vector2(a0 + shift, b0 + 0.3f), at0, out t1) - at0) / 0.3f;
+                Vector2 acrossA = (frame.UvAt(new Vector2(a0 + shift + 0.03f, b0), at0, out t2) - at0) / 0.03f;
+                bool sane = t0 >= 0 && t1 >= 0 && t2 >= 0 && acrossA.magnitude < 5f * Mathf.Max(alongB.magnitude, 0.1f);
+                if (shift == 0f || sane) { uv0 = at0; perB = alongB; perA = acrossA; }
+                if (sane) break;
+            }
             var local = sashMesh.vertices;
             var world = new Vector3[local.Length];
             for (int i = 0; i < local.Length; i++) world[i] = pr.TransformPoint(local[i]) - origin;
@@ -796,11 +844,11 @@ namespace SeamlessInteriors
                 bool alongA = a0Max - a0Min > b0Max - b0Min;
                 Vector3 along = alongA ? A : B, cross = alongA ? B : A;
                 float lo = alongA ? a0Min : b0Min;
-                if (continuous)
+                if (span > 0f)
                 {
                     float pieceLength = alongA ? a0Max - a0Min : b0Max - b0Min;
-                    float start = (lo - (alongA ? allA : allB)) % GARAGE_BAR_SPAN;
-                    if (start + pieceLength > GARAGE_BAR_SPAN) start = Mathf.Max(GARAGE_BAR_SPAN - pieceLength, 0f);
+                    float start = (lo - (alongA ? allA : allB)) % span;
+                    if (start + pieceLength > span) start = Mathf.Max(span - pieceLength, 0f);
                     lo -= start;
                 }
                 for (int f = 0; f < 6; f++)
@@ -1177,9 +1225,9 @@ namespace SeamlessInteriors
 
         // The cover quad without the cells of its lower row (mask 1, the hoppers) and its upper middle pane (mask 2;
         // on a narrow window the whole upper row, the strip between its panes with it).
-        private static void CutHallOutsideFrost(WindowCoverLayer layer, int mask, bool whole = false)
+        private static void CutHallOutsideFrost(WindowCoverLayer layer, int mask, bool whole = false, bool upper = false)
         {
-            if (layer.Panes == null || (layer.Panes.Count < 2 && !whole)) return;
+            if (layer.Panes == null || (layer.Panes.Count < 2 && !whole && !upper)) return;
             var mf = layer.FrostGo.GetComponent<MeshFilter>();
             if (mf == null || mf.sharedMesh == null) return;
             var v = CopyVerts(mf.sharedMesh);
@@ -1209,6 +1257,14 @@ namespace SeamlessInteriors
             else if ((mask & 2) != 0 && upperMiddle != null) open.Add(new Vector4(upperMiddle[0], upperMiddle[1], upperMiddle[2], upperMiddle[3]));
             // The garage's pair opens the whole window.
             if (whole) { open.Clear(); open.Add(new Vector4(float.MinValue, float.MaxValue, float.MinValue, float.MaxValue)); }
+            // The radar station's upper casement: everything above its lower pane.
+            if (upper)
+            {
+                float above = float.MinValue;
+                foreach (var p in layer.Panes) if (p.Length > 4 ? p[4] > 0.5f : p[3] < 0f) above = Mathf.Max(above, p[3]);
+                open.Clear();
+                open.Add(new Vector4(float.MinValue, float.MaxValue, above, float.MaxValue));
+            }
             if (open.Count == 0) return;
 
             Transform t = mf.transform;

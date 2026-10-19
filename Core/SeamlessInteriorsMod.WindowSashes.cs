@@ -75,6 +75,7 @@ namespace SeamlessInteriors
             public Vector3 HingeLocal, HingeAxisLocal;
             public List<Vector4> HingedPanes;
             public bool SharedGlass;    // the glass is the whole building's: its collider stays on
+            public GameObject HingeStrip;   // the hinged sash's strip on its jamb, standing in the window, not on the sash
         }
 
         private static readonly List<WindowSash> s_WindowSashes = new List<WindowSash>();
@@ -1229,7 +1230,7 @@ namespace SeamlessInteriors
                             OutsideOpenCut had;
                             bool cut = s_OutsideOpenCuts.TryGetValue(layer, out had);
                             if (cut && had.Mask != mask) { UncutOutsideFrost(layer); cut = false; }
-                            if (mask != 0 && !cut) CutHallOutsideFrost(layer, mask, OpensWhole(b.ApertureOpenings[a]));
+                            if (mask != 0 && !cut) CutHallOutsideFrost(layer, mask, OpensWhole(b.ApertureOpenings[a]), IsRadarUpperCasement(b.ApertureOpenings[a]));
                             if (sashHere) KeepHallSashCovers(b.InstanceId, room, layer, b.ApertureOpenings[a]);
                             ShowMullionTop(b.Instance, a, OpensWhole(b.ApertureOpenings[a]) ? mask == 0 : (mask & 2) == 0);
                         }
@@ -1509,6 +1510,7 @@ namespace SeamlessInteriors
                 if (sash.GlassLower != null) Object.Destroy(sash.GlassLower);
                 if (sash.SharedGlass) ShowSharedGlass(sash);
                 ShowFrameTriangles(sash);
+                if (sash.HingeStrip != null) { var stripFilter = sash.HingeStrip.GetComponent<MeshFilter>(); if (stripFilter != null && stripFilter.sharedMesh != null) Object.Destroy(stripFilter.sharedMesh); Object.Destroy(sash.HingeStrip); }
             }
             catch { }
         }
