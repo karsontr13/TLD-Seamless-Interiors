@@ -1544,6 +1544,8 @@ namespace SeamlessInteriors
             s_WindowPortalHiddenBackdrops.Clear();
             s_WindowPaneCleared.Clear();
             s_WindowPortalWasDrawn.Clear();
+            // Before anything measures its glass (owner, 2026-10-19).
+            SquareHallWindows(openings);
 
             for (int i = 0; i < openings.Count; i++)
             {

@@ -46,7 +46,7 @@ namespace SeamlessInteriors
                 Vector3 eye = main != null ? main.transform.position : Vector3.zero;
                 foreach (var sash in s_WindowSashes)
                 {
-                    if (!IsRoomWindowOpen(s_WindowPortalInstanceId, sash.Opening)) continue;
+                    if (!IsRoomWindowOpen(s_WindowPortalInstanceId, StateOf(sash))) continue;
                     open++;
                     var opening = s_WindowPortalOpenings[sash.Opening];
                     float d = Vector3.Distance(eye, opening.GlassCenter);

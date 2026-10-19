@@ -64,6 +64,7 @@ namespace SeamlessInteriors
             public GameObject Go;
             public bool Inside;     // a room window (index into s_WindowPortalOpenings) or a building window
             public int Index;
+            public int StateId = -1;  // the open state its hold toggles, when not its window's (hall casement)
             public TimedHoldInteraction Hold;
             public bool Cancelled;  // this hold was let go of; its end must not clean
             public uint SoundId;    // the playing sound, 0 when silent
@@ -292,6 +293,7 @@ namespace SeamlessInteriors
                     float h = op.GlassHeight > 0f ? op.GlassHeight : op.Height;
                     // The room side of the glass: against Outward.
                     AddCleanTarget(true, i, op.GlassCenter - op.Outward * CLEAN_TARGET_PROUD, op.Outward, op.Up, w, h);
+                    if (IsHallWindow(op)) AddHallCasementTarget(i);
                 }
             }
             else
@@ -330,9 +332,9 @@ namespace SeamlessInteriors
 
         private static float CleanTargetProudOutside(ShellAperture ap) { return CleanTargetProud(ap.Center, ap.Outward); }
 
-        private static void AddCleanTarget(bool inside, int index, Vector3 center, Vector3 outward, Vector3 up, float width, float height)
+        private static CleanTarget AddCleanTarget(bool inside, int index, Vector3 center, Vector3 outward, Vector3 up, float width, float height)
         {
-            if (width <= 0.05f || height <= 0.05f) return;
+            if (width <= 0.05f || height <= 0.05f) return null;
 
             var go = new GameObject((inside ? "SI_CleanWindow_Room_" : "SI_CleanWindow_Building_") + index);
             // Still found by the interaction ray, but the player walks through it: on InteractiveProp
@@ -364,6 +366,7 @@ namespace SeamlessInteriors
             FindDoorsOverGlass(target, box);
             HideSoundSpheresFromRays(target, box);
             s_CleanTargets.Add(target);
+            return target;
         }
 
         // THE GAME'S WINDOW SOUND STOPS THE CROSSHAIR. Camp Office window 2 (LakeCabinWindowC) carries its
@@ -440,7 +443,7 @@ namespace SeamlessInteriors
             // On a window that opens, the interact hold opens or shuts it; the right button cleans (owner, 2026-10-18).
             if (IsSashTarget(target))
             {
-                ToggleWindowOpen(target.Index, target.Go);
+                ToggleWindowOpen(TargetState(target), target.Go);
                 SetSashHoldText(target);
                 return;
             }
@@ -490,13 +493,15 @@ namespace SeamlessInteriors
             }
         }
 
-        private static bool IsSashTarget(CleanTarget target) { return target.Inside && SashOf(target.Index) != null; }
+        private static bool IsSashTarget(CleanTarget target) { return target.Inside && SashOfState(TargetState(target)) != null; }
+
+        private static int TargetState(CleanTarget target) { return target.StateId >= 0 ? target.StateId : target.Index; }
 
         // The ring's text and time follow what the hold will do to the window.
         private static void SetSashHoldText(CleanTarget target)
         {
             if (target.Hold == null) return;
-            string text = IsSashOpen(target.Index) ? "Closing" : "Opening";
+            string text = IsRoomWindowOpen(s_WindowPortalInstanceId, TargetState(target)) ? "Closing" : "Opening";
             if (target.Hold.HoldText != text) target.Hold.HoldText = text;
             if (target.Hold.HoldTime != SASH_OPEN_HOLD_SECONDS) target.Hold.HoldTime = SASH_OPEN_HOLD_SECONDS;
         }

@@ -392,7 +392,8 @@ namespace SeamlessInteriors
                 {
                     if (sash.Go == null) continue;
                     KeepSashBlock(sash);
-                    if (sash.Shown <= 0.01f || sash.Opening >= s_WindowPortalOpenings.Count) continue;
+                    // The hall's glass is one for the whole building: its collider stays, the open pane is crossed by the redirect.
+                    if (sash.Shown <= 0.01f || sash.SharedGlass || sash.Opening >= s_WindowPortalOpenings.Count) continue;
                     var glass = s_WindowPortalOpenings[sash.Opening].Glass;
                     if (glass == null) continue;
                     foreach (var g in glass)
@@ -426,11 +427,22 @@ namespace SeamlessInteriors
             var go = new GameObject("SI_SashBlock");
             go.layer = 0;
             go.transform.SetParent(sash.Go.transform, false);
-            // Placed in world space for the shut sash, less the slide it already has.
-            Vector3 slid = sash.Up * (sash.Slide * Mathf.Max(sash.Shown, 0f));
-            go.transform.position = opening.GlassCenter + sash.Right * ((sash.EdgeLeft + sash.EdgeRight) * 0.5f)
-                                  + sash.Up * ((sash.EdgeBottom + top) * 0.5f) + sash.Outward * sash.SashMid + slid;
-            go.transform.rotation = Quaternion.LookRotation(sash.Outward, sash.Up);
+            Vector3 shut = opening.GlassCenter + sash.Right * ((sash.EdgeLeft + sash.EdgeRight) * 0.5f)
+                         + sash.Up * ((sash.EdgeBottom + top) * 0.5f) + sash.Outward * sash.SashMid;
+            if (sash.HingedPanes != null)
+            {
+                // A hinged sash's space is the window object's when shut.
+                Transform pr = sash.PaneRoot;
+                go.transform.localPosition = pr.InverseTransformPoint(shut);
+                go.transform.localRotation = Quaternion.Inverse(pr.rotation) * Quaternion.LookRotation(sash.Outward, sash.Up);
+            }
+            else
+            {
+                // Placed in world space for the shut sash, less the slide it already has.
+                Vector3 slid = sash.Up * (sash.Slide * Mathf.Max(sash.Shown, 0f));
+                go.transform.position = shut + slid;
+                go.transform.rotation = Quaternion.LookRotation(sash.Outward, sash.Up);
+            }
             Vector3 ls = go.transform.lossyScale;
             var box = go.AddComponent<BoxCollider>();
             box.size = new Vector3((sash.EdgeRight - sash.EdgeLeft) / Mathf.Max(ls.x, 0.001f), (top - sash.EdgeBottom) / Mathf.Max(ls.y, 0.001f), 0.03f / Mathf.Max(ls.z, 0.001f));

@@ -68,6 +68,13 @@ namespace SeamlessInteriors
             public bool NoGameGlass;    // its pane is drawn by a cover layer instead of the game's glass
             // A double window's side-by-side sashes, which move as one: each bay's left and right edge; null for one.
             public float[] Bays;
+            // Its own open state when not its room window's (the hall's casement); -1 for that.
+            public int StateId = -1;
+            // Hinged instead of sliding (hall): turned about this line by HingeAngle; its panes as (left, right, bottom, top).
+            public float HingeAngle;
+            public Vector3 HingeLocal, HingeAxisLocal;
+            public List<Vector4> HingedPanes;
+            public bool SharedGlass;    // the glass is the whole building's: its collider stays on
         }
 
         private static readonly List<WindowSash> s_WindowSashes = new List<WindowSash>();
@@ -103,6 +110,14 @@ namespace SeamlessInteriors
 
         private static bool IsSashOpen(int opening) { return SashOf(opening) != null && IsRoomWindowOpen(s_WindowPortalInstanceId, opening); }
 
+        private static int StateOf(WindowSash sash) { return sash.StateId >= 0 ? sash.StateId : sash.Opening; }
+
+        private static WindowSash SashOfState(int state)
+        {
+            for (int i = 0; i < s_WindowSashes.Count; i++) if (StateOf(s_WindowSashes[i]) == state) return s_WindowSashes[i];
+            return null;
+        }
+
         // Every frame from OnUpdate, after the cover layers.
         private static void TickWindowSashes()
         {
@@ -131,9 +146,11 @@ namespace SeamlessInteriors
                 {
                     var sash = s_WindowSashes[i];
                     if (sash.Go == null || sash.PaneRoot == null) { s_WindowSashesKey = null; return; }   // gone with its scene
-                    FollowFrostLayer(sash);
+                    // A hinged pair's frost is cut by its first sash for both.
+                    if (sash.HingedPanes == null) FollowFrostLayer(sash);
+                    else if (StateOf(sash) == sash.Opening) FollowHallFrost(sash);
                     FollowGlass(sash);
-                    SlideSash(sash, IsRoomWindowOpen(s_WindowPortalInstanceId, sash.Opening) ? 1f : 0f, now);
+                    SlideSash(sash, IsRoomWindowOpen(s_WindowPortalInstanceId, StateOf(sash)) ? 1f : 0f, now);
                 }
             }
             catch (System.Exception ex)
@@ -155,6 +172,15 @@ namespace SeamlessInteriors
             {
                 if (!IsOpenableWindow(row, i, s_WindowPortalOpenings[i])) continue;
                 string why;
+                if (IsHallWindow(s_WindowPortalOpenings[i]))
+                {
+                    var hinged = BuildHallSashes(s_WindowPortalOpenings[i], i, out why);
+                    if (hinged != null) s_WindowSashes.AddRange(hinged);
+                    if (why != null)
+                        MelonLogger.Warning($"[PENCERE-KANAT] {s_WindowPortalInstanceId}: oda penceresi {i} kanatsiz kaldi: {why}",
+                                            $"[WINDOW-SASH] {s_WindowPortalInstanceId}: room window {i} got no sash: {why}");
+                    continue;
+                }
                 var sash = BuildSash(s_WindowPortalOpenings[i], i, true, out why);
                 if (sash == null)
                 {
@@ -1116,13 +1142,15 @@ namespace SeamlessInteriors
 
         private static void PlaceSash(WindowSash sash)
         {
+            if (sash.HingedPanes != null) { PlaceHingedSash(sash, sash.Shown); return; }
             sash.Go.transform.localPosition = sash.PaneRoot.InverseTransformVector(sash.Up * (sash.Slide * sash.Shown));
         }
 
         // The interact hold on an openable window's target lands here.
         private static void ToggleWindowOpen(int opening, GameObject soundAt)
         {
-            if (SashOf(opening) == null || s_WindowPortalInstanceId == null) return;
+            // state: the room window, or the hall casement's own (room window + CASEMENT_STATE).
+            if (SashOfState(opening) == null || s_WindowPortalInstanceId == null) return;
             bool open = !IsRoomWindowOpen(s_WindowPortalInstanceId, opening);
             SetRoomWindowOpen(s_WindowPortalInstanceId, opening, open);
             try { if (soundAt != null) GameAudioManager.PlaySound(open ? "Play_SndMechDoorWoodOpen1" : "Play_SndMechDoorWoodClose1", soundAt); } catch { }
@@ -1252,7 +1280,7 @@ namespace SeamlessInteriors
         private static bool IsOpenableWindow(BuildingWindowOverride row, int roomWindow, InteriorWindowOpening opening)
         {
             if (opening.ViewOutOnly) return false;
-            if (IsSlideUpWindowModel(opening) || IsSlideRightWindowModel(opening) || IsWindowModel(opening, PANE_SLIDE_UP_WINDOW_MODELS)) return true;
+            if (IsSlideUpWindowModel(opening) || IsSlideRightWindowModel(opening) || IsWindowModel(opening, PANE_SLIDE_UP_WINDOW_MODELS) || IsHallWindow(opening)) return true;
             if (row == null || row.OpenableWindows == null) return false;
             foreach (var entry in row.OpenableWindows) if (entry != null && entry.RoomWindow == roomWindow) return true;
             return false;
@@ -1265,6 +1293,8 @@ namespace SeamlessInteriors
         {
             // The room's own sash, there until the frame after the player leaves, still holds the glass cut.
             if (opening.PaneRoot == null) return false;
+            // The hall's hinged sashes are not built for the view from outside yet.
+            if (IsHallWindow(opening)) return false;
             foreach (var inside in s_WindowSashes) if (inside.PaneRoot == opening.PaneRoot) return false;
 
             OutsideSash kept = null;
@@ -1450,6 +1480,7 @@ namespace SeamlessInteriors
                 if (sash.FrameCut != null) Object.Destroy(sash.FrameCut);
                 if (sash.GlassUpper != null) Object.Destroy(sash.GlassUpper);
                 if (sash.GlassLower != null) Object.Destroy(sash.GlassLower);
+                if (sash.SharedGlass) ShowSharedGlass(sash);
             }
             catch { }
         }
