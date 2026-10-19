@@ -144,7 +144,7 @@ namespace SeamlessInteriors
         public static bool SharePlayerBuffers = true;
 
         private static readonly CameraEvent[] s_SharedBufferEvents =
-            { CameraEvent.BeforeLighting, CameraEvent.BeforeReflections, CameraEvent.BeforeImageEffectsOpaque, CameraEvent.AfterForwardAlpha };
+            { CameraEvent.BeforeLighting, CameraEvent.BeforeReflections, CameraEvent.BeforeImageEffectsOpaque, CameraEvent.BeforeForwardAlpha, CameraEvent.AfterForwardAlpha };
         private static readonly List<CommandBuffer> s_PlayerShared = new List<CommandBuffer>();
         private static readonly List<CameraEvent> s_PlayerSharedEvents = new List<CameraEvent>();
         private static int s_PlayerSharedFrame = -1;
@@ -160,6 +160,7 @@ namespace SeamlessInteriors
         private static bool IsSharedPlayerBuffer(string name)
         {
             if (name == "SnowPatchHeightMapCommandBuffer") return false;
+            if (name == "SCRIPT_EnvironmentSystems") return true;   // draws the aurora bands in the sky
             return name == "Snow_Blowing" || name == "Distance Field Shadows" || name == "Deferred Ambient Occlusion"
                 || name.StartsWith("SnowPatch") || name.StartsWith("ScreenSpaceDecal");
         }
