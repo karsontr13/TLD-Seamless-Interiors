@@ -70,6 +70,9 @@ namespace SeamlessInteriors
         // 16 and 46 cm) and its back window (two halves), 2026-10-02; the next nearest panes there are
         // more than 2 m apart.
         public float RoomManyPaneJoinWithinCm = float.NaN;
+        // Where the room's views out stand, cm outside the room's glass; NaN = as measured. Far enough out for
+        // the thick window snow to stand in front of the picture (Community Hall's 0.25 cm, 2026-10-20).
+        public float RoomViewOutsideGlassCm = float.NaN;
 
         // BUILDING glass objects, by name, measured one window each and ADDED after the windows the
         // building's own mesh gives, so those keep their numbers. ShellGlassObjects replaces the
@@ -722,6 +725,7 @@ namespace SeamlessInteriors
                     },
                     RoomManyPaneObjects = new[] { "STR_CommunityHallA_GlassWin" },
                     RoomManyPaneJoinWithinCm = 50f,
+                    RoomViewOutsideGlassCm = 10.25f,
                     ExtraShellGlassObjects = new[] { "STR_CommunityHallDoorsA_Glass" },
                     // The door (room window 7) is not in a group: sharing the door-side camera with windows 3
                     // and 4 took its plane from the two windows and sliced the frames on the door (owner,

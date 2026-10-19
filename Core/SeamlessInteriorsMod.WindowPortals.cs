@@ -1004,7 +1004,7 @@ namespace SeamlessInteriors
             for (int i = 0; i < s_WindowPortalOpenings.Count; i++)
             {
                 // Where this interior pane would be if the building were standing on its shell.
-                fitRoomCenters.Add(s_WindowPortalOpenings[i].PortalCenter + buildingDelta);
+                fitRoomCenters.Add(s_WindowPortalOpenings[i].UnpushedPortalCenter + buildingDelta);
                 fitRoomOutward.Add(s_WindowPortalOpenings[i].Outward);
             }
             // Views out only (InteriorWindowOpening.ViewOutOnly) are left out of the fit, so they cannot take a
@@ -1094,7 +1094,7 @@ namespace SeamlessInteriors
                     }
                 }
                 // A hand move applies to a paired window as well (2026-10-02); no row moved one before.
-                s_WindowPortalDelta[i] = viewWorld - opening.PortalCenter + ViewOutOffset(shellName, i, opening.Outward);
+                s_WindowPortalDelta[i] = viewWorld - opening.UnpushedPortalCenter + ViewOutOffset(shellName, i, opening.Outward);
                 s_WindowPortalSpot[i] = best;
                 s_WindowPortalPairedCount++;
 

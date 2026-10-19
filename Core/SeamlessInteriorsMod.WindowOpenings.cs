@@ -71,6 +71,12 @@ namespace SeamlessInteriors
         // Meters out from the glass where its frost and snow stand; 0 = on the glass. Set for a hand opening
         // whose picture stands past boards, so the cover is behind them (Milton bank, 2026-10-14).
         public float CoverOut;
+
+        // Meters the building's row moved the picture out (RoomViewOutsideGlassCm). Pairing and the eye
+        // take the picture's old place, so moving it changes only where the snow can stand.
+        public float ViewPushedOut;
+
+        public Vector3 UnpushedPortalCenter { get { return PortalCenter - Outward * ViewPushedOut; } }
     }
 
     public partial class SeamlessInteriorsMod
@@ -855,6 +861,27 @@ namespace SeamlessInteriors
         // Hinterland left a real window without one, so a row can name such panes. Every building also
         // says, once a session, which window glass it left out for this reason, so how common it is gets
         // counted building by building before the rule itself is touched (owner's call, same day).
+        // The row's RoomViewOutsideGlassCm: each view moves out to it and grows by the same on every side,
+        // so a picture standing further behind the hole still fills it seen at a slant.
+        private static void PushRoomViewsOut(List<InteriorWindowOpening> openings, SeamlessInteriorInstance instance)
+        {
+            BuildingWindowOverride row;
+            if (instance == null || instance.Config == null || !TryGetBuildingWindowOverride(instance.Config.ExteriorShellPrefabName, out row)
+                || float.IsNaN(row.RoomViewOutsideGlassCm)) return;
+            float outside = row.RoomViewOutsideGlassCm * 0.01f;
+            for (int i = 0; i < openings.Count; i++)
+            {
+                var o = openings[i];
+                float grow = Mathf.Max(0f, outside - o.PortalOffsetLocal) * 2f;
+                Vector3 moved = o.GlassCenter + o.Outward * outside;
+                o.ViewPushedOut += Vector3.Dot(moved - o.PortalCenter, o.Outward);
+                o.PortalOffsetLocal = outside;
+                o.PortalCenter = moved;
+                o.Width += grow; o.Height += grow;
+                openings[i] = o;
+            }
+        }
+
         private static string[] s_ScanWindowsWithoutBackdrop;
         private static string[][] s_ScanWindowJoins;
         private static float s_ScanManyPaneJoinWithin = -1f;   // meters; < 0 = the ordinary joining only (BuildingWindowOverride.RoomManyPaneJoinWithinCm)
@@ -1029,6 +1056,7 @@ namespace SeamlessInteriors
                 finally { s_ScanWindowsWithoutBackdrop = null; s_ScanWindowJoins = null; s_ScanManyPaneJoinWithin = -1f; s_ScanBuildingId = null; }
                 MarkViewOutOnly(found.Openings, instance);
                 MeasureRoomWindowOutlines(found.Openings, instance.Config != null ? instance.Config.InstanceId : "?");
+                PushRoomViewsOut(found.Openings, instance);
                 s_WindowOpeningsFound[key] = found;
             }
 
