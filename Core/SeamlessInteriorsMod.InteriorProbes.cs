@@ -183,6 +183,53 @@ namespace SeamlessInteriors
             inst.ProbedRenderers[id] = done;
         }
 
+        // Safehouse customization swaps each outlined renderer's block for its own, dropping our probe:
+        // decorations went black (player report, 2026-10-20). Put the probe back into its block.
+        private static MaterialPropertyBlock s_ProbeMergeMpb;
+
+        // The vanilla callers inline their own helpers; Utils.ApplyPropertyBlockToRenderers is where the blocks land.
+        internal static void ReapplyInteriorProbes(Il2CppSystem.Collections.Generic.List<Renderer> renderers)
+        {
+            ProbeSet set;
+            SeamlessInteriorInstance inst = ProbeMergeTarget(out set);
+            if (renderers == null || inst == null) return;
+            for (int i = 0; i < renderers.Count; i++)
+            {
+                Renderer r = renderers[i];
+                ProbedRenderer done;
+                if (r != null && inst.ProbedRenderers.TryGetValue(r.GetInstanceID(), out done)) MergeInteriorProbe(set, done);
+            }
+        }
+
+        // Start and stop of customization touch every decoration at once.
+        internal static void ReapplyAllInteriorProbes()
+        {
+            ProbeSet set;
+            SeamlessInteriorInstance inst = ProbeMergeTarget(out set);
+            if (inst == null) return;
+            foreach (var done in inst.ProbedRenderers.Values)
+                if (done.Renderer != null) MergeInteriorProbe(set, done);
+        }
+
+        private static SeamlessInteriorInstance ProbeMergeTarget(out ProbeSet set)
+        {
+            set = null;
+            SeamlessInteriorInstance inst = s_ProbeTarget;
+            if (inst == null || inst.MasterInterior == null || inst.Config == null || inst.ProbedRenderers.Count == 0) return null;
+            if (!s_InteriorProbes.TryGetValue(inst.Config.InteriorSceneBaseName ?? "", out set)) return null;
+            if (s_ProbeMergeMpb == null) s_ProbeMergeMpb = new MaterialPropertyBlock();
+            return inst;
+        }
+
+        private static void MergeInteriorProbe(ProbeSet set, ProbedRenderer done)
+        {
+            Renderer r = done.Renderer;
+            r.GetPropertyBlock(s_ProbeMergeMpb);
+            SampleProbes(set, done.Local, s_ProbeScratch);
+            WriteShVectors(s_ProbeMergeMpb, s_ProbeScratch);
+            r.SetPropertyBlock(s_ProbeMergeMpb);
+        }
+
         // Outdoor mode: every renderer goes back to what the scene shipped.
         internal static void RestoreInteriorProbes(SeamlessInteriorInstance inst)
         {

@@ -83,6 +83,48 @@ namespace SeamlessInteriors
         }
     }
 
+    // The customization outline and hover blocks replace the interior probe block (InteriorProbes.cs).
+    // SafehouseManager's ApplyOutline/OnHover helpers have no callers (inlined); this is where they land.
+    [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.Utils), nameof(Il2Cpp.Utils.ApplyPropertyBlockToRenderers))]
+    public class ProbeAfterPropertyBlockPatch
+    {
+        public static void Postfix(Il2CppSystem.Collections.Generic.List<Renderer> renderers)
+        {
+            try { SeamlessInteriorsMod.ReapplyInteriorProbes(renderers); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[INTERIOR-PROBES] ApplyPropertyBlockToRenderers postfix: {ex.Message}"); }
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(SafehouseManager), nameof(SafehouseManager.StartCustomizing))]
+    public class ProbeAfterStartCustomizingPatch
+    {
+        public static void Postfix()
+        {
+            try { SeamlessInteriorsMod.ReapplyAllInteriorProbes(); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[INTERIOR-PROBES] StartCustomizing postfix: {ex.Message}"); }
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(SafehouseManager), nameof(SafehouseManager.StopCustomizing))]
+    public class ProbeAfterStopCustomizingPatch
+    {
+        public static void Postfix()
+        {
+            try { SeamlessInteriorsMod.ReapplyAllInteriorProbes(); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[INTERIOR-PROBES] StopCustomizing postfix: {ex.Message}"); }
+        }
+    }
+
+    [HarmonyLib.HarmonyPatch(typeof(SafehouseManager), nameof(SafehouseManager.DisableOutlinePropertyBlock))]
+    public class ProbeAfterOutlineOffPatch
+    {
+        public static void Postfix(Il2CppSystem.Collections.Generic.List<Renderer> renderers)
+        {
+            try { SeamlessInteriorsMod.ReapplyInteriorProbes(renderers); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[INTERIOR-PROBES] DisableOutlinePropertyBlock postfix: {ex.Message}"); }
+        }
+    }
+
     // Decoration items dropped inside a clone must count as "inside the safehouse".
     [HarmonyLib.HarmonyPatch(typeof(SafehouseManager), nameof(SafehouseManager.IsDecorationItemInsideSafehouse))]
     public class AllowDecorationPlacementPatch
