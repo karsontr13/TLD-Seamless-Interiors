@@ -943,6 +943,17 @@ namespace SeamlessInteriors
 
         // Snow modelled into the frame itself (Trapper's Obj_WindowCabinSnowA, a second material on the frame):
         // the bank stands in for it, and a slot of a renderer can only be hidden by a see-through material.
+        //
+        // Only snow assets, never a building surface. The game's wall, roof and concrete materials are GLB_ and
+        // about 80 of them carry "Snow" in the name (GLB_ConcreteRust_A01_FlatSnow, GLB_WoodWallBlue_B01_Snow_Blend):
+        // the surface itself, with snow on its top faces. Where a pane root is a whole building part, as the hangar's
+        // front is (STR_AF_Hangar_Interior_Main_Split_Prefab), hiding those made all eight front doors invisible
+        // from inside and took a slot each off the roof, stairs and wall (2.3.1 to 2.4.0, read live 2026-10-16).
+        private static bool IsBuildingSurfaceSnow(Material m)
+        {
+            return m.name.StartsWith("GLB_", System.StringComparison.OrdinalIgnoreCase);
+        }
+
         private static void HideFrameSnowSlots(Transform paneRoot)
         {
             if (!WindowCoverLayers || paneRoot == null) return;
@@ -956,6 +967,14 @@ namespace SeamlessInteriors
                 {
                     var m = materials[k];
                     if (m == null || m.name.IndexOf("Snow", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    if (IsBuildingSurfaceSnow(m))
+                    {
+                        MelonLogger.Msg($"[WINDOW] {renderer.gameObject.name}: '{m.name}' bina yuzeyi, cerceve kari degil; gizlenmedi.",
+                                        $"[WINDOW] {renderer.gameObject.name}: '{m.name}' is a building surface, not frame snow; left drawn.");
+                        continue;
+                    }
+                    MelonLogger.Msg($"[WINDOW] {renderer.gameObject.name}: '{m.name}' cerceve kari olarak gizlendi.",
+                                    $"[WINDOW] {renderer.gameObject.name}: '{m.name}' hidden as snow modelled into the frame.");
                     if (s_FrameSnowHiddenMaterial == null)
                     {
                         Shader shader = Shader.Find(OUTSIDE_IN_FROST_SHADER);
