@@ -341,9 +341,18 @@ namespace SeamlessInteriors
                     if (fresh) firstFills++; else fills++;
                 }
                 if (layer.FrostMat.color != light) layer.FrostMat.color = light;
-                bool showFrost = live && OutsideInFrostedPane && layer.FrostShown >= 0f && (WindowCoverBuildUp || layer.FrostShown == 0f);
+                // With build-up off the old overlay carries the frost, but only where the building's own glass
+                // sheet has a pane for it. The hangar's sheet covers 1 of its 42 windows, so the other 41 looked
+                // clear from outside while frosted inside (owner, 2026-10-23). Those wear the cover's frost.
+                bool showFrost = live && OutsideInFrostedPane && layer.FrostShown >= 0f
+                                 && (WindowCoverBuildUp || layer.FrostShown == 0f || !HasOldOutsideFrost(a));
                 if (layer.FrostGo.activeSelf != showFrost) layer.FrostGo.SetActive(showFrost);
             }
+        }
+
+        private static bool HasOldOutsideFrost(int aperture)
+        {
+            return aperture < s_OutsideInFrostOverlays.Count && s_OutsideInFrostOverlays[aperture] != null;
         }
 
         private static void DestroyOutsideCovers()
