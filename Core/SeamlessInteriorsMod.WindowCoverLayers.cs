@@ -127,6 +127,14 @@ namespace SeamlessInteriors
         private static bool CoverRect(InteriorWindowOpening opening, out Vector3 center, out float width, out float height)
         {
             center = opening.GlassCenter; width = 0f; height = 0f;
+            // A band's windows share one glass object: each is its own measured rectangle. Read from the glass,
+            // seven of the hangar's eight front doors had none and got no frost layer, and the one that held
+            // the glass switched it off for all eight (owner, 2026-10-23: "Inside is still messed up").
+            if (opening.FromBand && opening.GlassWidth > 0f && opening.GlassHeight > 0f)
+            {
+                width = opening.GlassWidth; height = opening.GlassHeight;
+                return true;
+            }
             if (opening.Glass == null || opening.Glass.Count == 0) return false;
             float minR = float.MaxValue, maxR = float.MinValue, minU = float.MaxValue, maxU = float.MinValue;
             bool any = false;
