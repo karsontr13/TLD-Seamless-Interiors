@@ -78,6 +78,8 @@ namespace SeamlessInteriors
                 layer.Panes = new List<float[]>();
                 foreach (var p in shape.Panes) layer.Panes.Add((float[])p.Clone());
                 layer.Center = pane.Center + pane.Outward * pane.Toward; layer.Right = across; layer.Up = pane.Up; layer.Outward = pane.Outward;
+                // The quad is the glass's own rectangle here, so the cut is the fraction itself.
+                if (CleansLowerThirdOnly(s_OutsideInInstanceId, a)) layer.CleanTop = CLEAN_REACH_FRACTION;
                 var opening = a < s_OI.ApertureOpenings.Count ? s_OI.ApertureOpenings[a] : default(InteriorWindowOpening);
                 tMeasure += CoverMs(t0); t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 MakeCoverBank(layer, CoverBankMaterial(opening), "SeamlessInteriors_OutsideSnow_" + a);
@@ -251,6 +253,7 @@ namespace SeamlessInteriors
             // Asked every time: asking is what lets a cleaned window frost over again (WindowFrostState.cs).
             bool cleaned = IsWindowCleaned(s_OutsideInInstanceId, aperture);
             var layer = WindowCoverLayers && aperture < s_OI.Covers.Count ? s_OI.Covers[aperture] : null;
+            if (frost && layer != null && layer.CleanTop < 1f && layer.Shown) return false;
             // Build-up off: the game's frost and drift until cleaned; a cleaned pane shows the clean glass layer.
             if (!WindowCoverBuildUp) return !cleaned || (frost && (layer == null || !layer.Shown || layer.FrostShown != 0f));
             if (layer == null) return !cleaned;
@@ -350,8 +353,10 @@ namespace SeamlessInteriors
             }
         }
 
+        // A window cleaned only part way up never uses the old overlay, which is all frost or none.
         private static bool HasOldOutsideFrost(int aperture)
         {
+            if (aperture < s_OI.Covers.Count && s_OI.Covers[aperture] != null && s_OI.Covers[aperture].CleanTop < 1f) return false;
             return aperture < s_OutsideInFrostOverlays.Count && s_OutsideInFrostOverlays[aperture] != null;
         }
 

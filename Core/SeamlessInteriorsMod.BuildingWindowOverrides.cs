@@ -39,6 +39,12 @@ namespace SeamlessInteriors
         // for building by building for the reason OpeningsWithNoGlass is. See MeasureShellWindowsByObject.
         public string[] ShellGlassObjects;
 
+        // Windows, by the building's window index, too tall to clean all the way up: a clean wipes only the
+        // lowest third (CLEAN_REACH_FRACTION) of the glass, and the rest stays frosted. The clean box covers
+        // only that third. The record is the same cleaned flag as every other window; only what it clears
+        // changes, so saves are untouched.
+        public int[] WindowsCleanedLowerThirdOnly;
+
         // Bands of glass in the ROOM that are several windows each. See RoomWindowBand.
         public RoomWindowBand[] RoomBands;
 
@@ -530,6 +536,11 @@ namespace SeamlessInteriors
                     // building carries on that side, in five sizes on two tiers. Read from the GPU
                     // and cut by its own geometry, so nothing is carried and no offset is guessed.
                     RoomManyPaneObjects = new[] { "STR_AF_Hangar_Interior_Side_Windows_Prefab" },
+                    // The eight front doors are 538 cm of glass in three equal sections of nine panes; the
+                    // player reaches the lowest only (owner, 2026-10-23: "just the lower section of 9").
+                    // Measured on door 0: the lowest section's top is 176 cm up, the bar above it 6 cm, so a
+                    // third (179 cm) lands in the bar.
+                    WindowsCleanedLowerThirdOnly = new[] { 0, 35, 36, 37, 38, 39, 40, 41 },
                     // THE WHOLE FRONT ON ONE CAMERA, 2026-09-26, his rule: "The goal is to use a wall
                     // camera for the entire front face." Mirror pairs 35+0, 37+36, 38+40, 39+41.
                     ViewInGroups = new[]

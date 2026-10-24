@@ -60,6 +60,9 @@ namespace SeamlessInteriors
             // A fill under way: the cover it is for, and the next pixel to make (-1: none).
             public float FillTarget = -1f;
             public int FillNext = -1;
+            // How far up the frost, as a fraction of its height from the bottom, a clean reaches. Above it the
+            // frost is always full. 1 for every window but those in WindowsCleanedLowerThirdOnly.
+            public float CleanTop = 1f;
             // The bank's depth out from the glass, its rounded face, and how it meets the bars.
             public float BankDepth = BANK_DEPTH, BankReach = BANK_ROUND_REACH, BankTuck = BANK_TUCK, BankUnderBar = BANK_UNDER_BAR;
             public float BankSlump = BANK_SLUMP;
@@ -220,6 +223,13 @@ namespace SeamlessInteriors
             // it looked like a cut-out from the side (owner, 2026-10-13).
             layer.Center = center; layer.Right = opening.Right; layer.Up = opening.Up; layer.Outward = opening.Outward;
             layer.Panes = CoverPanes(opening, center, width, height);
+            if (CleansLowerThirdOnly(s_WindowPortalInstanceId, window))
+            {
+                // The frost's own rectangle need not be the glass's: the cut is placed on the glass.
+                float glassHeight = opening.GlassHeight > 0f ? opening.GlassHeight : opening.Height;
+                float cutUp = Vector3.Dot(opening.GlassCenter - center, opening.Up) - glassHeight * 0.5f + glassHeight * CLEAN_REACH_FRACTION;
+                layer.CleanTop = Mathf.Clamp01(cutUp / height + 0.5f);
+            }
             // A shaped pane's frost stops at its glass (Coastal House E's gable window, owner 2026-10-19).
             Vector3 offset = center - opening.GlassCenter;
             layer.FrostMask = ShapedGlassFrostMask(opening, layer.FrostSize, Vector3.Dot(offset, opening.Right), Vector3.Dot(offset, opening.Up), width, height, false);
@@ -646,12 +656,17 @@ namespace SeamlessInteriors
             var veinTime = tb.VeinTime; var vein = tb.Vein; var hazeTime = tb.HazeTime; var grain = tb.Grain; var hazeGain = tb.HazeGain;
             var glassAlpha = tb.GlassAlpha; var glassR = tb.GlassR; var glassG = tb.GlassG; var glassB = tb.GlassB; var mask = layer.FrostMask;
             var bytes = layer.FrostBytes;
+            // Rows from the bottom up; above the clean's reach the frost is full whatever the record says.
+            int size = layer.FrostSize;
+            int reachEnds = layer.CleanTop < 1f ? Mathf.Clamp(Mathf.RoundToInt(layer.CleanTop * size), 0, size) * size : int.MaxValue;
             for (int i = from; i < to; i++)
             {
+                bool full = i >= reachEnds;
+                float r = full ? 1.15f : reach, h0 = full ? 0.06f : haze0;
                 float g = grain[i] * CoverTables.GrainScale + CoverTables.GrainBase;
-                float v = vein[i] * CoverTables.UnitScale * C01((reach - veinTime[i] * CoverTables.TimeScale) * 12f);
-                float haze = C01((reach - (hazeTime[i] * CoverTables.HazeScale + CoverTables.HazeBase)) * 2.5f);
-                float a = C01(haze0 + haze * hazeGain[i] * CoverTables.GainScale + v * 0.7f);
+                float v = vein[i] * CoverTables.UnitScale * C01((r - veinTime[i] * CoverTables.TimeScale) * 12f);
+                float haze = C01((r - (hazeTime[i] * CoverTables.HazeScale + CoverTables.HazeBase)) * 2.5f);
+                float a = C01(h0 + haze * hazeGain[i] * CoverTables.GainScale + v * 0.7f);
                 float w = C01(0.80f + 0.20f * v + 0.05f * g);
                 // The frost laid over the glass.
                 float ga = glassAlpha[i] * CoverTables.UnitScale * (1f - a), all = a + ga, gs = ga * CoverTables.UnitScale;
@@ -1367,7 +1382,10 @@ namespace SeamlessInteriors
             GetRoomPaneCover(index, out frost, out snow);
             var layer = s_CoverLayers[index];
             // Build-up off: an uncleaned pane is the game's frost as before the layers; a cleaned one falls through.
-            if (!WindowCoverBuildUp && (frost > 0f || layer == null || !layer.Shown))
+            // A window cleaned only part way up always falls through: the hangar's eight doors share one room
+            // glass object, which cannot be shown for one door and hidden for the next.
+            bool partClean = layer != null && layer.CleanTop < 1f && layer.Shown;
+            if (!WindowCoverBuildUp && !partClean && (frost > 0f || layer == null || !layer.Shown))
             {
                 bool cleared = frost <= 0f;
                 SetGlassShown(opening.Glass, !cleared);
