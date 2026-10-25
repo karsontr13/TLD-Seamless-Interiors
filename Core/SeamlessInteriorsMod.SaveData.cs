@@ -1636,6 +1636,26 @@ namespace SeamlessInteriors
             return added;
         }
 
+        // Fire.Serialize reads m_HeatSource unchecked, and only Fire.Awake sets it; a fire in a clone
+        // never switched on throws and the whole region's fire data is lost from the save (player log 2026-10-25).
+        public static void PrepareFiresForSave()
+        {
+            var fires = RealFires();
+            if (fires == null) return;
+
+            int woken = 0, dropped = 0;
+            for (int i = fires.Count - 1; i >= 0; i--)
+            {
+                var f = fires[i];
+                if (f != null && f.m_HeatSource == null) { f.m_HeatSource = f.GetComponent<Il2Cpp.HeatSource>(); if (f.m_HeatSource != null) woken++; }
+                if (f == null || f.m_HeatSource == null) { fires.RemoveAt(i); dropped++; }
+            }
+
+            if (woken > 0 || dropped > 0)
+                MelonLogger.Msg($"[ATES-KAYIT] Kayit oncesi: {woken} uyanmamis ates hazirlandi, {dropped} gecersiz kayit listeden cikarildi.",
+                                $"[FIRE-SAVE] Before the save: {woken} fires that never woke up were prepared, {dropped} invalid entries taken off the list.");
+        }
+
         // Marks the clone's containers as invalidated so the game's placement system does
         // not serialize them; their contents are handled by _containers.json instead.
         private static void DisableInteriorContainerSerialization(GameObject interiorRoot)

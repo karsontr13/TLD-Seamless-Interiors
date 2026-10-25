@@ -36,6 +36,13 @@ namespace SeamlessInteriors
     [HarmonyLib.HarmonyPatch(typeof(Il2Cpp.FireManager), nameof(Il2Cpp.FireManager.Serialize))]
     public class FireSerializeDiagPatch
     {
+        // Not diagnostic: keeps one unprepared clone fire from failing the whole save (see PrepareFiresForSave).
+        public static void Prefix()
+        {
+            try { SeamlessInteriorsMod.PrepareFiresForSave(); }
+            catch (System.Exception ex) { MelonLogger.Warning($"[ATES-KAYIT] Hata: {ex.Message}", $"[FIRE-SAVE] Error: {ex.Message}"); }
+        }
+
         public static void Postfix(string __result)
         {
             if (!SeamlessInteriorsMod.s_DebugBounds) return;
