@@ -236,6 +236,7 @@
     <Compile Include="Core\NoGarbageMath.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowViewAmbient.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowFit.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.BoxSectors.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.BuildingWindowOverrides.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowPortals.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowViewFog.cs" />

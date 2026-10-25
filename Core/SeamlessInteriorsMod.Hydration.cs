@@ -281,6 +281,7 @@ namespace SeamlessInteriors
             // ─── 3. Scene furniture the player moved ───
             HydrateStep(instance, "3/7 tasinmis sahne mobilyasi");
             GuardedCall(() => RestorePlaceablePositions(instance), id, "tasinmis mobilya", () => instance.PlaceableSaveBlocked = true);
+            instance.BoxSectorsSynced = false;
             if (spread) yield return null;
             tPlace = Time.realtimeSinceStartup - stepStart; stepStart = Time.realtimeSinceStartup;
             offAfterPlace = CountInactivePlaceables(instance);

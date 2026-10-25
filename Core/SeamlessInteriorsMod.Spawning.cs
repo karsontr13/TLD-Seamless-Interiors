@@ -1059,6 +1059,9 @@ namespace SeamlessInteriors
                 SceneScan.SetLocal(null, null);
                 SceneScan.End();
             }
+
+            // Every way into a room shows its items through here.
+            if (visible) SyncBoxSectors(instance);
         }
 
         // ─── QUICK SEARCH ON THE WAY OUT ───

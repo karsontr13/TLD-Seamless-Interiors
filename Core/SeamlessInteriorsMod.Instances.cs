@@ -249,6 +249,9 @@ namespace SeamlessInteriors
         public bool ContentHydrated = false;
         public bool HydrationInProgress = false;
 
+        // Decorations filed under the BoxSector they stand in (see BoxSectors.cs); cleared when positions are restored.
+        public bool BoxSectorsSynced = false;
+
         // Guids of the placeables the MOD created in this building - the player's own
         // furniture, decorations and looted containers, which do not exist in the scene
         // template at all.
