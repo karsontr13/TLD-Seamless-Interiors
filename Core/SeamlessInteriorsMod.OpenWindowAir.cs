@@ -185,24 +185,36 @@ namespace SeamlessInteriors
             {
                 s_WindowEarNextScan = unscaledNow + WINDOW_EAR_SCAN_SECONDS;
                 s_WindowEarEmitters.RemoveAll(go => !IsAliveDirect(go));
-                foreach (var ai in Object.FindObjectsOfType<BaseAi>())
-                {
-                    if (ai == null) continue;
-                    // An animal's calls play on its sound child (Audio_WildlifeWolf), not on itself.
-                    foreach (var ak in ai.GetComponentsInChildren<AkGameObj>(true))
-                    {
-                        var go = ak.gameObject;
-                        if (s_WindowEarEmitters.Contains(go)) continue;
-                        AkSoundEngine.AddListener(go, s_WindowEar);
-                        s_WindowEarEmitters.Add(go);
-                        added = true;
-                    }
-                }
+                added = ListenToAnimalsAtWindow();
             }
             if (added || s_WindowEarGain < 0f || System.Math.Abs(gain - s_WindowEarGain) > 0.002f)
                 foreach (var go in s_WindowEarEmitters)
                     if (IsAliveDirect(go)) AkSoundEngine.SetGameObjectOutputBusVolume(go, s_WindowEar, gain);
             s_WindowEarGain = gain;
+        }
+
+        // Every animal's sound objects not yet heard at the window are added to it; true when one was.
+        // From the game's own list of animals: a search of every object in the scene once a second was a
+        // hitch a second inside any room with windows (owner, 2026-10-24, the hangar).
+        private static bool ListenToAnimalsAtWindow()
+        {
+            bool added = false;
+            var animals = BaseAiManager.m_BaseAis;
+            for (int a = 0; animals != null && a < animals.Count; a++)
+            {
+                var ai = animals[a];
+                if (!IsAliveDirect(ai)) continue;
+                // An animal's calls play on its sound child (Audio_WildlifeWolf), not on itself.
+                foreach (var ak in ai.GetComponentsInChildren<AkGameObj>(true))
+                {
+                    var go = ak.gameObject;
+                    if (s_WindowEarEmitters.Contains(go)) continue;
+                    AkSoundEngine.AddListener(go, s_WindowEar);
+                    s_WindowEarEmitters.Add(go);
+                    added = true;
+                }
+            }
+            return added;
         }
 
         private static void DropWindowEar()
