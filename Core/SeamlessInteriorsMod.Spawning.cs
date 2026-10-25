@@ -966,6 +966,8 @@ namespace SeamlessInteriors
             MelonLogger.Msg($"[ADOPT] {instance.Config.ResolvedInstanceId}: '{p.gameObject.name}' oyuncunun objesi olarak kaydedilecek.");
         }
 
+        private const float OPEN_ROOM_KEEP_MARGIN = 0.5f;
+
         private static bool BelongsToAnotherInstance(SeamlessInteriorInstance instance, Transform t)
         {
             if (t == null) return false;
@@ -974,7 +976,8 @@ namespace SeamlessInteriors
             {
                 if (other == instance || other.MasterInterior == null) continue;
                 if (t.IsChildOf(other.MasterInterior.transform)) return true;
-                if (other.MasterInterior.activeSelf && other.IsPositionInVolume(t.position, -0.7f)) return true;
+                // The whole open room, walls included: shrunk, the basement's hide pass took the house's moved furniture by the walls.
+                if (other.MasterInterior.activeSelf && other.IsPositionInVolume(t.position, OPEN_ROOM_KEEP_MARGIN)) return true;
             }
             return false;
         }

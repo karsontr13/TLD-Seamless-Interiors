@@ -369,16 +369,24 @@ namespace SeamlessInteriors
                     GameObject go = carryable.gameObject;
                     if (SeamlessInteriorsMod.IsUnderAnyMasterInteriorPublic(go.transform)) continue;
 
+                    // Rooms can overlap (a house and its basement): the player's own room wins over the first match.
                     int state = SCPLUS_SHOWN, roomLayer = -1;
+                    bool matched = false;
                     foreach (SeamlessInteriorInstance instance in SeamlessInteriorsMod.ActiveInteriors.Values)
                     {
                         if (instance == null || instance.MasterInterior == null || !instance.Config.IsParked) continue;
                         if (!instance.IsPositionInVolume(go.transform.position)) continue;
                         string id = instance.Config.ResolvedInstanceId;
+                        if (instance.MasterInterior.activeSelf && SeamlessInteriorsMod.PlayerInteriorId == id)
+                        {
+                            state = SCPLUS_SHOWN;
+                            roomLayer = -1;
+                            break;
+                        }
+                        if (matched) continue;
+                        matched = true;
                         roomLayer = SeamlessInteriorsMod.OutsideInHeldRoomLayer(id);
-                        if (instance.MasterInterior.activeSelf && SeamlessInteriorsMod.PlayerInteriorId == id) state = SCPLUS_SHOWN;
-                        else state = roomLayer >= 0 ? SCPLUS_ROOM_LAYER : SCPLUS_HIDDEN;
-                        break;
+                        state = roomLayer >= 0 ? SCPLUS_ROOM_LAYER : SCPLUS_HIDDEN;
                     }
 
                     int shown;
