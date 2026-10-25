@@ -656,6 +656,50 @@ namespace SeamlessInteriors
             return System.Math.Max(WALL_TARGET_STEP, ((need + WALL_TARGET_STEP - 1) / WALL_TARGET_STEP) * WALL_TARGET_STEP);
         }
 
+        // ─── A VIEW'S TEXTURE IS REPLACED A FEW TIMES A MINUTE, NOT SIX TIMES A SECOND ───
+        //
+        // The texture matches the windows' rectangle on screen, so a camera draws only the pixels that
+        // show. With WallTargetSize it was replaced whenever the rectangle grew by one pixel past it or
+        // shrank 256 below it, and strafing at the hangar on a 4K screen crossed those lines constantly:
+        // 357 replacements in a minute, each a new texture and a new TAA pair for its camera, and one
+        // of the five hitches that minute sat on a burst of them (2026-10-24, owner: "Build the coarser
+        // texture sizing"). Now a texture grows to the next quarter of the screen, and shrinks only
+        // when the rectangle has needed a whole quarter less for WALL_TARGET_SHRINK_SECONDS. The cost:
+        // up to a quarter of the screen drawn beyond the windows' rectangle until then.
+        private const float WALL_TARGET_SHRINK_SECONDS = 2f;
+        private static float[] s_WallTargetShrinkSince = new float[0];
+
+        private static void WallTargetSizes(int slot, int needW, int needH, int curW, int curH, int sw, int sh, out int tw, out int th)
+        {
+            if (slot >= s_WallTargetShrinkSince.Length)
+            {
+                int old = s_WallTargetShrinkSince.Length;
+                System.Array.Resize(ref s_WallTargetShrinkSince, slot + 1);
+                for (int i = old; i < s_WallTargetShrinkSince.Length; i++) s_WallTargetShrinkSince[i] = -1f;
+            }
+            int stepW = System.Math.Max(WALL_TARGET_STEP, sw / 4), stepH = System.Math.Max(WALL_TARGET_STEP, sh / 4);
+            tw = curW; th = curH;
+            if (curW < needW || curH < needH)
+            {
+                tw = WallTargetStepUp(needW, stepW, sw); th = WallTargetStepUp(needH, stepH, sh);
+                s_WallTargetShrinkSince[slot] = -1f;
+                return;
+            }
+            if (curW - needW < stepW && curH - needH < stepH) { s_WallTargetShrinkSince[slot] = -1f; return; }
+            float now = Time.unscaledTime;
+            if (s_WallTargetShrinkSince[slot] < 0f) { s_WallTargetShrinkSince[slot] = now; return; }
+            if (now - s_WallTargetShrinkSince[slot] < WALL_TARGET_SHRINK_SECONDS) return;
+            tw = WallTargetStepUp(needW, stepW, sw); th = WallTargetStepUp(needH, stepH, sh);
+            s_WallTargetShrinkSince[slot] = -1f;
+        }
+
+        // The next whole step at or above need, but never past the screen unless need itself is.
+        private static int WallTargetStepUp(int need, int step, int screen)
+        {
+            int up = ((need + step - 1) / step) * step;
+            return System.Math.Max(need, System.Math.Min(up, screen));
+        }
+
         // THE WALL CAMERA DRAWS NOTHING NEARER THAN ITS WINDOWS. It stands where the player's eye is, carried
         // over to the building, and a room is deeper than its building: from the back of Thompson's Store the
         // lens stood 11.4 m behind the front wall, out in the yard, and everything between was drawn and slid
@@ -700,8 +744,8 @@ namespace SeamlessInteriors
 
             var current = s_WindowPortalSlotTargets[slot];
             bool hasCurrent = IsAliveDirect(current);
-            int tw = WallTargetSize(px1 - px0, hasCurrent ? current.width : 0);
-            int th = WallTargetSize(py1 - py0, hasCurrent ? current.height : 0);
+            int tw, th;
+            WallTargetSizes(slot, px1 - px0, py1 - py0, hasCurrent ? current.width : 0, hasCurrent ? current.height : 0, sw, sh, out tw, out th);
             if (!EnsureWindowPortalSlot(slot, main, tw, th)) return;
             Camera cam = s_WindowPortalCams[slot];
 
