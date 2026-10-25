@@ -47,16 +47,7 @@ namespace SeamlessInteriors
             float elapsed = 0f;
             while (elapsed < timeout)
             {
-                bool allDone = true;
-                foreach (var inst in ActiveInteriors.Values)
-                {
-                    if (inst.IsCloningRoutineActive || !inst.RunCompleted)
-                    {
-                        allDone = false;
-                        break;
-                    }
-                }
-                if (allDone) break;
+                if (AreAllInstancesReady() && !IsAnyCloningActive()) break;
                 yield return new WaitForSeconds(0.5f);
                 elapsed += 0.5f;
             }

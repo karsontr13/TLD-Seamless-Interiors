@@ -94,10 +94,17 @@ namespace SeamlessInteriors
             return false;
         }
 
+        // Only the loaded region's rooms: ActiveInteriors keeps rooms of regions loaded earlier in the
+        // session, which never finish again, so every wait on this ran to its cap (measured 2026-10-25).
         public static bool AreAllInstancesReady()
         {
+            string region = ReadReal(() => GameManager.m_ActiveScene);
             foreach (var instance in ActiveInteriors.Values)
-                if (instance != null && !instance.RunCompleted) return false;
+            {
+                if (instance == null) continue;
+                if (!string.IsNullOrEmpty(region) && instance.Config != null && instance.Config.ExteriorSceneName != region) continue;
+                if (!instance.RunCompleted) return false;
+            }
             return true;
         }
     }
