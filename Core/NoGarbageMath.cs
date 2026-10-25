@@ -117,5 +117,43 @@ namespace SeamlessInteriors
 
         internal static Vector4 Add4(Vector4 a, Vector4 b) { return new Vector4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w); }
         internal static Vector4 Sub4(Vector4 a, Vector4 b) { return new Vector4(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w); }
+
+        // Mathf.Lerp on floats: t clamped to [0, 1].
+        internal static float Lerp(float a, float b, float t) { return a + (b - a) * Clamp01(t); }
+
+        // Mathf.Approximately; Mathf.Epsilon taken as the smallest normal float, as in the game's build.
+        internal static bool Approximately(float a, float b)
+        {
+            return System.Math.Abs(b - a) < System.Math.Max(1E-06f * System.Math.Max(System.Math.Abs(a), System.Math.Abs(b)), 1.17549435E-38f * 8f);
+        }
+
+        // Unity's `obj != null` (false for C# null and for a destroyed object) without the call into the game,
+        // for classes outside SeamlessInteriorsMod; the same reading of m_CachedPtr as its IsAliveDirect.
+        private static int s_CachedPtrOffset = -2;
+
+        internal static bool IsAlive(Object obj)
+        {
+            if ((object)obj == null) return false;
+            if (s_CachedPtrOffset == -2)
+            {
+                s_CachedPtrOffset = -1;
+                try
+                {
+                    var field = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_field_from_name(Il2CppInterop.Runtime.Il2CppClassPointerStore<Object>.NativeClassPtr, "m_CachedPtr");
+                    if (field != System.IntPtr.Zero) s_CachedPtrOffset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(field);
+                }
+                catch { s_CachedPtrOffset = -1; }
+            }
+            if (s_CachedPtrOffset <= 0) return obj != null;
+            return System.Runtime.InteropServices.Marshal.ReadIntPtr(obj.Pointer, s_CachedPtrOffset) != System.IntPtr.Zero;
+        }
+
+        // Unity's `a == b` on two objects: both gone (C# null or destroyed) counts as equal, as there.
+        internal static bool SameObject(Object a, Object b)
+        {
+            bool aAlive = IsAlive(a), bAlive = IsAlive(b);
+            if (!aAlive || !bAlive) return aAlive == bAlive;
+            return a.Pointer == b.Pointer;
+        }
     }
 }

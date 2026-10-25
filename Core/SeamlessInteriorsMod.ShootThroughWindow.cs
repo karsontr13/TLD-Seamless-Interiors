@@ -28,19 +28,21 @@ namespace SeamlessInteriors
         // The nearest open window part this line crosses within maxT, or -1.
         private static int FindOpenWindowCrossing(Vector3 from, Vector3 dir, float maxT, out float hitT, out Vector3 hit)
         {
-            int best = -1; hitT = float.MaxValue; hit = Vector3.zero;
+            // On the fields: runs per projectile per frame while a window is open, and Unity's math leaves garbage (NoGarbageMath.cs).
+            int best = -1; hitT = float.MaxValue; hit = new Vector3(0f, 0f, 0f);
             foreach (var sash in s_WindowSashes)
             {
                 if (sash.Shown <= 0.5f || sash.Opening >= s_WindowPortalDelta.Count) continue;
                 var opening = s_WindowPortalOpenings[sash.Opening];
-                float facing = Vector3.Dot(dir, opening.Outward);
+                float facing = NoGarbageMath.Dot(dir, opening.Outward);
                 if (facing < 0.05f) continue;
-                float t = Vector3.Dot(opening.GlassCenter - from, opening.Outward) / facing;
+                float t = NoGarbageMath.Dot(NoGarbageMath.Sub(opening.GlassCenter, from), opening.Outward) / facing;
                 if (t <= 0f || t >= hitT || t > maxT) continue;
-                Vector3 p = from + dir * t;
+                Vector3 p = NoGarbageMath.AddScaled(from, dir, t);
                 // Only the open part: under the raised sash, between its sides.
-                float r = Vector3.Dot(p - opening.GlassCenter, sash.Right);
-                float u = Vector3.Dot(p - opening.GlassCenter, sash.Up);
+                Vector3 fromGlass = NoGarbageMath.Sub(p, opening.GlassCenter);
+                float r = NoGarbageMath.Dot(fromGlass, sash.Right);
+                float u = NoGarbageMath.Dot(fromGlass, sash.Up);
                 if (!InBays(r, sash.Bays, sash.EdgeLeft, sash.EdgeRight, 0f) || u < sash.EdgeBottom || u > sash.EdgeBottom + sash.Slide * sash.Shown) continue;
                 best = sash.Opening; hitT = t; hit = p;
             }
@@ -113,20 +115,23 @@ namespace SeamlessInteriors
         private static void TickThrownIn()
         {
             if (s_ThrownIn.Count == 0) return;
+            // Unity's null tests, math and Time.time leave garbage per call (NoGarbageMath.cs): read once, on the fields.
+            float now = Time.time;
             for (int i = s_ThrownIn.Count - 1; i >= 0; i--)
             {
                 var rb = s_ThrownIn[i];
-                bool done = rb == null || rb.isKinematic || Time.time - s_ThrownInSince[i] > THROWN_IN_MAX_SECONDS;
-                if (!done && rb.velocity.magnitude < THROWN_IN_STILL_SPEED)
+                bool alive = IsAliveDirect(rb);
+                bool done = !alive || rb.isKinematic || now - s_ThrownInSince[i] > THROWN_IN_MAX_SECONDS;
+                if (!done && NoGarbageMath.Length(rb.velocity) < THROWN_IN_STILL_SPEED)
                 {
-                    if (s_ThrownInStill[i] < 0f) s_ThrownInStill[i] = Time.time;
-                    done = Time.time - s_ThrownInStill[i] > THROWN_IN_STILL_SECONDS;
+                    if (s_ThrownInStill[i] < 0f) s_ThrownInStill[i] = now;
+                    done = now - s_ThrownInStill[i] > THROWN_IN_STILL_SECONDS;
                 }
                 else if (!done) s_ThrownInStill[i] = -1f;
                 if (!done) continue;
-                if (rb != null)
+                if (alive)
                 {
-                    rb.velocity = Vector3.zero; rb.angularVelocity = Vector3.zero; rb.isKinematic = true;
+                    rb.velocity = new Vector3(0f, 0f, 0f); rb.angularVelocity = new Vector3(0f, 0f, 0f); rb.isKinematic = true;
                     if (s_ThrownInRoom != null && s_ThrownInRoom.Borrowed) ShowThrownInView(s_ThrownInRoom, rb, true);
                 }
                 s_ThrownIn.RemoveAt(i); s_ThrownInSince.RemoveAt(i); s_ThrownInStill.RemoveAt(i);
@@ -291,37 +296,48 @@ namespace SeamlessInteriors
         // launch: the speed to judge by while the thing has none of its own yet. True once carried.
         internal static bool MaybeCarryProjectileThroughWindow(Component projectile, Vector3 launch = default)
         {
-            if (s_ShotThroughFailed || projectile == null) return false;
+            // Called for every arrow, stone and flare each physics step: Unity's null tests and math leave
+            // garbage, so IsAliveDirect and NoGarbageMath.cs until something actually crosses.
+            if (s_ShotThroughFailed || !IsAliveDirect(projectile)) return false;
             if (!AnyWindowOpenForShots()) return false;
             try
             {
                 var rb = projectile.GetComponent<Rigidbody>();
-                if (rb == null) return false;
+                if (!IsAliveDirect(rb)) return false;
                 // A nocked arrow or a stone in the hand moves with the player, not through the window.
                 Transform pt = GameManager.GetPlayerTransform();
                 Camera cam = GameManager.GetMainCamera();
-                if ((pt != null && projectile.transform.IsChildOf(pt)) || (cam != null && projectile.transform.IsChildOf(cam.transform))) return false;
+                Transform projT = projectile.transform;
+                if ((IsAliveDirect(pt) && projT.IsChildOf(pt)) || (IsAliveDirect(cam) && projT.IsChildOf(cam.transform))) return false;
                 // An arrow flies kinematic, on its own velocity, sweeping from its last place.
                 var arrow = projectile.TryCast<ArrowItem>();
-                Vector3 cur = projectile.transform.position;
-                Vector3 v = arrow != null ? arrow.m_LastVelocity : rb.velocity;
+                bool isArrow = (object)arrow != null;   // TryCast's answer on a live projectile
+                Vector3 cur = projT.position;
+                Vector3 rbVelocity = rb.velocity;
+                Vector3 v = isArrow ? arrow.m_LastVelocity : rbVelocity;
                 // Just loosed it has no speed yet, and its first step hits the room's wall over the
                 // window (live, 2026-10-18): it is judged on its release speed along its nose instead.
-                if (arrow != null && v.sqrMagnitude < 0.25f && rb.velocity.sqrMagnitude < 0.25f) v = projectile.transform.forward * arrow.m_ReleaseVelocity;
-                if (v.sqrMagnitude < 0.25f && rb.velocity.sqrMagnitude < 0.25f) v = launch;
-                Vector3 from = arrow != null && (arrow.m_LastPosition - cur).sqrMagnitude < 25f ? arrow.m_LastPosition : cur;
-                if (rb.isKinematic && arrow == null) return false;
-                if (v.sqrMagnitude < 0.25f) return false;
+                if (isArrow && NoGarbageMath.SqrLength(v) < 0.25f && NoGarbageMath.SqrLength(rbVelocity) < 0.25f) v = NoGarbageMath.Scale(projT.forward, arrow.m_ReleaseVelocity);
+                if (NoGarbageMath.SqrLength(v) < 0.25f && NoGarbageMath.SqrLength(rbVelocity) < 0.25f) v = launch;
+                Vector3 from = cur;
+                if (isArrow)
+                {
+                    Vector3 last = arrow.m_LastPosition;
+                    if (NoGarbageMath.SqrLength(NoGarbageMath.Sub(last, cur)) < 25f) from = last;
+                }
+                if (rb.isKinematic && !isArrow) return false;
+                if (NoGarbageMath.SqrLength(v) < 0.25f) return false;
 
                 // From its last place to three steps (frames, for a thrown thing) and a hand ahead.
-                Vector3 to = cur + v * (Mathf.Max(Time.fixedDeltaTime, Time.deltaTime) * 3f) + v.normalized * 0.5f;
-                Vector3 seg = to - from;
-                float len = seg.magnitude;
+                Vector3 to = NoGarbageMath.AddScaled(NoGarbageMath.AddScaled(cur, v, System.Math.Max(Time.fixedDeltaTime, Time.deltaTime) * 3f), NoGarbageMath.Normalized(v), 0.5f);
+                Vector3 seg = NoGarbageMath.Sub(to, from);
+                float len = NoGarbageMath.Length(seg);
                 if (len < 0.01f) return false;
-                int best = FindOpenWindowCrossing(from, seg / len, len, out float t, out Vector3 hit);
+                Vector3 segDir = new Vector3(seg.x / len, seg.y / len, seg.z / len);
+                int best = FindOpenWindowCrossing(from, segDir, len, out float t, out Vector3 hit);
                 if (best < 0)
                 {
-                    if (!FindOutsideOpenWindowCrossing(from, seg / len, len, out Vector3 inRoom, out int roomWindow, out OutsideInBuilding room)) return false;
+                    if (!FindOutsideOpenWindowCrossing(from, segDir, len, out Vector3 inRoom, out int roomWindow, out OutsideInBuilding room)) return false;
                     HoldRoomSolidFor(room, rb);
                     Vector3 inShift = inRoom - cur;
                     rb.position += inShift;
@@ -378,7 +394,7 @@ namespace SeamlessInteriors
             for (int i = s_Thrown.Count - 1; i >= 0; i--)
             {
                 var item = s_Thrown[i];
-                if (item == null || Time.time > s_ThrownUntil[i] || MaybeCarryProjectileThroughWindow(item))
+                if (!IsAliveDirect(item) || Time.time > s_ThrownUntil[i] || MaybeCarryProjectileThroughWindow(item))
                 {
                     s_Thrown.RemoveAt(i);
                     s_ThrownUntil.RemoveAt(i);
@@ -397,20 +413,21 @@ namespace SeamlessInteriors
                 var wantOff = new System.Collections.Generic.List<Collider>();
                 foreach (var sash in s_WindowSashes)
                 {
-                    if (sash.Go == null) continue;
+                    if (!IsAliveDirect(sash.Go)) continue;   // Unity's null tests leave garbage (NoGarbageMath.cs)
                     KeepSashBlock(sash);
                     // The hall's glass is one for the whole building: its collider stays, the open pane is crossed by the redirect.
                     if (sash.Shown <= 0.01f || sash.SharedGlass || sash.Opening >= s_WindowPortalOpenings.Count) continue;
                     var glass = s_WindowPortalOpenings[sash.Opening].Glass;
                     if (glass == null) continue;
                     foreach (var g in glass)
-                        if (g != null) foreach (var c in g.GetComponents<Collider>()) if (c != null && !c.isTrigger) wantOff.Add(c);
+                        if (IsAliveDirect(g)) foreach (var c in g.GetComponents<Collider>()) if (IsAliveDirect(c) && !c.isTrigger) wantOff.Add(c);
                 }
                 for (int i = s_ShotGlassOff.Count - 1; i >= 0; i--)
                 {
                     var c = s_ShotGlassOff[i];
-                    if (c != null && wantOff.Contains(c)) continue;
-                    if (c != null) c.enabled = true;
+                    bool alive = IsAliveDirect(c);
+                    if (alive && wantOff.Contains(c)) continue;
+                    if (alive) c.enabled = true;
                     s_ShotGlassOff.RemoveAt(i);
                 }
                 foreach (var c in wantOff)
@@ -428,7 +445,7 @@ namespace SeamlessInteriors
         // A thin box over the sash's pane, riding with it.
         private static void KeepSashBlock(WindowSash sash)
         {
-            if (sash.Go.transform.Find("SI_SashBlock") != null) return;
+            if (IsAliveDirect(sash.Go.transform.Find("SI_SashBlock"))) return;
             var opening = s_WindowPortalOpenings[sash.Opening];
             float top = sash.RailTop > sash.Seam ? sash.RailTop : sash.Seam + 0.03f;
             var go = new GameObject("SI_SashBlock");

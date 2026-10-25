@@ -227,7 +227,7 @@ namespace SeamlessInteriors
                 s_PlaceTemperatures.Clear();
             }
 
-            string place = s_EnteredSpace != null ? s_EnteredSpaceId : REGION_PLACE;
+            string place = IsAliveDirect(s_EnteredSpace) ? s_EnteredSpaceId : REGION_PLACE;   // Unity's != leaves garbage (NoGarbageMath.cs)
             SamplePlaceTemperature(place);
 
             if (place != s_ContextPlace)
@@ -336,7 +336,7 @@ namespace SeamlessInteriors
         private static bool VisitModComponent(ModComponentEntry entry, string place, bool tick)
         {
             MonoBehaviour behaviour = entry.Behaviour;
-            if (behaviour == null) return false;
+            if (!IsAliveDirect(behaviour)) return false;
             if (entry.Kind.Update == null || entry.Kind.Failed) return true;
 
             if (!entry.Checked)
@@ -424,7 +424,7 @@ namespace SeamlessInteriors
             if (!scene.IsValid() || !IsRegionScene(scene)) return null;
 
             SeamlessInteriorInstance inside;
-            if (s_EnteredSpace != null && ActiveInteriors.TryGetValue(s_EnteredSpaceId, out inside) && inside != null
+            if (IsAliveDirect(s_EnteredSpace) && ActiveInteriors.TryGetValue(s_EnteredSpaceId, out inside) && inside != null
                 && inside.IsPositionInVolume(root.position))
                 return s_EnteredSpaceId;
             return REGION_PLACE;
@@ -492,7 +492,7 @@ namespace SeamlessInteriors
             s_NextPlaceSample = now + PLACE_SAMPLE_SECONDS;
 
             Weather weather = GameManager.GetWeatherComponent();
-            if (weather != null) s_PlaceTemperatures[place] = weather.GetCurrentTemperature();
+            if (IsAliveDirect(weather)) s_PlaceTemperatures[place] = weather.GetCurrentTemperature();
         }
 
         // ─── Giving components back to the game ───

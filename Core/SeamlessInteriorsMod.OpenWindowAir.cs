@@ -40,21 +40,23 @@ namespace SeamlessInteriors
             try
             {
                 int open = 0;
-                Vector3 nearest = Vector3.zero;
+                // On the fields: Unity's math, Vector3.zero and null tests leave garbage every frame (NoGarbageMath.cs).
+                Vector3 nearest = new Vector3(0f, 0f, 0f);
                 float nearestDist = float.MaxValue;
                 Camera main = GameManager.GetMainCamera();
-                Vector3 eye = main != null ? main.transform.position : Vector3.zero;
+                bool mainAlive = IsAliveDirect(main);
+                Vector3 eye = mainAlive ? main.transform.position : new Vector3(0f, 0f, 0f);
                 foreach (var sash in s_WindowSashes)
                 {
                     if (!IsRoomWindowOpen(s_WindowPortalInstanceId, StateOf(sash))) continue;
                     open++;
                     var opening = s_WindowPortalOpenings[sash.Opening];
-                    float d = Vector3.Distance(eye, opening.GlassCenter);
+                    float d = NoGarbageMath.Distance(eye, opening.GlassCenter);
                     if (d < nearestDist) { nearestDist = d; nearest = opening.GlassCenter; }
                 }
 
                 TickOpenWindowCooling(open);
-                TickOpenWindowSound(open > 0 && main != null, nearest, nearestDist);
+                TickOpenWindowSound(open > 0 && mainAlive, nearest, nearestDist);
                 TickWindowEar(main);
             }
             catch (System.Exception ex)
@@ -69,17 +71,17 @@ namespace SeamlessInteriors
         {
             // Follows the space the player is in; another space starts again from no change.
             IndoorSpaceTrigger space = s_EnteredSpaceId != null && s_EnteredSpaceId == s_WindowPortalInstanceId ? s_EnteredSpace : null;
-            if (space != s_OpenAirSpace)
+            if (!NoGarbageMath.SameObject(space, s_OpenAirSpace))   // Unity's != and == leave garbage (NoGarbageMath.cs)
             {
-                if (s_OpenAirSpace != null) s_OpenAirSpace.m_TemperatureDeltaCelsius = 0f;
+                if (IsAliveDirect(s_OpenAirSpace)) s_OpenAirSpace.m_TemperatureDeltaCelsius = 0f;
                 s_OpenAirSpace = space;
                 s_OpenAirDelta = 0f;
             }
-            if (space == null) return;
+            if (!IsAliveDirect(space)) return;
 
             var weather = GameManager.GetWeatherComponent();
             var tod = GameManager.GetTimeOfDayComponent();
-            if (weather == null || tod == null) return;
+            if (!IsAliveDirect(weather) || !IsAliveDirect(tod)) return;
 
             // The room as it would be with every window shut, and the air outside it.
             float room = weather.m_CurrentTemperatureWithoutHeatSources - s_OpenAirDelta;
@@ -89,9 +91,9 @@ namespace SeamlessInteriors
             // Game minutes, so passing time and sleeping count; each open window halves the half-life.
             float minutes = tod.GetTODMinutes(Time.deltaTime);
             if (minutes <= 0f) return;
-            float half = OPEN_AIR_HALF_MINUTES / Mathf.Max(open, 1);
-            s_OpenAirDelta = target + (s_OpenAirDelta - target) * Mathf.Pow(0.5f, minutes / half);
-            if (open == 0 && Mathf.Abs(s_OpenAirDelta) < 0.01f) s_OpenAirDelta = 0f;
+            float half = OPEN_AIR_HALF_MINUTES / System.Math.Max(open, 1);
+            s_OpenAirDelta = target + (s_OpenAirDelta - target) * (float)System.Math.Pow(0.5f, minutes / half);
+            if (open == 0 && System.Math.Abs(s_OpenAirDelta) < 0.01f) s_OpenAirDelta = 0f;
             space.m_TemperatureDeltaCelsius = s_OpenAirDelta;
         }
 
@@ -99,7 +101,7 @@ namespace SeamlessInteriors
         {
             if (!wanted) { StopOpenWindowSound(); return; }
 
-            if (s_OpenAirEmitter == null)
+            if (!IsAliveDirect(s_OpenAirEmitter))
             {
                 s_OpenAirEmitter = new GameObject("SI_OpenWindowWind");
                 Object.DontDestroyOnLoad(s_OpenAirEmitter);
@@ -109,15 +111,15 @@ namespace SeamlessInteriors
             s_OpenAirEmitter.transform.position = window;
 
             // Heard only by the listener, at a level set by the distance to the glass, eased at both ends.
-            float far = Mathf.Clamp01((distance - OPEN_AIR_SOUND_FULL_WITHIN) / (OPEN_AIR_SOUND_GONE_AT - OPEN_AIR_SOUND_FULL_WITHIN));
+            float far = NoGarbageMath.Clamp01((distance - OPEN_AIR_SOUND_FULL_WITHIN) / (OPEN_AIR_SOUND_GONE_AT - OPEN_AIR_SOUND_FULL_WITHIN));
             float target = 1f - far * far * (3f - 2f * far);
 
             bool starting = s_OpenAirWindId == 0 || AkSoundEngine.GetEventIDFromPlayingID(s_OpenAirWindId) != OutdoorWindEvent;
             if (starting) s_OpenAirGain = 0f;   // a new loop rises from silence
-            float gain = s_OpenAirGain < 0f ? target : Mathf.Lerp(s_OpenAirGain, target, 1f - Mathf.Exp(-Time.unscaledDeltaTime / OPEN_AIR_SOUND_GLIDE_SECONDS));
+            float gain = s_OpenAirGain < 0f ? target : NoGarbageMath.Lerp(s_OpenAirGain, target, 1f - (float)System.Math.Exp(-Time.unscaledDeltaTime / OPEN_AIR_SOUND_GLIDE_SECONDS));
             Camera main = GameManager.GetMainCamera();
-            var listener = main != null ? main.GetComponent<AkAudioListener>() : null;
-            if (listener != null && (starting || Mathf.Abs(gain - s_OpenAirGain) > 0.002f))
+            var listener = IsAliveDirect(main) ? main.GetComponent<AkAudioListener>() : null;
+            if (IsAliveDirect(listener) && (starting || System.Math.Abs(gain - s_OpenAirGain) > 0.002f))
                 AkSoundEngine.SetGameObjectOutputBusVolume(s_OpenAirEmitter, listener.gameObject, gain);
             s_OpenAirGain = gain;
 
@@ -148,18 +150,18 @@ namespace SeamlessInteriors
 
         private static void TickWindowEar(Camera main)
         {
-            if (!s_IsPlayerInsideClone || main == null || s_WindowPortalOpenings.Count == 0) { DropWindowEar(); return; }
+            if (!s_IsPlayerInsideClone || !IsAliveDirect(main) || s_WindowPortalOpenings.Count == 0) { DropWindowEar(); return; }
 
             Vector3 eye = main.transform.position;
             int nearest = -1; float nearestDist = float.MaxValue;
             for (int i = 0; i < s_WindowPortalOpenings.Count && i < s_WindowPortalDelta.Count; i++)
             {
-                float d = Vector3.Distance(eye, s_WindowPortalOpenings[i].GlassCenter);
+                float d = NoGarbageMath.Distance(eye, s_WindowPortalOpenings[i].GlassCenter);   // on the fields (NoGarbageMath.cs)
                 if (d < nearestDist) { nearestDist = d; nearest = i; }
             }
             if (nearest < 0) { DropWindowEar(); return; }
 
-            if (s_WindowEar == null)
+            if (!IsAliveDirect(s_WindowEar))
             {
                 s_WindowEar = new GameObject("SI_WindowEar");
                 Object.DontDestroyOnLoad(s_WindowEar);
@@ -167,20 +169,22 @@ namespace SeamlessInteriors
                 s_WindowEarGain = -1f;
                 s_WindowEarNextScan = 0f;
             }
-            AkSoundEngine.SetObjectPosition(s_WindowEar, eye + s_WindowPortalDelta[nearest], main.transform.forward, main.transform.up);
+            Transform mainT = main.transform;
+            AkSoundEngine.SetObjectPosition(s_WindowEar, NoGarbageMath.Add(eye, s_WindowPortalDelta[nearest]), mainT.forward, mainT.up);
 
             // How open that window is, eased with its sash, and how near the player stands to it.
             var sash = SashOf(nearest);
-            float open = sash != null ? Mathf.Clamp01(sash.Shown) : 0f;
-            float far = Mathf.Clamp01((nearestDist - OPEN_AIR_SOUND_FULL_WITHIN) / (OPEN_AIR_SOUND_GONE_AT - OPEN_AIR_SOUND_FULL_WITHIN));
-            float target = (1f - far * far * (3f - 2f * far)) * Mathf.Lerp(WINDOW_EAR_SHUT_GAIN, 1f, open);
-            float gain = s_WindowEarGain < 0f ? target : Mathf.Lerp(s_WindowEarGain, target, 1f - Mathf.Exp(-Time.unscaledDeltaTime / OPEN_AIR_SOUND_GLIDE_SECONDS));
+            float open = sash != null ? NoGarbageMath.Clamp01(sash.Shown) : 0f;
+            float far = NoGarbageMath.Clamp01((nearestDist - OPEN_AIR_SOUND_FULL_WITHIN) / (OPEN_AIR_SOUND_GONE_AT - OPEN_AIR_SOUND_FULL_WITHIN));
+            float target = (1f - far * far * (3f - 2f * far)) * NoGarbageMath.Lerp(WINDOW_EAR_SHUT_GAIN, 1f, open);
+            float gain = s_WindowEarGain < 0f ? target : NoGarbageMath.Lerp(s_WindowEarGain, target, 1f - (float)System.Math.Exp(-Time.unscaledDeltaTime / OPEN_AIR_SOUND_GLIDE_SECONDS));
 
             bool added = false;
-            if (Time.unscaledTime >= s_WindowEarNextScan)
+            float unscaledNow = Time.unscaledTime;
+            if (unscaledNow >= s_WindowEarNextScan)
             {
-                s_WindowEarNextScan = Time.unscaledTime + WINDOW_EAR_SCAN_SECONDS;
-                s_WindowEarEmitters.RemoveAll(go => go == null);
+                s_WindowEarNextScan = unscaledNow + WINDOW_EAR_SCAN_SECONDS;
+                s_WindowEarEmitters.RemoveAll(go => !IsAliveDirect(go));
                 foreach (var ai in Object.FindObjectsOfType<BaseAi>())
                 {
                     if (ai == null) continue;
@@ -195,9 +199,9 @@ namespace SeamlessInteriors
                     }
                 }
             }
-            if (added || s_WindowEarGain < 0f || Mathf.Abs(gain - s_WindowEarGain) > 0.002f)
+            if (added || s_WindowEarGain < 0f || System.Math.Abs(gain - s_WindowEarGain) > 0.002f)
                 foreach (var go in s_WindowEarEmitters)
-                    if (go != null) AkSoundEngine.SetGameObjectOutputBusVolume(go, s_WindowEar, gain);
+                    if (IsAliveDirect(go)) AkSoundEngine.SetGameObjectOutputBusVolume(go, s_WindowEar, gain);
             s_WindowEarGain = gain;
         }
 

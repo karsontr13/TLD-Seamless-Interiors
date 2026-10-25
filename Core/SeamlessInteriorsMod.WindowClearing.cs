@@ -116,7 +116,7 @@ namespace SeamlessInteriors
                     for (int i = 0; i < s_CleanTargets.Count; i++)
                     {
                         var t = s_CleanTargets[i];
-                        if (t.Go == null) { s_CleanTargetsKey = null; return; }   // gone with its scene: rebuild next frame
+                        if (!IsAliveDirect(t.Go)) { s_CleanTargetsKey = null; return; }   // gone with its scene: rebuild next frame
                         bool frosted = t.Inside ? !IsWindowPaneCleared(t.Index) : !IsWindowCleaned(s_OutsideInInstanceId, t.Index);
                         // A window frosting over again can be wiped before it is full.
                         if (t.Inside && WindowCoverLayers && !frosted) { float f, s; GetRoomPaneCover(t.Index, out f, out s); frosted = f >= 0.2f; }
@@ -135,7 +135,7 @@ namespace SeamlessInteriors
 
                 // Every frame, only the window being wiped.
                 var held = s_CleanHeldTarget;
-                if (held != null && held.Go != null)
+                if (held != null && IsAliveDirect(held.Go))
                 {
                     var t = held;
                     bool frosted = t.Frosted;
@@ -184,35 +184,40 @@ namespace SeamlessInteriors
             Camera main = GameManager.GetMainCamera();
             // No wipeable window within reach: no ray (plain float math, from where each target was put).
             bool near = false;
-            if (main != null)
+            bool mainAlive = IsAliveDirect(main);
+            if (mainAlive)
             {
                 Vector3 eye = main.transform.position;
                 float reach = CLEAN_DOOR_GUARD_REACH * CLEAN_DOOR_GUARD_REACH;
                 foreach (var t in s_CleanTargets)
                 {
-                    if (t.Go == null || !t.Go.activeSelf) continue;
+                    // Distance first: the engine reads below leave garbage, so only near targets pay them.
                     float dx = t.Position.x - eye.x, dy = t.Position.y - eye.y, dz = t.Position.z - eye.z;
-                    if (dx * dx + dy * dy + dz * dz < reach) { near = true; break; }
+                    if (dx * dx + dy * dy + dz * dz >= reach) continue;
+                    if (!IsAliveDirect(t.Go) || !t.Go.activeSelf) continue;
+                    near = true; break;
                 }
             }
-            if (main != null && near)
+            if (mainAlive && near)
             {
-                var hits = Physics.RaycastAll(main.transform.position, main.transform.forward, CLEAN_DOOR_GUARD_REACH, ~0, QueryTriggerInteraction.Collide);
+                Transform mainT = main.transform;
+                var hits = Physics.RaycastAll(mainT.position, mainT.forward, CLEAN_DOOR_GUARD_REACH, ~0, QueryTriggerInteraction.Collide);
                 float target = float.MaxValue, solid = float.MaxValue;
                 foreach (var hit in hits)
                 {
                     var c = hit.collider;
-                    if (c == null) continue;
-                    if (c.name.StartsWith("SI_CleanWindow_")) { if (hit.distance < target) target = hit.distance; }
-                    else if (!c.isTrigger && c.gameObject.layer != vp_Layer.Player && hit.distance < solid) solid = hit.distance;
+                    if (!IsAliveDirect(c)) continue;
+                    float distance = hit.distance;   // read once: each engine read leaves garbage (NoGarbageMath.cs)
+                    if (c.name.StartsWith("SI_CleanWindow_")) { if (distance < target) target = distance; }
+                    else if (!c.isTrigger && c.gameObject.layer != vp_Layer.Player && distance < solid) solid = distance;
                 }
                 onTarget = target < solid;
-                if (onTarget && s_CleanDoorSuppressed == null)
+                if (onTarget && !IsAliveDirect(s_CleanDoorSuppressed))
                     foreach (var hit in hits)
                         if (hit.collider != null && hit.collider.isTrigger && hit.distance > target && hit.collider.GetComponent<LoadScene>() != null) { door = hit.collider; break; }
             }
 
-            if (s_CleanDoorSuppressed != null && !onTarget) ReleaseCleanDoor();
+            if (!onTarget && IsAliveDirect(s_CleanDoorSuppressed)) ReleaseCleanDoor();
             if (door != null) { door.enabled = false; s_CleanDoorSuppressed = door; }
         }
 

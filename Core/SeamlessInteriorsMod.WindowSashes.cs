@@ -154,7 +154,7 @@ namespace SeamlessInteriors
                 for (int i = 0; i < s_WindowSashes.Count; i++)
                 {
                     var sash = s_WindowSashes[i];
-                    if (sash.Go == null || sash.PaneRoot == null) { s_WindowSashesKey = null; return; }   // gone with its scene
+                    if (!IsAliveDirect(sash.Go) || !IsAliveDirect(sash.PaneRoot)) { s_WindowSashesKey = null; return; }   // gone with its scene
                     // A hinged pair's frost is cut by its first sash for both.
                     if (sash.HingedPanes == null) FollowFrostLayer(sash);
                     else if (IsFirstHingedSash(sash)) FollowHallFrost(sash);
@@ -988,10 +988,12 @@ namespace SeamlessInteriors
         // The lower pane's glass shows when the game's glass does, in the material it has.
         private static void FollowGlass(WindowSash sash)
         {
-            if (sash.LowGlass == null || sash.GlassRenderer == null) return;
+            // Every frame per sash: Unity's null tests and != leave garbage (NoGarbageMath.cs).
+            if (!IsAliveDirect(sash.LowGlass) || !IsAliveDirect(sash.GlassRenderer)) return;
             bool shown = sash.GlassRenderer.enabled && !sash.NoGameGlass;
             if (sash.LowGlass.enabled != shown) sash.LowGlass.enabled = shown;
-            if (sash.LowGlass.sharedMaterial != sash.GlassRenderer.sharedMaterial) sash.LowGlass.sharedMaterial = sash.GlassRenderer.sharedMaterial;
+            var gameMaterial = sash.GlassRenderer.sharedMaterial;
+            if (!NoGarbageMath.SameObject(sash.LowGlass.sharedMaterial, gameMaterial)) sash.LowGlass.sharedMaterial = gameMaterial;
         }
 
         // The cover layer's frost quad is cut at the seam once it exists, and again whenever it is remade.
@@ -1002,13 +1004,19 @@ namespace SeamlessInteriors
             if (WindowCoverLayers && sash.Opening < s_CoverLayers.Count && sash.Opening < s_WindowPortalOpenings.Count) layer = s_CoverLayers[sash.Opening];
             if (layer != null) frost = layer.FrostGo;
 
-            if (frost != sash.TrackedFrost)
+            // Every frame per sash: Unity's null tests and != leave garbage (NoGarbageMath.cs).
+            bool frostAlive = IsAliveDirect(frost);
+            if (!NoGarbageMath.SameObject(frost, sash.TrackedFrost))
             {
                 DropSashFrost(sash);
                 sash.TrackedFrost = frost;
-                if (frost != null) SplitSashFrost(sash, layer);
+                if (frostAlive) SplitSashFrost(sash, layer);
             }
-            if (sash.LowFrost != null && frost != null && sash.LowFrost.activeSelf != frost.activeSelf) sash.LowFrost.SetActive(frost.activeSelf);
+            if (IsAliveDirect(sash.LowFrost) && frostAlive)
+            {
+                bool frostActive = frost.activeSelf;
+                if (sash.LowFrost.activeSelf != frostActive) sash.LowFrost.SetActive(frostActive);
+            }
         }
 
         private static void SplitSashFrost(WindowSash sash, WindowCoverLayer layer)
@@ -1198,7 +1206,7 @@ namespace SeamlessInteriors
                 // Layers made again or gone take their own uncut quad with them.
                 s_OutsideOpenStale.Clear();
                 foreach (var pair in s_OutsideOpenCuts)
-                    if (pair.Key.FrostGo == null || pair.Key.FrostGo != pair.Value.Frost) s_OutsideOpenStale.Add(pair.Key);
+                    if (!IsAliveDirect(pair.Key.FrostGo) || !NoGarbageMath.SameObject(pair.Key.FrostGo, pair.Value.Frost)) s_OutsideOpenStale.Add(pair.Key);
                 foreach (var layer in s_OutsideOpenStale) UncutOutsideFrost(layer);
 
                 foreach (var held in s_OutsideSashes) held.Wanted = false;
@@ -1224,7 +1232,8 @@ namespace SeamlessInteriors
                         // whole cover is the glass: it stands on the snow bank's plane, and the sash's own pane drawn
                         // back in the room left a gap behind the bank that no fill closed well (owner, 2026-10-18).
                         bool hall = room >= 0 && a < b.ApertureOpenings.Count && IsHingedWindow(b.ApertureOpenings[a]);
-                        if (layer != null && layer.FrostGo != null && hall)
+                        bool layerFrostAlive = layer != null && IsAliveDirect(layer.FrostGo);   // Unity's != leaves garbage (NoGarbageMath.cs)
+                        if (layerFrostAlive && hall)
                         {
                             // The hall's cover loses the cells of whichever of its panes stand open.
                             int mask = (open ? 1 : 0) | (OpenableWindows && IsRoomWindowOpen(b.InstanceId, room + CASEMENT_STATE) ? 2 : 0);
@@ -1235,7 +1244,7 @@ namespace SeamlessInteriors
                             if (sashHere) KeepHallSashCovers(b.InstanceId, room, layer, b.ApertureOpenings[a]);
                             ShowMullionTop(b.Instance, a, OpensWhole(b.ApertureOpenings[a]) ? mask == 0 : (mask & 2) == 0);
                         }
-                        else if (layer != null && layer.FrostGo != null)
+                        else if (layerFrostAlive)
                         {
                             bool wantCut = open;
                             bool cut = s_OutsideOpenCuts.ContainsKey(layer);
@@ -1248,7 +1257,7 @@ namespace SeamlessInteriors
                 for (int i = s_OutsideSashes.Count - 1; i >= 0; i--)
                 {
                     var held = s_OutsideSashes[i];
-                    if (held.Wanted && (held.Sash == null || (held.Sash.Go != null && held.Sash.PaneRoot != null)))
+                    if (held.Wanted && (held.Sash == null || (IsAliveDirect(held.Sash.Go) && IsAliveDirect(held.Sash.PaneRoot))))
                     {
                         if (held.Extra != null) foreach (var s in held.Extra) FollowGlass(s);
                         else if (held.Sash != null) FollowGlass(held.Sash);

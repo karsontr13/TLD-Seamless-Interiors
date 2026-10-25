@@ -510,7 +510,8 @@ namespace SeamlessInteriors
 
             SeamlessInteriorInstance instance = s_IsPlayerInsideClone ? ResolveOccupiedInstance() : null;
 
-            if (instance == null || instance.MasterInterior == null || instance.ExteriorShell == null)
+            // Every frame: existence by IsAliveDirect, since Unity's "==" leaves garbage (NoGarbageMath.cs).
+            if (instance == null || !IsAliveDirect(instance.MasterInterior) || !IsAliveDirect(instance.ExteriorShell))
             {
                 if (s_WindowPortalInstanceId != null) TeardownWindowPortals();
                 return;
@@ -542,7 +543,7 @@ namespace SeamlessInteriors
             // NOT UnityEngine.Camera.main. TLD's FPSCamera carries the MainCamera tag but its
             // Camera component is DISABLED - the game renders it by hand - and Camera.main only
             // ever returns enabled cameras. Its transform and matrices are valid while disabled.
-            if (main == null) return;
+            if (!IsAliveDirect(main)) return;
 
             // NOTE: everything positional here - the openings, the quads' world-space vertices,
             // and each opening's paired delta - is captured at setup and assumes the clone does
@@ -575,8 +576,8 @@ namespace SeamlessInteriors
         // business; every path out switches the shell on.
         private static void KeepParkedShellOn(SeamlessInteriorInstance instance)
         {
-            if (instance == null || instance.ExteriorShell == null || instance.Config == null) return;
-            if (instance.Config.ParkOffset == Vector3.zero) return;
+            if (instance == null || !IsAliveDirect(instance.ExteriorShell) || instance.Config == null) return;
+            if (NoGarbageMath.SqrLength(instance.Config.ParkOffset) < 9.99999944E-11f) return;   // Unity's "== Vector3.zero", on the fields
             if (!instance.ExteriorShell.activeSelf) instance.ExteriorShell.SetActive(true);
         }
 
@@ -1750,8 +1751,10 @@ namespace SeamlessInteriors
         {
             if (slot < 0 || slot >= s_WindowPortalSlotCount) return false;
 
+            // Every frame per drawn slot: existence by IsAliveDirect and identity by native pointer, since
+            // Unity's "==" and "!=" each leave garbage (NoGarbageMath.cs).
             var target = s_WindowPortalSlotTargets[slot];
-            if (target != null && (target.width != width || target.height != height))
+            if (IsAliveDirect(target) && (target.width != width || target.height != height))
             {
                 // The player changed resolution or windowed mode. Drop the stale target rather
                 // than keeping a portal at the old pixel count for the rest of the session.
@@ -1762,7 +1765,7 @@ namespace SeamlessInteriors
                 target = null;
             }
 
-            if (target == null)
+            if (!IsAliveDirect(target))
             {
                 // HDR is required: an LDR target double-tonemaps and blows the sky out. The alpha
                 // channel is not, because the quad is opaque, so prefer the packed float format
@@ -1787,16 +1790,17 @@ namespace SeamlessInteriors
 
             // Outside the block above: a target taken back from the last visit needs its material
             // too, and the material is made per visit.
-            if (s_WindowPortalSlotMaterials[slot] == null)
+            if (!IsAliveDirect(s_WindowPortalSlotMaterials[slot]))
             {
                 var material = new Material(Shader.Find("Unlit/Texture"));
                 material.renderQueue = WINDOW_VIEW_OUT_RENDER_QUEUE;
                 s_WindowPortalSlotMaterials[slot] = material;
             }
-            if (s_WindowPortalSlotMaterials[slot].mainTexture != target) s_WindowPortalSlotMaterials[slot].mainTexture = target;
+            var shownTexture = s_WindowPortalSlotMaterials[slot].mainTexture;
+            if ((object)shownTexture == null || shownTexture.Pointer != target.Pointer) s_WindowPortalSlotMaterials[slot].mainTexture = target;
 
             var cam = s_WindowPortalCams[slot];
-            if (cam == null)
+            if (!IsAliveDirect(cam))
             {
                 var camObject = new GameObject("SI_WindowPortalCamera" + slot);
                 cam = camObject.AddComponent<Camera>();
@@ -1831,7 +1835,8 @@ namespace SeamlessInteriors
                 s_WindowPortalCams[slot] = cam;
             }
 
-            if (cam.targetTexture != target) cam.targetTexture = target;
+            var camTarget = cam.targetTexture;
+            if ((object)camTarget == null || camTarget.Pointer != target.Pointer) cam.targetTexture = target;
             return true;
         }
 
@@ -1849,8 +1854,8 @@ namespace SeamlessInteriors
             for (int i = s_RowHiddenRoomObjects.Count - 1; i >= 0; i--)
             {
                 var renderer = s_RowHiddenRoomObjects[i];
-                if (renderer == null) { s_RowHiddenRoomObjects.RemoveAt(i); continue; }
-                if (renderer.enabled) renderer.enabled = false;
+                if (!IsAliveDirect(renderer)) { s_RowHiddenRoomObjects.RemoveAt(i); continue; }
+                renderer.enabled = false;   // the setter leaves no garbage; reading "enabled" first did
             }
         }
 

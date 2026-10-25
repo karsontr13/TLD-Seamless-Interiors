@@ -120,7 +120,7 @@ namespace SeamlessInteriors
         internal static void TickInteriorProbes()
         {
             SeamlessInteriorInstance inst = IsDarkAtmosphereMode ? ClonedInteriorLightingGuard.Owner : null;
-            if (inst == null || inst.MasterInterior == null || inst.Config == null) { s_ProbeTarget = null; return; }
+            if (inst == null || !IsAliveDirect(inst.MasterInterior) || inst.Config == null) { s_ProbeTarget = null; return; }
 
             ProbeSet set;
             if (!s_InteriorProbes.TryGetValue(inst.Config.InteriorSceneBaseName ?? "", out set)) return;
