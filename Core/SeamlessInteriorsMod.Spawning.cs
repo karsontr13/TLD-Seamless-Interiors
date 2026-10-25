@@ -929,7 +929,7 @@ namespace SeamlessInteriors
                     // An object left where a parked room used to stand is judged, and then placed,
                     // where the room is now. See TryCarryStrayToParkedRoom.
                     Vector3 at = t.position;
-                    bool carried = hasFilter && !filter.Contains(at) && TryCarryStrayToParkedRoom(instance, filter, ref at);
+                    bool carried = hasFilter && !filter.Contains(at) && TryCarryStrayToParkedRoom(instance, t, filter, ref at);
                     if (!instance.IsPositionInsideRaycastOnly(at, SeamlessInteriorInstance.ITEM_RAY_ORIGIN_LIFT)) continue;
                     if (carried && !CarryStrayIntoParkedRoom(instance, t, at)) continue;   // a leaked copy: the purge's
 
@@ -995,7 +995,7 @@ namespace SeamlessInteriors
             // 1) Coarse AABB - a single float comparison.
             //    ...and for a parked room, the same comparison where the room USED to stand. See
             //    TryCarryStrayToParkedRoom: the rest of the tests then judge the carried position.
-            if (hasFilter && !filter.Contains(pos) && !TryCarryStrayToParkedRoom(instance, filter, ref pos)) return false;
+            if (hasFilter && !filter.Contains(pos) && !TryCarryStrayToParkedRoom(instance, t, filter, ref pos)) return false;
 
             // 2) Geometric volume test - does not rely on raycasts, so items on tables and
             //    shelves or near the ceiling are caught too. The volume is shrunk slightly

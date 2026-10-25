@@ -280,10 +280,14 @@ namespace SeamlessInteriors
         // or the room ends up with two of everything (the same dry run counted 17 such copies round
         // the 15 LakeRegion buildings). And the caller still demands a roof overhead at the carried
         // spot, the author's own test, so something left on a porch is not dragged indoors.
-        internal static bool TryCarryStrayToParkedRoom(SeamlessInteriorInstance instance, Bounds filter, ref Vector3 pos)
+        internal static bool TryCarryStrayToParkedRoom(SeamlessInteriorInstance instance, Transform stray, Bounds filter, ref Vector3 pos)
         {
             if (instance == null || instance.Config == null || !instance.Config.IsParked) return false;
             if (instance.MasterInterior == null || !instance.ContentHydrated) return false;
+
+            // Only loose objects: one under a parent is the region's own design (the note pinned to
+            // Foreman's Retreat's outside board was carried in and hung in the air, 2026-10-25).
+            if (stray != null && stray.parent != null) return false;
 
             Vector3 carried = ParkedInteriorPoint(instance, pos);
             if (!filter.Contains(carried)) return false;
