@@ -40,7 +40,10 @@ namespace SeamlessInteriors
         // and blends premultiplied, so color (-1, -1, -1, 0.5) over the first pass leaves half of
         // (first minus second), and the last draw doubles it back and scales it. The two targets
         // are full float because each pass's numbers are near 1 and the motion is their small
-        // difference; half floats left about two pixels of noise.
+        // difference; half floats left about two pixels of noise. Only red and green are kept
+        // (RGFloat): the game's pass writes motion length in blue, but the difference of two
+        // lengths is not a length, so blue is left at 0 (read as still, as distant scenery is in
+        // vanilla). Measured 2026-10-24 at the Hangar: view motion unchanged, blue 0; owner: "same".
         //
         // Owner, 2026-10-10, on a console prototype of this: the wall views in the store, "I'd call
         // that good for now"; Camp Office window 7 from outside, "That looks pretty darn good."
@@ -49,8 +52,6 @@ namespace SeamlessInteriors
         //  - A view camera that skipped a frame, or was just handed to another window, tells TAA
         //    nothing for one frame (HasBefore). The player's view of the frame before does not
         //    depend on which view asks; kept once a frame instead of per camera, the gap goes.
-        //  - The two targets are four full-float channels and only two are used. RGFloat would
-        //    halve them. Untried.
         //  - Never judged by eye: a frosted window (the frost is on the glass and is told it moves
         //    like the room), something standing in front of a view, the weapon over a view,
         //    turning while walking, and a single window looking out from inside.
@@ -121,9 +122,15 @@ namespace SeamlessInteriors
             return v;
         }
 
+        private static RenderTextureFormat ViewMotionTargetFormat()
+        {
+            return SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.RGFloat)
+                ? RenderTextureFormat.RGFloat : RenderTextureFormat.ARGBFloat;
+        }
+
         private static RenderTexture NewViewMotionTarget(int width, int height, string name)
         {
-            var target = new RenderTexture(width, height, 0, RenderTextureFormat.ARGBFloat);
+            var target = new RenderTexture(width, height, 0, ViewMotionTargetFormat());
             target.name = name;
             target.filterMode = FilterMode.Point;
             target.Create();
