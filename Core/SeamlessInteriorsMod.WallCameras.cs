@@ -530,9 +530,11 @@ namespace SeamlessInteriors
             SeamlessInteriorInstance instance = null;
             if (s_WindowPortalInstanceId != null) ActiveInteriors.TryGetValue(s_WindowPortalInstanceId, out instance);
 
+            // Every frame, so the arithmetic below is on the fields: Unity's own Vector3 and Matrix4x4
+            // operators, Mathf and "!= null" each leave garbage in the game (NoGarbageMath.cs).
             Vector3 eye = main.transform.position;
             Matrix4x4 view = main.worldToCameraMatrix, proj = main.projectionMatrix;
-            Matrix4x4 vp = proj * view;
+            Matrix4x4 vp = NoGarbageMath.Mul(proj, view);
             int sw = Screen.width, sh = Screen.height;
 
             // Which windows are on screen, each group's rectangle round them, and its priority.
@@ -546,8 +548,8 @@ namespace SeamlessInteriors
                 {
                     s_WallMemberOnScreen[i] = false;
                     var opening = s_WindowPortalOpenings[i];
-                    Vector3 corner = opening.PortalCenter - opening.Right * (opening.Width * 0.5f) - opening.Up * (opening.Height * 0.5f);
-                    float eyeDistance = Vector3.Dot(corner - eye, opening.Outward);
+                    Vector3 corner = NoGarbageMath.AddScaled(NoGarbageMath.AddScaled(opening.PortalCenter, opening.Right, -opening.Width * 0.5f), opening.Up, -opening.Height * 0.5f);
+                    float eyeDistance = NoGarbageMath.Dot(NoGarbageMath.Sub(corner, eye), opening.Outward);
                     if (eyeDistance <= WINDOW_PORTAL_MIN_EYE_DISTANCE) continue;
                     // Leaves the visible part in s_WindowPortalPoly.
                     if (!IsWindowOpeningOnScreen(opening, corner)) continue;
@@ -556,14 +558,14 @@ namespace SeamlessInteriors
                     for (int p = 0; p < s_WindowPortalPoly.Count; p++)
                     {
                         Vector3 q = s_WindowPortalPoly[p];
-                        Vector4 clip = vp * new Vector4(q.x, q.y, q.z, 1f);
+                        Vector4 clip = NoGarbageMath.MulPoint4(vp, q);
                         if (clip.w <= 1e-5f) continue;
                         float sx = (clip.x / clip.w * 0.5f + 0.5f) * sw, sy = (clip.y / clip.w * 0.5f + 0.5f) * sh;
                         if (sx < group.X0) group.X0 = sx; if (sx > group.X1) group.X1 = sx;
                         if (sy < group.Y0) group.Y0 = sy; if (sy > group.Y1) group.Y1 = sy;
                     }
                     // The same nearest-and-largest measure as the per-window cameras, summed over the wall.
-                    float straight = Mathf.Max((opening.PortalCenter - eye).magnitude, 0.1f);
+                    float straight = System.Math.Max(NoGarbageMath.Distance(opening.PortalCenter, eye), 0.1f);
                     group.Priority += (opening.Width * opening.Height) * (eyeDistance / straight) / (straight * straight);
                 }
                 if (!group.Visible || group.X1 <= group.X0 || group.Y1 <= group.Y0) { group.Visible = false; continue; }
@@ -573,7 +575,7 @@ namespace SeamlessInteriors
 
             // Nearest and largest first, as many as there are slots.
             s_WallOrder.Sort((a, b) => s_WallGroups[b].Priority.CompareTo(s_WallGroups[a].Priority));
-            int drawCount = Mathf.Min(s_WallOrder.Count, s_WindowPortalSlotCount);
+            int drawCount = System.Math.Min(s_WallOrder.Count, s_WindowPortalSlotCount);
 
             for (int g = 0; g < s_WallGroups.Count; g++) s_WallGroups[g].WasDrawn = false;
             for (int k = 0; k < s_WallSlotGroup.Length; k++) s_WallSlotGroup[k] = -1;
@@ -581,12 +583,12 @@ namespace SeamlessInteriors
             // Every window not drawn this frame shows the painted pane: its quad off.
             for (int i = 0; i < s_WindowPortalQuads.Count; i++)
             {
-                if (s_WindowPortalQuads[i] == null) continue;
+                if (!IsAliveDirect(s_WindowPortalQuads[i])) continue;
                 var r = s_WindowPortalQuads[i].GetComponent<MeshRenderer>();
-                if (r != null) r.enabled = false;
+                if (IsAliveDirect(r)) r.enabled = false;
             }
             for (int k = drawCount; k < s_WindowPortalCams.Length; k++)
-                if (s_WindowPortalCams[k] != null) s_WindowPortalCams[k].enabled = false;
+                if (IsAliveDirect(s_WindowPortalCams[k])) s_WindowPortalCams[k].enabled = false;
 
             for (int k = 0; k < drawCount; k++)
             {
@@ -597,7 +599,7 @@ namespace SeamlessInteriors
                 {
                     // The slot's camera may last have drawn a wall with a view matrix of its own.
                     var cam = s_WindowPortalCams[k];
-                    if (cam != null) cam.ResetWorldToCameraMatrix();
+                    if (IsAliveDirect(cam)) cam.ResetWorldToCameraMatrix();
                     DrawOneWindowPortal(group.Members[0], k, main, eye);
                     continue;
                 }
@@ -638,20 +640,20 @@ namespace SeamlessInteriors
             float h = float.MaxValue;
             foreach (int i in group.Members)
             {
-                float d = Vector3.Dot(s_WindowPortalOpenings[i].GlassCenter - eye, outward);
+                float d = NoGarbageMath.Dot(NoGarbageMath.Sub(s_WindowPortalOpenings[i].GlassCenter, eye), outward);
                 if (d < h) h = d;
             }
             if (h == float.MaxValue || h <= 0f) return 0f;               // standing past the wall
-            Vector3 nv = main.worldToCameraMatrix.MultiplyVector(outward); // view space, z toward the viewer
+            Vector3 nv = NoGarbageMath.MulDirection(main.worldToCameraMatrix, outward); // view space, z toward the viewer
             float cos = -nv.z;                                             // n . gaze
             if (cos <= 0.01f) return 0f;
-            return h / Mathf.Max(cos, FOG_FROM_WALL_MIN_COS);
+            return h / System.Math.Max(cos, FOG_FROM_WALL_MIN_COS);
         }
 
         private static int WallTargetSize(int need, int current)
         {
             if (current >= need && current - need < WALL_TARGET_SLACK) return current;
-            return Mathf.Max(WALL_TARGET_STEP, ((need + WALL_TARGET_STEP - 1) / WALL_TARGET_STEP) * WALL_TARGET_STEP);
+            return System.Math.Max(WALL_TARGET_STEP, ((need + WALL_TARGET_STEP - 1) / WALL_TARGET_STEP) * WALL_TARGET_STEP);
         }
 
         // THE WALL CAMERA DRAWS NOTHING NEARER THAN ITS WINDOWS. It stands where the player's eye is, carried
@@ -692,25 +694,26 @@ namespace SeamlessInteriors
         private static void DrawWallGroup(WallGroup group, int groupIndex, int slot, Camera main, Vector3 eye,
                                           Matrix4x4 view, Matrix4x4 proj, Matrix4x4 vp, int sw, int sh)
         {
-            int px0 = Mathf.Max(0, Mathf.FloorToInt(group.X0) - WALL_SCREEN_MARGIN), py0 = Mathf.Max(0, Mathf.FloorToInt(group.Y0) - WALL_SCREEN_MARGIN);
-            int px1 = Mathf.Min(sw, Mathf.CeilToInt(group.X1) + WALL_SCREEN_MARGIN), py1 = Mathf.Min(sh, Mathf.CeilToInt(group.Y1) + WALL_SCREEN_MARGIN);
+            int px0 = System.Math.Max(0, (int)System.Math.Floor(group.X0) - WALL_SCREEN_MARGIN), py0 = System.Math.Max(0, (int)System.Math.Floor(group.Y0) - WALL_SCREEN_MARGIN);
+            int px1 = System.Math.Min(sw, (int)System.Math.Ceiling(group.X1) + WALL_SCREEN_MARGIN), py1 = System.Math.Min(sh, (int)System.Math.Ceiling(group.Y1) + WALL_SCREEN_MARGIN);
             if (px1 <= px0 || py1 <= py0) return;
 
             var current = s_WindowPortalSlotTargets[slot];
-            int tw = WallTargetSize(px1 - px0, current != null ? current.width : 0);
-            int th = WallTargetSize(py1 - py0, current != null ? current.height : 0);
+            bool hasCurrent = IsAliveDirect(current);
+            int tw = WallTargetSize(px1 - px0, hasCurrent ? current.width : 0);
+            int th = WallTargetSize(py1 - py0, hasCurrent ? current.height : 0);
             if (!EnsureWindowPortalSlot(slot, main, tw, th)) return;
             Camera cam = s_WindowPortalCams[slot];
 
             // The player's lens, narrowed to the target's pixels on screen: one texel per pixel.
             float xa = px0 / (float)sw * 2f - 1f, xb = (px0 + tw) / (float)sw * 2f - 1f;
             float ya = py0 / (float)sh * 2f - 1f, yb = (py0 + th) / (float)sh * 2f - 1f;
-            Matrix4x4 narrow = Matrix4x4.identity;
+            Matrix4x4 narrow = NoGarbageMath.Identity();
             narrow.m00 = 2f / (xb - xa); narrow.m03 = -(xa + xb) / (xb - xa);
             narrow.m11 = 2f / (yb - ya); narrow.m13 = -(ya + yb) / (yb - ya);
 
             Vector3 offset = group.Offset;
-            cam.transform.SetPositionAndRotation(eye + offset, main.transform.rotation);
+            cam.transform.SetPositionAndRotation(NoGarbageMath.Add(eye, offset), main.transform.rotation);
             // LOD from the player's field of view, captured after the zoom (see DrawOneWindowPortal).
             // ORDER MATTERS: these reset an explicit projection matrix, so they go first.
             cam.fieldOfView = s_LateFieldOfView;
@@ -721,15 +724,16 @@ namespace SeamlessInteriors
             // fog left it (owner, 2026-10-10: "the fog is mostly absent from the far distant scenery. It
             // partially comes back if you get right up to the window", "View angle also changes it").
             float startsAt;
-            Matrix4x4 lens = StartingAtTheWindows(group, main, eye, narrow * proj, out startsAt);
+            Matrix4x4 lens = StartingAtTheWindows(group, main, eye, NoGarbageMath.Mul(narrow, proj), out startsAt);
             cam.nearClipPlane = startsAt;
             cam.farClipPlane = main.farClipPlane;
-            cam.worldToCameraMatrix = view * Matrix4x4.Translate(-offset);
+            Matrix4x4 roomToBuilding = NoGarbageMath.Translation(NoGarbageMath.Neg(offset));
+            cam.worldToCameraMatrix = NoGarbageMath.Mul(view, roomToBuilding);
             cam.projectionMatrix = lens;
             float fogStartsAt = ParkedCullEyeInForce ? FogFromTheGlass(group, main, eye) : 0f;
             UseWindowViewFogPass(cam, slot, main, fogStartsAt, true);   // see WindowViewFog.cs
             SharePlayerBuffersWith(cam, slot, main);   // see WindowViewFog.cs
-            TellTaaHowViewMoves(cam, main, Matrix4x4.Translate(-offset));   // see ViewMotionVectors.cs
+            TellTaaHowViewMoves(cam, main, roomToBuilding);   // see ViewMotionVectors.cs
             cam.enabled = true;
             s_WallSlotGroup[slot] = groupIndex;
 
@@ -737,13 +741,15 @@ namespace SeamlessInteriors
             Material material = s_WindowPortalSlotMaterials[slot];
             foreach (int i in group.Members)
             {
-                if (!s_WallMemberOnScreen[i] || s_WindowPortalQuads[i] == null) continue;
+                if (!s_WallMemberOnScreen[i] || !IsAliveDirect(s_WindowPortalQuads[i])) continue;
                 var uvs = s_WallUV[i];
                 WriteScreenGridUVs(s_WallVX[i], s_WallVY[i], s_WallVZ[i], s_WallUVF[i], uvs, vp, sw, sh, px0, py0, tw, th);
                 var quad = s_WindowPortalQuads[i];
                 quad.GetComponent<MeshFilter>().sharedMesh.uv = uvs;
                 var renderer = quad.GetComponent<MeshRenderer>();
-                if (renderer.sharedMaterial != material) renderer.sharedMaterial = material;
+                // Compared by native object: "!=" on two Unity objects is a call that leaves garbage.
+                var shown = renderer.sharedMaterial;
+                if ((object)shown == null || shown.Pointer != material.Pointer) renderer.sharedMaterial = material;
                 renderer.enabled = true;
                 TellTaaWhichSheet(cam, renderer);
             }
@@ -756,10 +762,11 @@ namespace SeamlessInteriors
 
         private static int WallSlotOf(Camera camera)
         {
-            if (camera == null || s_WindowPortalCams == null) return -1;
-            int id = camera.GetInstanceID();
+            // By native object, as IsWindowPortalCamera does: "== null" and GetInstanceID leave garbage.
+            if (!IsAliveDirect(camera) || s_WindowPortalCams == null) return -1;
+            System.IntPtr native = camera.Pointer;
             for (int k = 0; k < s_WindowPortalCams.Length; k++)
-                if (s_WindowPortalCams[k] != null && s_WindowPortalCams[k].GetInstanceID() == id) return k;
+                if ((object)s_WindowPortalCams[k] != null && s_WindowPortalCams[k].Pointer == native) return k;
             return -1;
         }
 
@@ -777,7 +784,7 @@ namespace SeamlessInteriors
                 for (int i = 0; i < group.Hidden.Count; i++)
                 {
                     var r = group.Hidden[i];
-                    if (r == null) continue;
+                    if (!IsAliveDirect(r)) continue;
                     if (group.HiddenOff[i]) r.enabled = false;
                     else r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
                 }
@@ -805,7 +812,7 @@ namespace SeamlessInteriors
             for (int i = 0; i < group.Hidden.Count; i++)
             {
                 var r = group.Hidden[i];
-                if (r == null) continue;
+                if (!IsAliveDirect(r)) continue;
                 if (group.HiddenOff[i]) r.enabled = true;
                 else r.shadowCastingMode = group.HiddenModes[i];
             }

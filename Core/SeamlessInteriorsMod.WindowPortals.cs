@@ -843,11 +843,13 @@ namespace SeamlessInteriors
         // off at the edge of the screen, which is far more noticeable.
         private static bool IsWindowOpeningOnScreen(InteriorWindowOpening opening, Vector3 corner)
         {
+            // Arithmetic on the fields: Unity's own Vector3 operators each leave garbage (NoGarbageMath.cs).
+            Vector3 across = NoGarbageMath.Scale(opening.Right, opening.Width), up = NoGarbageMath.Scale(opening.Up, opening.Height);
             s_WindowPortalPoly.Clear();
             s_WindowPortalPoly.Add(corner);
-            s_WindowPortalPoly.Add(corner + opening.Right * opening.Width);
-            s_WindowPortalPoly.Add(corner + opening.Right * opening.Width + opening.Up * opening.Height);
-            s_WindowPortalPoly.Add(corner + opening.Up * opening.Height);
+            s_WindowPortalPoly.Add(NoGarbageMath.Add(corner, across));
+            s_WindowPortalPoly.Add(NoGarbageMath.Add(NoGarbageMath.Add(corner, across), up));
+            s_WindowPortalPoly.Add(NoGarbageMath.Add(corner, up));
 
             for (int p = 0; p < s_WindowPortalPlanes.Length; p++)
             {
@@ -894,11 +896,11 @@ namespace SeamlessInteriors
         {
             var main = GameManager.GetMainCamera();
             if (main == null) return;
-            BuildWindowPortalFrustum(main);
             // The SAME matrix the planes came from. Everything that asks "where is this on screen"
             // has to use it, or it asks the pre-zoom camera and gets a different answer. The size
             // of the render target was the second consumer to be caught by that.
-            s_LateViewProjection = main.projectionMatrix * main.worldToCameraMatrix;
+            s_LateViewProjection = NoGarbageMath.Mul(main.projectionMatrix, main.worldToCameraMatrix);
+            BuildWindowPortalFrustum(s_LateViewProjection);
             // The window cameras pick LOD from this. Read in the mod's own tick instead, it was the
             // unzoomed value on 5 frames in 6 and everything with a LOD flickered (2026-09-23).
             s_LateFieldOfView = main.fieldOfView;
@@ -907,17 +909,21 @@ namespace SeamlessInteriors
 
         private static void BuildWindowPortalFrustum(Camera main)
         {
-            Matrix4x4 viewProjection = main.projectionMatrix * main.worldToCameraMatrix;
-            Vector4 r0 = viewProjection.GetRow(0);
-            Vector4 r1 = viewProjection.GetRow(1);
-            Vector4 r2 = viewProjection.GetRow(2);
-            Vector4 r3 = viewProjection.GetRow(3);
+            BuildWindowPortalFrustum(NoGarbageMath.Mul(main.projectionMatrix, main.worldToCameraMatrix));
+        }
 
-            s_WindowPortalPlanes[0] = r3 + r0;
-            s_WindowPortalPlanes[1] = r3 - r0;
-            s_WindowPortalPlanes[2] = r3 + r1;
-            s_WindowPortalPlanes[3] = r3 - r1;
-            s_WindowPortalPlanes[4] = r3 + r2;
+        private static void BuildWindowPortalFrustum(Matrix4x4 viewProjection)
+        {
+            Vector4 r0 = NoGarbageMath.Row(viewProjection, 0);
+            Vector4 r1 = NoGarbageMath.Row(viewProjection, 1);
+            Vector4 r2 = NoGarbageMath.Row(viewProjection, 2);
+            Vector4 r3 = NoGarbageMath.Row(viewProjection, 3);
+
+            s_WindowPortalPlanes[0] = NoGarbageMath.Add4(r3, r0);
+            s_WindowPortalPlanes[1] = NoGarbageMath.Sub4(r3, r0);
+            s_WindowPortalPlanes[2] = NoGarbageMath.Add4(r3, r1);
+            s_WindowPortalPlanes[3] = NoGarbageMath.Sub4(r3, r1);
+            s_WindowPortalPlanes[4] = NoGarbageMath.Add4(r3, r2);
         }
 
         // Sutherland-Hodgman against one plane. Writes into `result` rather than allocating, so
@@ -940,7 +946,7 @@ namespace SeamlessInteriors
                 if ((da >= 0f) != (db >= 0f))
                 {
                     float t = da / (da - db);
-                    result.Add(a + (b - a) * t);
+                    result.Add(NoGarbageMath.AddScaled(a, NoGarbageMath.Sub(b, a), t));
                 }
             }
         }

@@ -136,7 +136,7 @@ namespace SeamlessInteriors
             if (s_ProbeMpb == null) s_ProbeMpb = new MaterialPropertyBlock();
 
             Transform mt = inst.MasterInterior.transform;
-            int end = Mathf.Min(s_ProbeQueue.Length, s_ProbeCursor + PROBE_RENDERERS_PER_FRAME);
+            int end = System.Math.Min(s_ProbeQueue.Length, s_ProbeCursor + PROBE_RENDERERS_PER_FRAME);
             for (; s_ProbeCursor < end; s_ProbeCursor++)
             {
                 Renderer r = s_ProbeQueue[s_ProbeCursor];
@@ -152,17 +152,19 @@ namespace SeamlessInteriors
 
         private static void ApplyInteriorProbe(SeamlessInteriorInstance inst, ProbeSet set, Transform mt, Renderer r)
         {
-            if (r == null) return;
-            if (r.TryCast<MeshRenderer>() == null && r.TryCast<SkinnedMeshRenderer>() == null) return;
+            // Runs on 40 renderers a frame, every frame, so no Unity "== null" and no Unity vector math: each
+            // leaves garbage in the game (NoGarbageMath.cs). TryCast answers a C# null when the cast fails.
+            if (!IsAliveDirect(r)) return;
+            if ((object)r.TryCast<MeshRenderer>() == null && (object)r.TryCast<SkinnedMeshRenderer>() == null) return;
 
             int id = r.GetInstanceID();
-            Vector3 local = mt.InverseTransformPoint(r.bounds.center);
+            Vector3 local = mt.InverseTransformPoint(r.bounds.m_Center);
 
             ProbedRenderer done;
             if (inst.ProbedRenderers.TryGetValue(id, out done))
             {
                 // Already lit; only an object that moved needs a new sample.
-                if ((done.Local - local).sqrMagnitude < 0.25f) return;
+                if (NoGarbageMath.SqrLength(NoGarbageMath.Sub(done.Local, local)) < 0.25f) return;
             }
             else
             {
