@@ -291,8 +291,13 @@ namespace SeamlessInteriors
                     var op = s_WindowPortalOpenings[i];
                     float w = op.GlassWidth > 0f ? op.GlassWidth : op.Width;
                     float h = op.GlassHeight > 0f ? op.GlassHeight : op.Height;
+                    // On the window that gets cleaned (owner, 2026-10-24): where its frost stands, not the
+                    // glass behind it. The hangar's doors put it 14 cm behind a frame or 28 cm in the air.
+                    Vector3 c = op.GlassCenter + op.Outward * op.CoverOut;
+                    int window = i < s_WindowPortalSpot.Count ? s_WindowPortalSpot[i] : -1;
+                    if (CleansLowerThirdOnly(s_WindowPortalInstanceId, window)) LowerThird(ref c, ref h, op.Up);
                     // The room side of the glass: against Outward.
-                    AddCleanTarget(true, i, op.GlassCenter - op.Outward * CLEAN_TARGET_PROUD, op.Outward, op.Up, w, h);
+                    AddCleanTarget(true, i, c - op.Outward * CLEAN_TARGET_PROUD, op.Outward, op.Up, w, h);
                     if (IsHallWindow(op)) AddHallCasementTarget(i);
                 }
             }
@@ -301,7 +306,9 @@ namespace SeamlessInteriors
                 for (int i = 0; i < s_OutsideInApertures.Count; i++)
                 {
                     var ap = s_OutsideInApertures[i];
-                    AddCleanTarget(false, i, ap.Center + ap.Outward * CleanTargetProudOutside(ap), ap.Outward, ap.Up, ap.Width, ap.Height);
+                    Vector3 c = ap.Center; float h = ap.Height;
+                    if (CleansLowerThirdOnly(s_OutsideInInstanceId, i)) LowerThird(ref c, ref h, ap.Up);
+                    AddCleanTarget(false, i, c + ap.Outward * CleanTargetProud(c, ap.Outward), ap.Outward, ap.Up, ap.Width, h);
                 }
             }
 
@@ -331,6 +338,31 @@ namespace SeamlessInteriors
         }
 
         private static float CleanTargetProudOutside(ShellAperture ap) { return CleanTargetProud(ap.Center, ap.Outward); }
+
+        // How far up a window listed in WindowsCleanedLowerThirdOnly can be cleaned.
+        internal const float CLEAN_REACH_FRACTION = 1f / 3f;
+
+        // By the building's window index, as the row lists them.
+        internal static bool CleansLowerThirdOnly(string instanceId, int window)
+        {
+            if (instanceId == null || window < 0) return false;
+            foreach (var cfg in SupportedInteriors)
+            {
+                if (cfg == null || cfg.ResolvedInstanceId != instanceId) continue;
+                BuildingWindowOverride row;
+                if (!TryGetBuildingWindowOverride(cfg.ExteriorShellPrefabName, out row) || row.WindowsCleanedLowerThirdOnly == null) return false;
+                return System.Array.IndexOf(row.WindowsCleanedLowerThirdOnly, window) >= 0;
+            }
+            return false;
+        }
+
+        // A clean box over the glass's lowest third only.
+        private static void LowerThird(ref Vector3 center, ref float height, Vector3 up)
+        {
+            float low = height * CLEAN_REACH_FRACTION;
+            center -= up * ((height - low) * 0.5f);
+            height = low;
+        }
 
         private static CleanTarget AddCleanTarget(bool inside, int index, Vector3 center, Vector3 outward, Vector3 up, float width, float height)
         {

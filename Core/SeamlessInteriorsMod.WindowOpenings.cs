@@ -68,6 +68,10 @@ namespace SeamlessInteriors
         public float FrameDepthIntoRoom;
         public bool FrameDepthKnown;
 
+        // One of the windows cut from a band of glass by the building's row (RoomBands). They share the band's
+        // glass object (the first holds it, the rest hold none), so the glass rectangle is the window's own size.
+        public bool FromBand;
+
         // Meters out from the glass where its frost and snow stand; 0 = on the glass. Set for a hand opening
         // whose picture stands past boards, so the cover is behind them (Milton bank, 2026-10-14).
         public float CoverOut;
@@ -1858,9 +1862,14 @@ namespace SeamlessInteriors
                     strip.PortalCenter = strip.GlassCenter + band.Outward * plane;
                     strip.PortalOffsetLocal = plane;
                     strip.FrameDepthIntoRoom = depthIn; strip.FrameDepthKnown = true;
+                    // The frost stands on this window's own picture, not the band's one glass sheet: on the
+                    // sheet it hung in the room before the outer doors and hid behind the middle doors'
+                    // pictures (owner, 2026-10-24). At the picture the cover goes to the room side of it.
+                    strip.CoverOut = plane;
                 }
                 strip.Width = width;
                 strip.GlassWidth = width; strip.GlassHeight = band.Height;
+                strip.FromBand = true;
                 strip.WallGroup = wallGroups;
                 if (i > 0)
                 {
