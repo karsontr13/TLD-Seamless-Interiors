@@ -291,7 +291,9 @@ namespace SeamlessInteriors
                     var op = s_WindowPortalOpenings[i];
                     float w = op.GlassWidth > 0f ? op.GlassWidth : op.Width;
                     float h = op.GlassHeight > 0f ? op.GlassHeight : op.Height;
-                    Vector3 c = op.GlassCenter;
+                    // On the window that gets cleaned (owner, 2026-10-24): where its frost stands, not the
+                    // glass behind it. The hangar's doors put it 14 cm behind a frame or 28 cm in the air.
+                    Vector3 c = op.GlassCenter + op.Outward * op.CoverOut;
                     int window = i < s_WindowPortalSpot.Count ? s_WindowPortalSpot[i] : -1;
                     if (CleansLowerThirdOnly(s_WindowPortalInstanceId, window)) LowerThird(ref c, ref h, op.Up);
                     // The room side of the glass: against Outward.
