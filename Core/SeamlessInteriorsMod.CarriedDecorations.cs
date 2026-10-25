@@ -191,7 +191,7 @@ namespace SeamlessInteriors
             try
             {
                 var pm = GameManager.GetPlayerManagerComponent();
-                if (pm != null) beingPlaced = pm.m_ObjectToPlace;
+                if (IsAliveDirect(pm)) beingPlaced = pm.m_ObjectToPlace;
             }
             catch { }
 
@@ -201,6 +201,7 @@ namespace SeamlessInteriors
             // would land in the middle of OnUpdate.
             s_CarriedToHide.Clear();
             s_CarriedSeenWrong.Clear();
+            bool beingPlacedAlive = IsAliveDirect(beingPlaced);
 
             try
             {
@@ -214,11 +215,12 @@ namespace SeamlessInteriors
                     if (info.m_State != Il2CppTLD.Placement.PlacementState.OnPlayer) continue;
 
                     var handle = info.m_Handle;
-                    if (handle == null || handle.gameObject == null) continue;
-
+                    // Unity's null tests and == leave garbage per object (NoGarbageMath.cs): IsAliveDirect and pointers.
+                    if (!IsAliveDirect(handle)) continue;
                     GameObject go = handle.gameObject;
+                    if (!IsAliveDirect(go)) continue;
                     if (!go.activeInHierarchy) continue;
-                    if (beingPlaced != null && go == beingPlaced) continue;
+                    if (beingPlacedAlive && go.Pointer == beingPlaced.Pointer) continue;
 
                     int id = go.GetInstanceID();
                     s_CarriedSeenWrong.Add(id);

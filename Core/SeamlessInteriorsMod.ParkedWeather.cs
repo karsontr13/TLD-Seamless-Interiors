@@ -91,7 +91,10 @@ namespace SeamlessInteriors
         {
             try
             {
-                if (!ParkedCullEyeInForce || s_SheetFogOff || camera == null || camera != GameManager.GetMainCamera()) return;
+                if (!ParkedCullEyeInForce || s_SheetFogOff || !IsAliveDirect(camera)) return;
+                // By pointer: Unity's == and != leave garbage, and this runs for every camera (NoGarbageMath.cs).
+                var main = GameManager.GetMainCamera();
+                if (!IsAliveDirect(main) || camera.Pointer != main.Pointer) return;
                 s_SheetFogWas = RenderSettings.fog;
                 RenderSettings.fog = false;
                 s_SheetFogOff = true;
@@ -104,7 +107,10 @@ namespace SeamlessInteriors
             if (!s_SheetFogOff) return;
             try
             {
-                if (camera != GameManager.GetMainCamera()) return;
+                // By pointer: Unity's != leaves garbage, and this runs for every camera (NoGarbageMath.cs).
+                var main = GameManager.GetMainCamera();
+                bool isMain = IsAliveDirect(camera) ? IsAliveDirect(main) && camera.Pointer == main.Pointer : !IsAliveDirect(main);
+                if (!isMain) return;
                 RenderSettings.fog = s_SheetFogWas;
                 s_SheetFogOff = false;
             }
@@ -130,25 +136,27 @@ namespace SeamlessInteriors
         internal static void TickParkedSnowEmitters()
         {
             var weather = GameManager.GetWeatherComponent();
-            if (weather == null) return;
+            if (!IsAliveDirect(weather)) return;
             GameObject falling = weather.m_FallingSnow;
             GameObject blowing = weather.m_BlowingSnow;
             Transform player = GameManager.GetPlayerTransform();
             Camera main = GameManager.GetMainCamera();
 
-            if (!ParkedCullEyeInForce || main == null || player == null)
+            // Unity's null tests and Vector3 operators leave garbage every frame: IsAliveDirect and NoGarbageMath.cs.
+            bool fallingAlive = IsAliveDirect(falling), blowingAlive = IsAliveDirect(blowing), playerAlive = IsAliveDirect(player);
+            if (!ParkedCullEyeInForce || !IsAliveDirect(main) || !playerAlive)
             {
                 ReleaseParkedFlakeSize();
                 if (!s_ParkedSnowEmittersMoved) return;
                 s_ParkedSnowEmittersMoved = false;
-                if (falling != null) falling.transform.localPosition = Vector3.zero;
-                if (blowing != null && player != null) blowing.transform.position = player.position;
+                if (fallingAlive) falling.transform.localPosition = Vector3.zero;
+                if (blowingAlive && playerAlive) blowing.transform.position = player.position;
                 return;
             }
 
             Vector3 down = ParkedCullEyeOffset;
-            if (falling != null) falling.transform.position = main.transform.position - down;
-            if (blowing != null) blowing.transform.position = player.position - down;
+            if (fallingAlive) falling.transform.position = NoGarbageMath.Sub(main.transform.position, down);
+            if (blowingAlive) blowing.transform.position = NoGarbageMath.Sub(player.position, down);
             s_ParkedSnowEmittersMoved = true;
             TickParkedFlakeSize();
         }
@@ -172,13 +180,13 @@ namespace SeamlessInteriors
         private static void TickParkedFlakeSize()
         {
             var ps = FallingSnowSystem();
-            if (ps == null) return;
+            if (!IsAliveDirect(ps)) return;
             var main = ps.main;
             float now = main.startSize.constant;
             // Anything but our own value is the game's (a weather change may set it): take it as the size to halve.
-            if (!Mathf.Approximately(now, s_ParkedFlakeApplied)) s_ParkedFlakeGameSize = now;
+            if (!NoGarbageMath.Approximately(now, s_ParkedFlakeApplied)) s_ParkedFlakeGameSize = now;
             float want = s_ParkedFlakeGameSize * PARKED_FLAKE_SIZE_SCALE;
-            if (!Mathf.Approximately(now, want)) main.startSize = new ParticleSystem.MinMaxCurve(want);
+            if (!NoGarbageMath.Approximately(now, want)) main.startSize = new ParticleSystem.MinMaxCurve(want);
             s_ParkedFlakeApplied = want;
         }
 
@@ -197,7 +205,7 @@ namespace SeamlessInteriors
         private static ParticleSystem FallingSnowSystem()
         {
             var uniStorm = GetCachedUniStorm();
-            return uniStorm != null && uniStorm.m_WeatherParticleManager != null ? uniStorm.m_WeatherParticleManager.m_FallingSnowSystem : null;
+            return IsAliveDirect(uniStorm) && uniStorm.m_WeatherParticleManager != null ? uniStorm.m_WeatherParticleManager.m_FallingSnowSystem : null;
         }
 
         // ─── THE SNOW PLANES ARE SWITCHED OFF IN A PARKED ROOM ───
@@ -231,14 +239,14 @@ namespace SeamlessInteriors
                 return;
             }
 
-            if (s_SnowPlanes == null)
+            if (!IsAliveDirect(s_SnowPlanes))
             {
                 s_SnowPlanes = Object.FindObjectOfType<SnowPlaneManager>();
-                if (s_SnowPlanes == null) return;
+                if (!IsAliveDirect(s_SnowPlanes)) return;
             }
 
             var renderer = s_SnowPlanes.m_MeshRenderer;
-            if (renderer == null) return;
+            if (!IsAliveDirect(renderer)) return;
             if (renderer.enabled) renderer.enabled = false;
             s_SnowPlanesHidden = true;
         }
@@ -248,7 +256,7 @@ namespace SeamlessInteriors
         // is the wall cameras' own flag, or for a window with none, the glass's middle.
         internal static float NearestWindowGlassAlongGaze(Camera main)
         {
-            if (main == null || s_WindowPortalOpenings.Count == 0) return 0f;
+            if (!IsAliveDirect(main) || s_WindowPortalOpenings.Count == 0) return 0f;
             Vector3 eye = main.transform.position, gaze = main.transform.forward;
             bool flags = s_WallCamerasActive && s_WallMemberOnScreen.Count == s_WindowPortalOpenings.Count;
             float nearest = float.MaxValue;
@@ -261,10 +269,10 @@ namespace SeamlessInteriors
                     Vector3 v = main.WorldToViewportPoint(glass);
                     if (v.z <= 0f || v.x < 0f || v.x > 1f || v.y < 0f || v.y > 1f) continue;
                 }
-                float d = Vector3.Dot(glass - eye, gaze);
+                float d = NoGarbageMath.Dot(NoGarbageMath.Sub(glass, eye), gaze);   // on the fields (NoGarbageMath.cs)
                 if (d > 0f && d < nearest) nearest = d;
             }
-            return nearest == float.MaxValue ? 0f : Mathf.Max(0f, nearest - 0.3f);
+            return nearest == float.MaxValue ? 0f : System.Math.Max(0f, nearest - 0.3f);
         }
 
         private static void ReleaseParkedRoomFog()

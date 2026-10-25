@@ -696,7 +696,7 @@ namespace SeamlessInteriors
                 s_LightingModeMessageTimer -= UnityEngine.Time.deltaTime;
 
             Transform playerT = Il2Cpp.GameManager.GetPlayerTransform();
-            if (playerT == null) { PerfProbe.FrameEnd(); return; }
+            if (!IsAliveDirect(playerT)) { PerfProbe.FrameEnd(); return; }
             Vector3 pos = playerT.position;
 
             // Keep the cooking pots and fires in CLOSED clones running. Unity stops calling
@@ -785,7 +785,7 @@ namespace SeamlessInteriors
             perf = PerfProbe.Begin();
             foreach (var instance in ActiveInteriors.Values)
             {
-                if (!instance.RunCompleted || instance.MasterInterior == null) continue;
+                if (!instance.RunCompleted || !IsAliveDirect(instance.MasterInterior)) continue;
 
                 // PRE-FILTER: with the clone scene closed the player definitely is not
                 // inside it. The terrain hole will not be open either, so there is nothing

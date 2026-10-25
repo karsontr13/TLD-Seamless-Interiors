@@ -136,7 +136,7 @@ namespace SeamlessInteriors
             try
             {
                 var sm = GameManager.GetSafehouseManager();
-                return sm != null && sm.IsCustomizing();
+                return IsAliveDirect(sm) && sm.IsCustomizing();
             }
             catch { return false; }
         }

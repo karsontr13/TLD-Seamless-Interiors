@@ -233,6 +233,7 @@
     <Compile Include="Core\SeamlessInteriorsMod.ShootThroughWindow.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowSnow.RoomToBuilding.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.ParkedRoomShadow.cs" />
+    <Compile Include="Core\NoGarbageMath.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowViewAmbient.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowFit.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.BuildingWindowOverrides.cs" />

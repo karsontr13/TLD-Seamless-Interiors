@@ -84,10 +84,12 @@ namespace SeamlessInteriors
 
         private static bool IsWindowPortalCamera(Camera camera)
         {
-            if (camera == null || s_WindowPortalCams == null) return false;
-            int id = camera.GetInstanceID();
+            // By native object rather than instance id: the callback's Camera is another wrapper round the
+            // same native object, and both "!= null" and GetInstanceID are calls that leave garbage.
+            if (!IsAliveDirect(camera) || s_WindowPortalCams == null) return false;
+            System.IntPtr native = camera.Pointer;
             for (int i = 0; i < s_WindowPortalCams.Length; i++)
-                if (s_WindowPortalCams[i] != null && s_WindowPortalCams[i].GetInstanceID() == id) return true;
+                if ((object)s_WindowPortalCams[i] != null && s_WindowPortalCams[i].Pointer == native) return true;
             return false;
         }
 
@@ -98,9 +100,9 @@ namespace SeamlessInteriors
                 if (s_RoomShadowSilenced || !IsWindowPortalCamera(camera)) return;
                 s_RoomShadowSilenced = true;
                 for (int i = 0; i < s_RoomShadowCasters.Count; i++)
-                    if (s_RoomShadowCasters[i] != null) s_RoomShadowCasters[i].shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    if (IsAliveDirect(s_RoomShadowCasters[i])) SetShadowCastingDirect(s_RoomShadowCasters[i], UnityEngine.Rendering.ShadowCastingMode.Off);
                 for (int i = 0; i < s_RoomShadowStandIns.Count; i++)
-                    if (s_RoomShadowStandIns[i] != null) s_RoomShadowStandIns[i].enabled = false;
+                    if (IsAliveDirect(s_RoomShadowStandIns[i])) SetRendererEnabledDirect(s_RoomShadowStandIns[i], false);
             }
             catch (System.Exception e) { FaultParkedRoomShadow(e); }
         }
@@ -122,9 +124,70 @@ namespace SeamlessInteriors
             if (!s_RoomShadowSilenced) return;
             s_RoomShadowSilenced = false;
             for (int i = 0; i < s_RoomShadowCasters.Count; i++)
-                if (s_RoomShadowCasters[i] != null) s_RoomShadowCasters[i].shadowCastingMode = s_RoomShadowCasterModes[i];
+                if (IsAliveDirect(s_RoomShadowCasters[i])) SetShadowCastingDirect(s_RoomShadowCasters[i], s_RoomShadowCasterModes[i]);
             for (int i = 0; i < s_RoomShadowStandIns.Count; i++)
-                if (s_RoomShadowStandIns[i] != null) s_RoomShadowStandIns[i].enabled = true;
+                if (IsAliveDirect(s_RoomShadowStandIns[i])) SetRendererEnabledDirect(s_RoomShadowStandIns[i], true);
+        }
+
+        // THE SWITCHES ARE CALLED STRAIGHT INTO THE ENGINE. Through the usual property setters each switch
+        // left about 32 bytes of the game's garbage, and the room's 1,320 casters and 102 stand-ins at the
+        // hangar are switched off and back every frame a window view draws: about 80 KB a frame, a garbage
+        // collection every 5 s and a skipped frame with each, seen as a jump (owner, 2026-10-24). The
+        // engine's own functions, resolved once, leave none (measured: 0 KB for the same 50 rounds).
+        // If either cannot be resolved, the setters are used as before.
+        [System.Runtime.InteropServices.UnmanagedFunctionPointer(System.Runtime.InteropServices.CallingConvention.Cdecl)]
+        private delegate void RendererIntSetter(System.IntPtr renderer, int value);
+        [System.Runtime.InteropServices.UnmanagedFunctionPointer(System.Runtime.InteropServices.CallingConvention.Cdecl)]
+        private delegate void RendererBoolSetter(System.IntPtr renderer, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.U1)] bool value);
+        private static RendererIntSetter s_SetShadowCastingNative;
+        private static RendererBoolSetter s_SetRendererEnabledNative;
+        private static bool s_RendererSettersResolved;
+
+        private static void ResolveRendererSetters()
+        {
+            if (s_RendererSettersResolved) return;
+            s_RendererSettersResolved = true;
+            try { s_SetShadowCastingNative = Il2CppInterop.Runtime.IL2CPP.ResolveICall<RendererIntSetter>("UnityEngine.Renderer::set_shadowCastingMode"); } catch { s_SetShadowCastingNative = null; }
+            try { s_SetRendererEnabledNative = Il2CppInterop.Runtime.IL2CPP.ResolveICall<RendererBoolSetter>("UnityEngine.Renderer::set_enabled"); } catch { s_SetRendererEnabledNative = null; }
+            if (s_DebugBounds)
+                MelonLogger.Msg($"[ROOM-SHADOW] Direct engine switches: shadow casting {(s_SetShadowCastingNative != null ? "found" : "not found, setter used")}, renderer on/off {(s_SetRendererEnabledNative != null ? "found" : "not found, setter used")}.");
+        }
+
+        // A Unity object's "!= null" is a call into the game too, and left about 30 bytes of garbage each:
+        // the same again as the switches it guards (2026-10-24). The game's own test is whether the object
+        // still holds its native object (m_CachedPtr), which is read here straight from memory. Checked
+        // against Unity's answer on all 1,320 casters, on a new object and on a destroyed one: all agree.
+        private static int s_CachedPtrOffset = -2;
+
+        private static bool IsAliveDirect(Object obj)
+        {
+            if ((object)obj == null) return false;
+            if (s_CachedPtrOffset == -2)
+            {
+                s_CachedPtrOffset = -1;
+                try
+                {
+                    var field = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_field_from_name(Il2CppInterop.Runtime.Il2CppClassPointerStore<Object>.NativeClassPtr, "m_CachedPtr");
+                    if (field != System.IntPtr.Zero) s_CachedPtrOffset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(field);
+                }
+                catch { s_CachedPtrOffset = -1; }
+            }
+            if (s_CachedPtrOffset <= 0) return obj != null;
+            return System.Runtime.InteropServices.Marshal.ReadIntPtr(obj.Pointer, s_CachedPtrOffset) != System.IntPtr.Zero;
+        }
+
+        private static void SetShadowCastingDirect(Renderer renderer, UnityEngine.Rendering.ShadowCastingMode mode)
+        {
+            ResolveRendererSetters();
+            if (s_SetShadowCastingNative != null) s_SetShadowCastingNative(renderer.Pointer, (int)mode);
+            else renderer.shadowCastingMode = mode;
+        }
+
+        private static void SetRendererEnabledDirect(Renderer renderer, bool on)
+        {
+            ResolveRendererSetters();
+            if (s_SetRendererEnabledNative != null) s_SetRendererEnabledNative(renderer.Pointer, on);
+            else renderer.enabled = on;
         }
 
         // Off first, said once, and never tried again this session: a callback that throws does

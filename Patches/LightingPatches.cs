@@ -218,10 +218,11 @@ namespace SeamlessInteriors
             // In Outdoor mode interiors deliberately use the outdoor light - no owner.
             if (!SeamlessInteriorsMod.IsDarkAtmosphereMode) return null;
 
-            Vector3 pos = Vector3.zero;
+            // On the fields and without Unity's null tests: those leave garbage every frame (NoGarbageMath.cs).
+            Vector3 pos = new Vector3(0f, 0f, 0f);
             bool hasPos = false;
             Transform playerT = Il2Cpp.GameManager.GetPlayerTransform();
-            if (playerT != null)
+            if (NoGarbageMath.IsAlive(playerT))
             {
                 pos = playerT.position;
                 hasPos = true;
@@ -232,14 +233,14 @@ namespace SeamlessInteriors
 
             foreach (var inst in SeamlessInteriorsMod.ActiveInteriors.Values)
             {
-                if (inst == null || inst.MasterInterior == null) continue;
+                if (inst == null || !NoGarbageMath.IsAlive(inst.MasterInterior)) continue;
                 if (!inst.MasterInterior.activeSelf) continue;
 
                 if (hasPos && inst.IsPositionInVolume(pos, 1.0f)) return inst;
 
                 // Backup candidate in case the volume test misses.
                 float d = hasPos
-                    ? Vector3.SqrMagnitude(inst.MasterInterior.transform.position - pos)
+                    ? NoGarbageMath.SqrLength(NoGarbageMath.Sub(inst.MasterInterior.transform.position, pos))
                     : 0f;
                 if (d < nearestDist)
                 {
@@ -628,14 +629,23 @@ namespace SeamlessInteriors
                 return mode == UnityEngine.Rendering.AmbientMode.Skybox ? Mathf.GammaToLinearSpace(intensity) : 1f;
             }
 
+            // Every frame from EnforceOwnerAmbient: compared on the fields, as Unity's Color == and
+            // Mathf.Approximately leave garbage (NoGarbageMath.cs).
             public bool MatchesCurrent()
             {
                 return RenderSettings.ambientMode == Mode
-                    && RenderSettings.ambientLight == Light
-                    && RenderSettings.ambientSkyColor == Sky
-                    && RenderSettings.ambientEquatorColor == Equator
-                    && RenderSettings.ambientGroundColor == Ground
-                    && Mathf.Approximately(RenderSettings.ambientIntensity, Intensity);
+                    && SameColor(RenderSettings.ambientLight, Light)
+                    && SameColor(RenderSettings.ambientSkyColor, Sky)
+                    && SameColor(RenderSettings.ambientEquatorColor, Equator)
+                    && SameColor(RenderSettings.ambientGroundColor, Ground)
+                    && NoGarbageMath.Approximately(RenderSettings.ambientIntensity, Intensity);
+            }
+
+            // Unity's Color ==: the squared length of the difference, as a Vector4, below 9.99999944E-11.
+            private static bool SameColor(Color a, Color b)
+            {
+                float r = a.r - b.r, g = a.g - b.g, bl = a.b - b.b, al = a.a - b.a;
+                return r * r + g * g + bl * bl + al * al < 9.99999944E-11f;
             }
         }
     }

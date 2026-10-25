@@ -629,7 +629,7 @@ namespace SeamlessInteriors
                     int count = layer.Tables.Vein.Length;
                     if (layer.FillNext < count)
                     {
-                        int end = Mathf.Min(count, layer.FillNext + budget);
+                        int end = System.Math.Min(count, layer.FillNext + budget);
                         FillCoverRange(layer, layer.FillTarget, layer.FillNext, end);
                         budget -= end - layer.FillNext;
                         layer.FillNext = end;
@@ -1349,7 +1349,7 @@ namespace SeamlessInteriors
                 if (s_CoverLayersInstance == null) return;
                 // Gone with their scene (a save loaded while they stood): built again next frame.
                 foreach (var built in s_CoverLayers)
-                    if (built != null && (built.FrostGo == null || built.FrostMat == null)) { TeardownWindowCoverLayers(); return; }
+                    if (built != null && (!IsAliveDirect(built.FrostGo) || !IsAliveDirect(built.FrostMat))) { TeardownWindowCoverLayers(); return; }
                 PumpCoverFills(s_CoverLayers);
 
                 if (s_CoverLayersBuilt < s_CoverLayers.Count)

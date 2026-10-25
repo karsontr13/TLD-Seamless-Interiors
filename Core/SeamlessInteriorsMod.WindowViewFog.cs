@@ -72,7 +72,7 @@ namespace SeamlessInteriors
         // cannot be built.
         private static void UseWindowViewFogPass(Camera cam, int slot, Camera main, float fogStartsAt = 0f, bool wallCamera = false)
         {
-            if (cam == null) return;
+            if (!IsAliveDirect(cam)) return;   // every frame: no Unity "==" and no Matrix4x4.identity, both leave garbage (NoGarbageMath.cs)
             if (cam.renderingPath != RenderingPath.DeferredShading)
             {
                 cam.renderingPath = RenderingPath.DeferredShading;
@@ -97,9 +97,10 @@ namespace SeamlessInteriors
                 s_WindowFogBufferOn[slot] = id;
             }
 
-            if (s_WindowFogUpdatedFrame != Time.frameCount)
+            int frame = Time.frameCount;
+            if (s_WindowFogUpdatedFrame != frame)
             {
-                s_WindowFogUpdatedFrame = Time.frameCount;
+                s_WindowFogUpdatedFrame = frame;
                 s_WindowFogMaterial.SetColor(s_FogColorId, RenderSettings.fogColor);
                 s_WindowFogMaterial.SetVector(s_FogParamsId, new Vector4(RenderSettings.fogDensity, RenderSettings.fogStartDistance, RenderSettings.fogEndDistance, 0f));
                 s_WindowFogMaterial.SetFloat(s_ViewportScaleId, 1f);
@@ -119,7 +120,7 @@ namespace SeamlessInteriors
                 float far = cam.farClipPlane;
                 buffer.SetGlobalVector(s_ProjectionParamsId, new Vector4(1f, main.nearClipPlane + fogStartsAt, far, 1f / far));
             }
-            buffer.DrawMesh(s_WindowFogTriangle, Matrix4x4.identity, s_WindowFogMaterial, 0, WINDOW_FOG_PASS_SKY_EXCLUDED);
+            buffer.DrawMesh(s_WindowFogTriangle, NoGarbageMath.Identity(), s_WindowFogMaterial, 0, WINDOW_FOG_PASS_SKY_EXCLUDED);
             if (fromWall) buffer.SetupCameraProperties(cam);
             buffer.ReleaseTemporaryRT(s_WindowFogCopyId);
         }
@@ -148,6 +149,8 @@ namespace SeamlessInteriors
         private static readonly List<CommandBuffer> s_PlayerShared = new List<CommandBuffer>();
         private static readonly List<CameraEvent> s_PlayerSharedEvents = new List<CameraEvent>();
         private static int s_PlayerSharedFrame = -1;
+        private static int s_PlayerSharedCount = -1;
+        private const int SHARED_BUFFER_RESCAN_FRAMES = 30;
         private static int s_PlayerSharedVersion;
         private static int[] s_SharedOnCamera = new int[0];
         private static int[] s_SharedOnVersion = new int[0];
@@ -167,10 +170,20 @@ namespace SeamlessInteriors
 
         private static void SharePlayerBuffersWith(Camera cam, int slot, Camera main)
         {
-            if (cam == null || main == null) return;
-            if (s_PlayerSharedFrame != Time.frameCount)
+            if (!IsAliveDirect(cam) || !IsAliveDirect(main)) return;
+            // LOOKED AT AGAIN ONLY WHEN THE PLAYER'S CAMERA MAY HAVE CHANGED. The look asks for every
+            // event's buffers (new arrays) and reads each one's name (new strings), and it ran every frame;
+            // and since GetCommandBuffers hands back new wrappers each time, the "!=" below saw a change
+            // every frame, so every window camera had all its shared buffers taken off and put back every
+            // frame (2026-10-24: the version moved 17 times in 17 frames). Now: when the camera's buffer
+            // count changes, or every SHARED_BUFFER_RESCAN_FRAMES as a backstop for a swap at the same
+            // count, and buffers are compared by their native object (m_Ptr).
+            int frame = Time.frameCount;
+            int count = main.commandBufferCount;
+            if (s_PlayerSharedFrame != frame && (count != s_PlayerSharedCount || frame - s_PlayerSharedFrame >= SHARED_BUFFER_RESCAN_FRAMES || frame < s_PlayerSharedFrame))
             {
-                s_PlayerSharedFrame = Time.frameCount;
+                s_PlayerSharedFrame = frame;
+                s_PlayerSharedCount = count;
                 int before = s_PlayerShared.Count;
                 bool changed = false;
                 var found = new List<CommandBuffer>();
@@ -185,7 +198,7 @@ namespace SeamlessInteriors
                     }
                 }
                 if (found.Count != before) changed = true;
-                else for (int i = 0; i < found.Count; i++) if (found[i] != s_PlayerShared[i] || foundEvents[i] != s_PlayerSharedEvents[i]) { changed = true; break; }
+                else for (int i = 0; i < found.Count; i++) if (found[i].m_Ptr != s_PlayerShared[i].m_Ptr || foundEvents[i] != s_PlayerSharedEvents[i]) { changed = true; break; }
                 if (changed)
                 {
                     s_PlayerShared.Clear(); s_PlayerShared.AddRange(found);
@@ -216,7 +229,7 @@ namespace SeamlessInteriors
 
         private static bool EnsureWindowFogMaterial(Camera main)
         {
-            if (s_WindowFogMaterial != null) return true;
+            if (IsAliveDirect(s_WindowFogMaterial)) return true;   // asked every frame per camera
             if (s_WindowFogFailed || main == null) return false;
 
             var layer = main.GetComponent<PostProcessLayer>();

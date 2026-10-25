@@ -510,7 +510,8 @@ namespace SeamlessInteriors
 
             SeamlessInteriorInstance instance = s_IsPlayerInsideClone ? ResolveOccupiedInstance() : null;
 
-            if (instance == null || instance.MasterInterior == null || instance.ExteriorShell == null)
+            // Every frame: existence by IsAliveDirect, since Unity's "==" leaves garbage (NoGarbageMath.cs).
+            if (instance == null || !IsAliveDirect(instance.MasterInterior) || !IsAliveDirect(instance.ExteriorShell))
             {
                 if (s_WindowPortalInstanceId != null) TeardownWindowPortals();
                 return;
@@ -542,7 +543,7 @@ namespace SeamlessInteriors
             // NOT UnityEngine.Camera.main. TLD's FPSCamera carries the MainCamera tag but its
             // Camera component is DISABLED - the game renders it by hand - and Camera.main only
             // ever returns enabled cameras. Its transform and matrices are valid while disabled.
-            if (main == null) return;
+            if (!IsAliveDirect(main)) return;
 
             // NOTE: everything positional here - the openings, the quads' world-space vertices,
             // and each opening's paired delta - is captured at setup and assumes the clone does
@@ -575,8 +576,8 @@ namespace SeamlessInteriors
         // business; every path out switches the shell on.
         private static void KeepParkedShellOn(SeamlessInteriorInstance instance)
         {
-            if (instance == null || instance.ExteriorShell == null || instance.Config == null) return;
-            if (instance.Config.ParkOffset == Vector3.zero) return;
+            if (instance == null || !IsAliveDirect(instance.ExteriorShell) || instance.Config == null) return;
+            if (NoGarbageMath.SqrLength(instance.Config.ParkOffset) < 9.99999944E-11f) return;   // Unity's "== Vector3.zero", on the fields
             if (!instance.ExteriorShell.activeSelf) instance.ExteriorShell.SetActive(true);
         }
 
@@ -843,11 +844,13 @@ namespace SeamlessInteriors
         // off at the edge of the screen, which is far more noticeable.
         private static bool IsWindowOpeningOnScreen(InteriorWindowOpening opening, Vector3 corner)
         {
+            // Arithmetic on the fields: Unity's own Vector3 operators each leave garbage (NoGarbageMath.cs).
+            Vector3 across = NoGarbageMath.Scale(opening.Right, opening.Width), up = NoGarbageMath.Scale(opening.Up, opening.Height);
             s_WindowPortalPoly.Clear();
             s_WindowPortalPoly.Add(corner);
-            s_WindowPortalPoly.Add(corner + opening.Right * opening.Width);
-            s_WindowPortalPoly.Add(corner + opening.Right * opening.Width + opening.Up * opening.Height);
-            s_WindowPortalPoly.Add(corner + opening.Up * opening.Height);
+            s_WindowPortalPoly.Add(NoGarbageMath.Add(corner, across));
+            s_WindowPortalPoly.Add(NoGarbageMath.Add(NoGarbageMath.Add(corner, across), up));
+            s_WindowPortalPoly.Add(NoGarbageMath.Add(corner, up));
 
             for (int p = 0; p < s_WindowPortalPlanes.Length; p++)
             {
@@ -894,11 +897,11 @@ namespace SeamlessInteriors
         {
             var main = GameManager.GetMainCamera();
             if (main == null) return;
-            BuildWindowPortalFrustum(main);
             // The SAME matrix the planes came from. Everything that asks "where is this on screen"
             // has to use it, or it asks the pre-zoom camera and gets a different answer. The size
             // of the render target was the second consumer to be caught by that.
-            s_LateViewProjection = main.projectionMatrix * main.worldToCameraMatrix;
+            s_LateViewProjection = NoGarbageMath.Mul(main.projectionMatrix, main.worldToCameraMatrix);
+            BuildWindowPortalFrustum(s_LateViewProjection);
             // The window cameras pick LOD from this. Read in the mod's own tick instead, it was the
             // unzoomed value on 5 frames in 6 and everything with a LOD flickered (2026-09-23).
             s_LateFieldOfView = main.fieldOfView;
@@ -907,17 +910,21 @@ namespace SeamlessInteriors
 
         private static void BuildWindowPortalFrustum(Camera main)
         {
-            Matrix4x4 viewProjection = main.projectionMatrix * main.worldToCameraMatrix;
-            Vector4 r0 = viewProjection.GetRow(0);
-            Vector4 r1 = viewProjection.GetRow(1);
-            Vector4 r2 = viewProjection.GetRow(2);
-            Vector4 r3 = viewProjection.GetRow(3);
+            BuildWindowPortalFrustum(NoGarbageMath.Mul(main.projectionMatrix, main.worldToCameraMatrix));
+        }
 
-            s_WindowPortalPlanes[0] = r3 + r0;
-            s_WindowPortalPlanes[1] = r3 - r0;
-            s_WindowPortalPlanes[2] = r3 + r1;
-            s_WindowPortalPlanes[3] = r3 - r1;
-            s_WindowPortalPlanes[4] = r3 + r2;
+        private static void BuildWindowPortalFrustum(Matrix4x4 viewProjection)
+        {
+            Vector4 r0 = NoGarbageMath.Row(viewProjection, 0);
+            Vector4 r1 = NoGarbageMath.Row(viewProjection, 1);
+            Vector4 r2 = NoGarbageMath.Row(viewProjection, 2);
+            Vector4 r3 = NoGarbageMath.Row(viewProjection, 3);
+
+            s_WindowPortalPlanes[0] = NoGarbageMath.Add4(r3, r0);
+            s_WindowPortalPlanes[1] = NoGarbageMath.Sub4(r3, r0);
+            s_WindowPortalPlanes[2] = NoGarbageMath.Add4(r3, r1);
+            s_WindowPortalPlanes[3] = NoGarbageMath.Sub4(r3, r1);
+            s_WindowPortalPlanes[4] = NoGarbageMath.Add4(r3, r2);
         }
 
         // Sutherland-Hodgman against one plane. Writes into `result` rather than allocating, so
@@ -940,7 +947,7 @@ namespace SeamlessInteriors
                 if ((da >= 0f) != (db >= 0f))
                 {
                     float t = da / (da - db);
-                    result.Add(a + (b - a) * t);
+                    result.Add(NoGarbageMath.AddScaled(a, NoGarbageMath.Sub(b, a), t));
                 }
             }
         }
@@ -1744,8 +1751,10 @@ namespace SeamlessInteriors
         {
             if (slot < 0 || slot >= s_WindowPortalSlotCount) return false;
 
+            // Every frame per drawn slot: existence by IsAliveDirect and identity by native pointer, since
+            // Unity's "==" and "!=" each leave garbage (NoGarbageMath.cs).
             var target = s_WindowPortalSlotTargets[slot];
-            if (target != null && (target.width != width || target.height != height))
+            if (IsAliveDirect(target) && (target.width != width || target.height != height))
             {
                 // The player changed resolution or windowed mode. Drop the stale target rather
                 // than keeping a portal at the old pixel count for the rest of the session.
@@ -1756,7 +1765,7 @@ namespace SeamlessInteriors
                 target = null;
             }
 
-            if (target == null)
+            if (!IsAliveDirect(target))
             {
                 // HDR is required: an LDR target double-tonemaps and blows the sky out. The alpha
                 // channel is not, because the quad is opaque, so prefer the packed float format
@@ -1781,16 +1790,17 @@ namespace SeamlessInteriors
 
             // Outside the block above: a target taken back from the last visit needs its material
             // too, and the material is made per visit.
-            if (s_WindowPortalSlotMaterials[slot] == null)
+            if (!IsAliveDirect(s_WindowPortalSlotMaterials[slot]))
             {
                 var material = new Material(Shader.Find("Unlit/Texture"));
                 material.renderQueue = WINDOW_VIEW_OUT_RENDER_QUEUE;
                 s_WindowPortalSlotMaterials[slot] = material;
             }
-            if (s_WindowPortalSlotMaterials[slot].mainTexture != target) s_WindowPortalSlotMaterials[slot].mainTexture = target;
+            var shownTexture = s_WindowPortalSlotMaterials[slot].mainTexture;
+            if ((object)shownTexture == null || shownTexture.Pointer != target.Pointer) s_WindowPortalSlotMaterials[slot].mainTexture = target;
 
             var cam = s_WindowPortalCams[slot];
-            if (cam == null)
+            if (!IsAliveDirect(cam))
             {
                 var camObject = new GameObject("SI_WindowPortalCamera" + slot);
                 cam = camObject.AddComponent<Camera>();
@@ -1825,7 +1835,8 @@ namespace SeamlessInteriors
                 s_WindowPortalCams[slot] = cam;
             }
 
-            if (cam.targetTexture != target) cam.targetTexture = target;
+            var camTarget = cam.targetTexture;
+            if ((object)camTarget == null || camTarget.Pointer != target.Pointer) cam.targetTexture = target;
             return true;
         }
 
@@ -1843,8 +1854,8 @@ namespace SeamlessInteriors
             for (int i = s_RowHiddenRoomObjects.Count - 1; i >= 0; i--)
             {
                 var renderer = s_RowHiddenRoomObjects[i];
-                if (renderer == null) { s_RowHiddenRoomObjects.RemoveAt(i); continue; }
-                if (renderer.enabled) renderer.enabled = false;
+                if (!IsAliveDirect(renderer)) { s_RowHiddenRoomObjects.RemoveAt(i); continue; }
+                renderer.enabled = false;   // the setter leaves no garbage; reading "enabled" first did
             }
         }
 
