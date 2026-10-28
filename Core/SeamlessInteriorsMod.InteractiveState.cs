@@ -122,6 +122,8 @@ namespace SeamlessInteriors
         private const string TAG_OPENCLOSE = "OC";
         private const string TAG_LOCK = "LK";
         private const string TAG_BROKENDECO = "BR";
+        // Toilet tanks: the game's WaterSourceManager matches them before the clone exists, so they refilled.
+        private const string TAG_WATERSOURCE = "WS";
 
         // A repairable decoration (kitchen cabinet doors) has no Serialize of its own: the game keeps
         // its state in a scene-wide list by guid, which a clone never gets. Written in the same shape.
@@ -177,6 +179,11 @@ namespace SeamlessInteriors
                         var x = c.TryCast<Il2Cpp.BrokenDecorationInteraction>();
                         return (x != null) ? SerializeBrokenDecoration(x) : null;
                     }
+                case TAG_WATERSOURCE:
+                    {
+                        var x = c.TryCast<Il2Cpp.WaterSource>();
+                        return (x != null) ? x.Serialize() : null;
+                    }
             }
             return null;
         }
@@ -224,6 +231,12 @@ namespace SeamlessInteriors
                     {
                         var x = c.TryCast<Il2Cpp.BrokenDecorationInteraction>();
                         if (x != null) DeserializeBrokenDecoration(x, data);
+                        return;
+                    }
+                case TAG_WATERSOURCE:
+                    {
+                        var x = c.TryCast<Il2Cpp.WaterSource>();
+                        if (x != null) x.Deserialize(data);
                         return;
                     }
             }
@@ -288,6 +301,7 @@ namespace SeamlessInteriors
             int nOpen = CollectStates<Il2Cpp.OpenClose>(instance, TAG_OPENCLOSE, entries, usedKeys);
             int nLock = CollectStates<Il2Cpp.Lock>(instance, TAG_LOCK, entries, usedKeys);
             CollectStates<Il2Cpp.BrokenDecorationInteraction>(instance, TAG_BROKENDECO, entries, usedKeys);
+            CollectStates<Il2Cpp.WaterSource>(instance, TAG_WATERSOURCE, entries, usedKeys);
 
             string json = "[\n" + string.Join(",\n", entries) + "\n]";
             JsonWriteCache.Write(path, json);
@@ -325,6 +339,7 @@ namespace SeamlessInteriors
             restored += ApplyStates<Il2Cpp.OpenClose>(instance, TAG_OPENCLOSE, keyToData, usedKeys, ref missed);
             restored += ApplyStates<Il2Cpp.Lock>(instance, TAG_LOCK, keyToData, usedKeys, ref missed);
             restored += ApplyStates<Il2Cpp.BrokenDecorationInteraction>(instance, TAG_BROKENDECO, keyToData, usedKeys, ref missed);
+            restored += ApplyStates<Il2Cpp.WaterSource>(instance, TAG_WATERSOURCE, keyToData, usedKeys, ref missed);
 
             MelonLogger.Msg($"[STATE-LOAD] {instance.Config.ResolvedInstanceId}: {restored}/{keyToData.Count} durum geri yuklendi ({missed} eslesmedi).");
         }
