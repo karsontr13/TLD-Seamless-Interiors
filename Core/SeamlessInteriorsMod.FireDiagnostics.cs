@@ -93,7 +93,7 @@ namespace SeamlessInteriors
             {
                 var g = fire.GetComponent<Il2Cpp.ObjectGuid>();
                 if (g == null) g = fire.GetComponentInParent<Il2Cpp.ObjectGuid>();
-                if (g != null && !string.IsNullOrEmpty(g.m_Guid)) guid = g.m_Guid;
+                if (!string.IsNullOrEmpty(ModGuid(g))) guid = ModGuid(g);
                 else if (g != null && !string.IsNullOrEmpty(g.PDID)) guid = "PDID:" + g.PDID;
             }
             catch { }

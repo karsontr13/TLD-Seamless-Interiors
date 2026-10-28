@@ -36,7 +36,6 @@ namespace SeamlessInteriors
                 ? instance.Config.ResolvedInstanceId
                 : instance.Config.InteriorSceneBaseName;
             var guid = go.AddComponent<ObjectGuid>();
-            guid.m_Guid = spaceName;
             guid.SetRuntimeCachedPdid(spaceName);
 
             var space = go.AddComponent<IndoorSpaceTrigger>();

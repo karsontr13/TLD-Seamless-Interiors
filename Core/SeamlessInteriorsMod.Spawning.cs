@@ -161,7 +161,7 @@ namespace SeamlessInteriors
                     if (gear == null) continue;
                     var guidComponent = gear.GetComponent<Il2Cpp.ObjectGuid>();
 
-                    if (guidComponent == null || string.IsNullOrEmpty(guidComponent.m_Guid))
+                    if (guidComponent == null || string.IsNullOrEmpty(ModGuid(guidComponent)))
                     {
                         UnityEngine.Object.Destroy(gear.gameObject);
                         deletedRogueCount++;
@@ -212,7 +212,7 @@ namespace SeamlessInteriors
             foreach (var g in insideGuidComps)
             {
                 if (g == null) continue;
-                string key = g.m_Guid ?? g.PDID;
+                string key = ModGuid(g);
                 if (!string.IsNullOrEmpty(key)) insideKeys.Add(key);
             }
             if (insideKeys.Count == 0) return;
@@ -222,7 +222,7 @@ namespace SeamlessInteriors
             foreach (var guid in SceneScan.GuidsAll())
             {
                 if (guid == null) continue;
-                string key = guid.m_Guid ?? guid.PDID;
+                string key = ModGuid(guid);
                 if (string.IsNullOrEmpty(key) || !insideKeys.Contains(key)) continue;
 
                 int c;
@@ -235,7 +235,7 @@ namespace SeamlessInteriors
             {
                 if (g == null || g.gameObject == null) continue;
 
-                string key = g.m_Guid ?? g.PDID;
+                string key = ModGuid(g);
                 if (string.IsNullOrEmpty(key)) continue;
 
                 int c;
@@ -552,13 +552,13 @@ namespace SeamlessInteriors
                 var guidComponent = gear.GetComponent<Il2Cpp.ObjectGuid>();
                 if (guidComponent == null) guidComponent = gear.gameObject.AddComponent<Il2Cpp.ObjectGuid>();
 
-                if (string.IsNullOrEmpty(guidComponent.m_Guid))
+                if (string.IsNullOrEmpty(ModGuid(guidComponent)))
                 {
                     Vector3 localPos = interiorRoot.transform.InverseTransformPoint(gear.transform.position);
                     string cleanName = gear.gameObject.name.Replace("(Clone)", "").Trim();
                     // Built from the building's InstanceId, so the same scene used by
                     // different buildings never clashes.
-                    guidComponent.m_Guid = $"{baseName}_{cleanName}_{localPos.x:F2}_{localPos.y:F2}_{localPos.z:F2}";
+                    SetModGuid(guidComponent, $"{baseName}_{cleanName}_{localPos.x:F2}_{localPos.y:F2}_{localPos.z:F2}");
                 }
             }
         }

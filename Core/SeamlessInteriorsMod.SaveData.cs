@@ -1525,7 +1525,8 @@ namespace SeamlessInteriors
                 if (g == null) g = fire.GetComponentInParent<Il2Cpp.ObjectGuid>();
                 if (g == null) return null;
 
-                if (!string.IsNullOrEmpty(g.m_Guid)) return g.m_Guid;
+                string mg = ModGuid(g);
+                if (!string.IsNullOrEmpty(mg)) return mg;
                 return g.PDID;
             }
             catch { return null; }
@@ -1733,7 +1734,7 @@ namespace SeamlessInteriors
         {
             string gearName = gear.gameObject.name;
             var guidComp = gear.GetComponent<Il2Cpp.ObjectGuid>();
-            string guid = (guidComp != null) ? guidComp.m_Guid : "";
+            string guid = ModGuid(guidComp);
             bool active = gear.gameObject.activeSelf;
 
             Vector3 relPos = interiorT.InverseTransformPoint(gear.transform.position);
@@ -2409,7 +2410,7 @@ namespace SeamlessInteriors
             {
                 var guidComp = spawned.GetComponent<Il2Cpp.ObjectGuid>();
                 if (guidComp == null) guidComp = spawned.AddComponent<Il2Cpp.ObjectGuid>();
-                guidComp.m_Guid = entry.guid;
+                SetModGuid(guidComp, entry.guid);
             }
 
             if (s_DebugBounds)

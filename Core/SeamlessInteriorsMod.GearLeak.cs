@@ -241,8 +241,8 @@ namespace SeamlessInteriors
                 if (IsInsideContainer(gear.transform, masterT)) continue;
 
                 var ownedGuid = gear.GetComponent<Il2Cpp.ObjectGuid>();
-                if (ownedGuid != null && !string.IsNullOrEmpty(ownedGuid.m_Guid))
-                    ownedGuids.Add(ownedGuid.m_Guid);
+                if (!string.IsNullOrEmpty(ModGuid(ownedGuid)))
+                    ownedGuids.Add(ModGuid(ownedGuid));
 
                 DedupEntry entry;
                 entry.name = CleanGearName(gear.gameObject.name);
@@ -272,8 +272,8 @@ namespace SeamlessInteriors
                 string ownedName;
 
                 var looseGuid = gear.GetComponent<Il2Cpp.ObjectGuid>();
-                if (looseGuid != null && !string.IsNullOrEmpty(looseGuid.m_Guid)
-                    && ownedGuids.Contains(looseGuid.m_Guid))
+                if (!string.IsNullOrEmpty(ModGuid(looseGuid))
+                    && ownedGuids.Contains(ModGuid(looseGuid)))
                 {
                     isCopy = true;
                 }
@@ -383,7 +383,7 @@ namespace SeamlessInteriors
                         Vector3 pos = gear.transform.position;
                         if (!filter.Contains(pos)) continue;
                         var guid = gear.GetComponent<Il2Cpp.ObjectGuid>();
-                        bool copy = (guid != null && !string.IsNullOrEmpty(guid.m_Guid) && guids.Contains(guid.m_Guid))
+                        bool copy = (!string.IsNullOrEmpty(ModGuid(guid)) && guids.Contains(ModGuid(guid)))
                                     || HasOwnedCopyNear(cells, CleanGearName(gear.gameObject.name), pos, sqrRadius);
                         if (!copy) continue;
                         if (purged < 10)

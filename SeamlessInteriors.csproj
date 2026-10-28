@@ -193,6 +193,7 @@
     <Compile Include="Core\SeamlessInteriorsMod.WindowCoverLayers.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.WindowCoverOutside.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.CarriedDecorations.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.ModGuids.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.StableGuids.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.DecorationState.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.VanillaExport.cs" />

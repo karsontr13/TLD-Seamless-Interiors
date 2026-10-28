@@ -401,7 +401,7 @@ namespace SeamlessInteriors
         {
             if (og == null) return null;
             string g = null;
-            try { g = !string.IsNullOrEmpty(og.m_Guid) ? og.m_Guid : og.PDID; } catch { }
+            try { g = !string.IsNullOrEmpty(ModGuid(og)) ? ModGuid(og) : og.PDID; } catch { }
             if (!string.IsNullOrEmpty(g) && g.EndsWith("_CLONE")) g = g.Substring(0, g.Length - "_CLONE".Length);
             return string.IsNullOrEmpty(g) ? null : g;
         }

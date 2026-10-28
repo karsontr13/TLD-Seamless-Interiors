@@ -116,7 +116,8 @@ namespace SeamlessInteriors
                 if (p == null || p.gameObject == null) continue;
                 if (!string.IsNullOrEmpty(p.m_Guid)) byGuid[p.m_Guid] = p.gameObject;
                 var og = p.GetComponent<ObjectGuid>();
-                if (og != null && !string.IsNullOrEmpty(og.m_Guid)) byGuid[og.m_Guid] = p.gameObject;
+                string ogGuid = ModGuid(og);
+                if (!string.IsNullOrEmpty(ogGuid)) byGuid[ogGuid] = p.gameObject;
             }
 
             int applied = 0;

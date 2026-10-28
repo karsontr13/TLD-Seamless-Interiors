@@ -129,7 +129,7 @@ namespace SeamlessInteriors
         {
             string id = null;
             var g = x.GetComponent<Il2Cpp.ObjectGuid>();
-            if (g != null) id = !string.IsNullOrEmpty(g.m_Guid) ? g.m_Guid : g.PDID;
+            if (g != null) id = !string.IsNullOrEmpty(ModGuid(g)) ? ModGuid(g) : g.PDID;
             return string.IsNullOrEmpty(id)
                 ? $"{{\"m_State\":\"{x.m_State}\"}}"
                 : $"{{\"m_Guid\":\"{id}\",\"m_State\":\"{x.m_State}\"}}";

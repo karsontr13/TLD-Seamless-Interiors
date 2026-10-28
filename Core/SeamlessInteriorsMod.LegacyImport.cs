@@ -1028,7 +1028,7 @@ namespace SeamlessInteriors
                 localPositions[i] = interiorT.InverseTransformPoint(c.transform.position);
 
                 var guidComp = c.GetComponent<ObjectGuid>();
-                string g = (guidComp != null) ? guidComp.m_Guid : null;
+                string g = (guidComp != null) ? ModGuid(guidComp) : null;
                 // CloneContainerGuidFixPatch appends "_CLONE" so the clone's containers
                 // do not mirror the originals; strip it back off for matching.
                 if (!string.IsNullOrEmpty(g) && g.EndsWith("_CLONE"))

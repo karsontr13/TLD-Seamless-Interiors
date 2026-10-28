@@ -398,7 +398,7 @@ namespace SeamlessInteriors
             {
                 var g = go.GetComponentInParent<Il2Cpp.ObjectGuid>();
                 if (g != null)
-                    MelonLogger.Msg($"[TESHIS]      kimlik: guid={Safe(g.m_Guid)} pdid={Safe(g.PDID)}");
+                    MelonLogger.Msg($"[TESHIS]      kimlik: guid={Safe(ModGuid(g))} pdid={Safe(g.PDID)}");
             }
             catch (System.Exception ex) { MelonLogger.Msg($"[TESHIS]      kimlik okunamadi: {ex.Message}"); }
 
