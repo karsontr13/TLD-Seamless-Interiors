@@ -31,7 +31,14 @@ namespace SeamlessInteriors
             string insideInstanceId = "";
             bool localTransformWritten = false;
 
-            foreach (var instance in ActiveInteriors.Values)
+            // The player's own building first: parked boxes overlap (the farmhouse box holds its basement).
+            var candidates = new List<SeamlessInteriorInstance>();
+            SeamlessInteriorInstance current;
+            string currentId = PlayerInteriorId;
+            if (currentId != null && ActiveInteriors.TryGetValue(currentId, out current)) candidates.Add(current);
+            candidates.AddRange(ActiveInteriors.Values);
+
+            foreach (var instance in candidates)
             {
                 if (!instance.RunCompleted) continue;
                 if (instance.IsPositionInside(playerT.position))
