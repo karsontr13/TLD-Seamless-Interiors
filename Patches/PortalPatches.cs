@@ -595,7 +595,7 @@ namespace SeamlessInteriors
                     Transform exit = FindNamedNearest(search, door.m_ExitPointName, clickedDoorPos);
                     if (exit == null) continue;
                     vanillaPoint = true;
-                    return OnTheGround(exit.position);
+                    return OnTheGround(instance, exit.position);
                 }
             }
 
@@ -624,7 +624,7 @@ namespace SeamlessInteriors
                 if (best != null)
                 {
                     vanillaPoint = true;
-                    return OnTheGround(best.position);
+                    return OnTheGround(instance, best.position);
                 }
             }
 
@@ -639,14 +639,29 @@ namespace SeamlessInteriors
             return fallbackPos;
         }
 
-        // A vanilla exit point set down on the ground below it: the Orca store's stand 0.6 and 1.2 m up,
-        // and the player dropped on leaving; the whaling warehouse's back door 3 m (2026-10-10). Left as it is past 5.5 m.
-        private static Vector3 OnTheGround(Vector3 point)
+        // A vanilla exit point set on the ground below it (Orca store 0.6-1.2 m, warehouse back door 3 m). The shell is
+        // switched on for the ray, or the Riken's deck point dropped to the ground under the ship (issue #8).
+        private static Vector3 OnTheGround(SeamlessInteriorInstance instance, Vector3 point)
         {
-            RaycastHit hit;
-            if (Physics.Raycast(point + Vector3.up * 0.5f, Vector3.down, out hit, 6f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                return hit.point + Vector3.up * 0.05f;
-            return point;
+            GameObject shell = instance?.ExteriorShell;
+            bool shellWasOff = shell != null && !shell.activeSelf;
+            RaycastHit[] hits;
+            try
+            {
+                if (shellWasOff) { shell.SetActive(true); Physics.SyncTransforms(); }
+                hits = Physics.RaycastAll(point + Vector3.up * 0.5f, Vector3.down, 6f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            }
+            finally { if (shellWasOff) shell.SetActive(false); }
+            float best = float.MaxValue;
+            Vector3 result = point;
+            foreach (var hit in hits)
+            {
+                if (hit.collider == null || hit.distance >= best) continue;
+                if (SeamlessInteriorsMod.IsUnderAnyMasterInteriorPublic(hit.collider.transform)) continue;
+                best = hit.distance;
+                result = hit.point + Vector3.up * 0.05f;
+            }
+            return result;
         }
 
         // The building whose door the player last left through into a scene SI does not clone.
