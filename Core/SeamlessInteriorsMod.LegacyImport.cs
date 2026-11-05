@@ -271,6 +271,14 @@ namespace SeamlessInteriors
                 return false;
             }
 
+            // Older builds gave up on shared scenes too early; asked again while the mod owns no data here.
+            if (result == "ambiguous" && !SaveFiles.Exists(GetInactiveSceneGearSavePath(instance)))
+            {
+                MelonLogger.Msg($"[LEGACY] {instance.Config.ResolvedInstanceId}: 'belirsiz' isareti yeniden kontrol ediliyor.",
+                                $"[LEGACY] {instance.Config.ResolvedInstanceId}: an old 'ambiguous' verdict is checked again.");
+                return false;
+            }
+
             if (s_DebugBounds)
                 MelonLogger.Msg($"[LEGACY] {instance.Config.ResolvedInstanceId}: karar zaten verilmis " +
                                 $"(isaret='{result ?? "?"}'), aktarim atlaniyor.");
@@ -376,9 +384,21 @@ namespace SeamlessInteriors
                 return true;
             }
 
-            // 3) The plain scene name - only when it cannot be ambiguous.
+            // 3) Shared scene: the index and the region save name this building's key (Milton layouts).
             if (CountInstancesSharingScene(instance) > 1)
             {
+                bool absent;
+                string key = IndexedLegacyKey(instance, saveName, out absent);
+                if (absent) return false;
+                if (key != null && !LegacyKeyClaimedByOther(instance, key))
+                {
+                    // A known key missing from the save: the building was never entered.
+                    if (!TryLoadSlotString(saveName, key, false, out raw)) return false;
+                    instance.LegacySource = LegacySourceKind.Name;
+                    instance.LegacySourceId = key;
+                    instance.LegacyRawBlob = raw;
+                    return true;
+                }
                 ambiguous = true;
                 return false;
             }
@@ -461,6 +481,31 @@ namespace SeamlessInteriors
             }
 
             return unresolvedSiblings == 0 ? unclaimed[0] : null;
+        }
+
+        // The vanilla key of this building's door in this save's town layout; absent when the layout lacks it.
+        // Null when the index or the region save cannot tell for sure.
+        private static string IndexedLegacyKey(SeamlessInteriorInstance instance, string saveName, out bool absent)
+        {
+            absent = false;
+            try
+            {
+                var facts = FindVanillaFacts(instance.Config.ResolvedInstanceId);
+                if (facts == null || facts.Doors.Count == 0) return null;
+                var region = RegionSaveOf(saveName, facts.Region ?? instance.Config.ExteriorSceneName, new Dictionary<string, RegionSave>());
+                bool guessed;
+                string key = facts.KeyFor(region.Choices, region.Doors, out absent, out guessed);
+                if (absent) return null;
+                return guessed ? null : key;
+            }
+            catch { absent = false; return null; }
+        }
+
+        private static bool LegacyKeyClaimedByOther(SeamlessInteriorInstance instance, string key)
+        {
+            foreach (var other in ActiveInteriors.Values)
+                if (other != null && other != instance && other.LegacySourceId == key) return true;
+            return false;
         }
 
         private static int CountInstancesSharingScene(SeamlessInteriorInstance instance)
