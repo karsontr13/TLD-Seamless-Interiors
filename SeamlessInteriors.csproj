@@ -249,6 +249,7 @@
     <Compile Include="Core\SeamlessInteriorsMod.ShapedViews.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InsideFlag.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.LegacyImport.cs" />
+    <Compile Include="Core\SeamlessInteriorsMod.Challenges.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.InteractiveState.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Interactivity.cs" />
     <Compile Include="Core\SeamlessInteriorsMod.Instances.cs" />
