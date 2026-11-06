@@ -724,10 +724,12 @@ namespace SeamlessInteriors
                 var renderer = opening.Glass[g];
                 var filter = renderer != null ? renderer.GetComponent<MeshFilter>() : null;
                 var mesh = filter != null ? filter.sharedMesh : null;
-                if (mesh == null || !mesh.isReadable) continue;
+                if (mesh == null) continue;
                 // Managed copies, once: indexing the game's arrays and TransformPoint were a call per vertex.
-                int[] triangles = mesh.triangles;
-                Vector3[] world = CoverToWorld(renderer.transform, mesh.vertices);
+                // Unreadable glass is read from the GPU: skipped, it left the keeper cabin with no panes and no bank (2026-11-06).
+                int[] triangles; Vector3[] vertices;
+                if (!TryReadMesh(mesh, out vertices, out triangles)) continue;
+                Vector3[] world = CoverToWorld(renderer.transform, vertices);
                 for (int k = 0; k + 2 < triangles.Length; k += 3)
                 {
                     float r0 = float.MaxValue, r1 = float.MinValue, u0 = float.MaxValue, u1 = float.MinValue;
