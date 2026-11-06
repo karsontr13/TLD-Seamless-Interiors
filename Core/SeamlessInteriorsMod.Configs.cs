@@ -2647,7 +2647,9 @@ namespace SeamlessInteriors
 
             //MININGREGION:
 
-            // 1. MineConcentratorBuilding (SIConfigTool 2026-10-04: 7 door(s), no lift: lower floors sit in the hillside, CHECK ROTATION IN GAME)
+            // 1. MineConcentratorBuilding: left out of SI on purpose (owner, 2026-11-06); the vanilla mine stays.
+            // To bring it back, remove the #if false / #endif pair around the config below.
+#if false
             new InteriorConfig
             {
                 InstanceId = "MineConcentratorBuilding_1",
@@ -2676,6 +2678,7 @@ namespace SeamlessInteriors
                 },
                 // review by hand: DLM_MineConcentrator_SURVIVAL_LGT_Prefab
             },
+#endif
 
             // 2. PumpHouse (SIConfigTool 2026-10-04: 2 door(s), lift 1.65 m, CHECK ROTATION IN GAME)
             new InteriorConfig
