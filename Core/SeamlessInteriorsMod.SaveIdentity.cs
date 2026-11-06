@@ -500,19 +500,17 @@ namespace SeamlessInteriors
         // in itself (that is what the canary above is for).
         private static string ReadSaveTagFromSlot(string saveName)
         {
+            // Neither generic read ever returned the tag (2.55-2.60): the raw bytes are unpacked instead.
             try
             {
-                Il2CppSystem.String il2cppRaw;
-                if (SaveGameSlots.TryLoadDataFromSlot<Il2CppSystem.String>(saveName, SAVE_TAG_SLOT_KEY, out il2cppRaw))
-                {
-                    string tag = ExtractTag(il2cppRaw != null ? il2cppRaw.ToString() : null);
-                    if (!string.IsNullOrEmpty(tag)) return tag;
-                }
+                string tag = ExtractTag(ReadRawSlotEntry(saveName, SAVE_TAG_SLOT_KEY));
+                if (!string.IsNullOrEmpty(tag)) return tag;
             }
             catch (System.Exception ex)
             {
                 if (s_DebugBounds)
-                    MelonLogger.Msg($"[KAYIT-KIMLIGI] Slot damgasi okunamadi (Il2CppSystem.String): {ex.Message}");
+                    MelonLogger.Msg($"[KAYIT-KIMLIGI] Slot damgasi okunamadi (ham): {ex.Message}",
+                                    $"[SAVE-IDENTITY] The slot stamp could not be read (raw): {ex.Message}");
             }
 
             try
@@ -528,6 +526,37 @@ namespace SeamlessInteriors
             }
 
             return null;
+        }
+
+        // One entry of a save slot as text: its bytes unpacked by the game's own routine, found by name
+        // because its assembly is not referenced. Null when any step is missing.
+        private static System.Reflection.MethodInfo s_SlotUnpack;
+        private static bool s_SlotUnpackSearched;
+
+        private static string ReadRawSlotEntry(string saveName, string key)
+        {
+            SlotData slot = SaveGameSlots.GetSaveSlotFromName(saveName);
+            if (slot == null || slot.m_Dict == null) return null;
+
+            Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte> packed;
+            if (!slot.m_Dict.TryGetValue(key, out packed) || packed == null) return null;
+
+            if (!s_SlotUnpackSearched)
+            {
+                s_SlotUnpackSearched = true;
+                foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    System.Type t = assembly.GetType("Il2CppTLD.Encryption.EncryptString", false);
+                    s_SlotUnpack = t?.GetMethod("DecompressBytes", new[] { typeof(Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte>) });
+                    if (s_SlotUnpack != null) break;
+                }
+            }
+            if (s_SlotUnpack == null) return null;
+
+            var unpacked = s_SlotUnpack.Invoke(null, new object[] { packed }) as Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<byte>;
+            if (unpacked == null) return null;
+            byte[] bytes = unpacked;
+            return System.Text.Encoding.UTF8.GetString(bytes);
         }
 
         private static bool ReadSaveIdentityFile(string saveName, out string tag, out float hours)
