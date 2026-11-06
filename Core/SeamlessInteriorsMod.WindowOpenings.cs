@@ -1350,12 +1350,54 @@ namespace SeamlessInteriors
             return result;
         }
 
+        // "Parent/prefix" also asks for the parent's name: same-named windows of a switched-off room ride along
+        // in the keeper cabin's scene (2026-11-06). A plain prefix matches as before.
+        private static bool SlotObjectNamed(Transform t, string name)
+        {
+            int slash = name.IndexOf('/');
+            if (slash < 0) return t.name.StartsWith(name, System.StringComparison.Ordinal);
+            Transform parent = t.parent;
+            return parent != null && parent.name == name.Substring(0, slash)
+                && t.name.StartsWith(name.Substring(slash + 1), System.StringComparison.Ordinal);
+        }
+
+        // A "Parent/prefix" row faces its panes away from that parent's middle: the switched-off rooms beside the
+        // keeper cabin pulled the whole scene's middle past its south window, turning it inward (2026-11-06).
+        private static Transform SlotScope(string[] names, MeshRenderer[] all)
+        {
+            foreach (var name in names)
+            {
+                int slash = name.IndexOf('/');
+                if (slash < 0) continue;
+                string parentName = name.Substring(0, slash);
+                foreach (var r in all)
+                    if (r != null && r.transform.parent != null && r.transform.parent.name == parentName) return r.transform.parent;
+            }
+            return null;
+        }
+
+        private static bool TryGetMiddleUnder(MeshRenderer[] all, Transform scope, out Vector3 middle)
+        {
+            middle = Vector3.zero; int counted = 0;
+            foreach (var r in all)
+            {
+                if (r == null || !r.gameObject.activeSelf || !r.transform.IsChildOf(scope)) continue;
+                var f = r.GetComponent<MeshFilter>();
+                if (f == null || f.sharedMesh == null) continue;
+                middle += r.transform.TransformPoint(f.sharedMesh.bounds.center); counted++;
+            }
+            if (counted == 0) return false;
+            middle /= counted;
+            return true;
+        }
+
         // Windows a row names (RoomGlassSlotObjects) whose glass the rule misses: measured from the submesh
         // whose material says Glass alone; added after the rule's windows so those keep their numbers.
         private static void AddRoomGlassSlotOpenings(string[] names, MeshRenderer[] all, Transform rootT, List<InteriorWindowOpening> result, string id, float joinWithin)
         {
             Vector3 middle;
-            if (!TryGetRoomMiddle(all, out middle)) return;
+            Transform scope = SlotScope(names, all);
+            if (scope != null ? !TryGetMiddleUnder(all, scope, out middle) : !TryGetRoomMiddle(all, out middle)) return;
 
             int added = 0;
             for (int i = 0; i < all.Length; i++)
@@ -1363,7 +1405,7 @@ namespace SeamlessInteriors
                 var r = all[i];
                 if (r == null || !r.gameObject.activeSelf) continue;
                 bool named = false;
-                for (int n = 0; n < names.Length && !named; n++) named = r.gameObject.name.StartsWith(names[n], System.StringComparison.Ordinal);
+                for (int n = 0; n < names.Length && !named; n++) named = SlotObjectNamed(r.transform, names[n]);
                 if (!named) continue;
 
                 var filter = r.GetComponent<MeshFilter>();

@@ -39,6 +39,10 @@ namespace SeamlessInteriors
         // for building by building for the reason OpeningsWithNoGlass is. See MeasureShellWindowsByObject.
         public string[] ShellGlassObjects;
 
+        // The ShellGlassObjects' glass is on meshes the game does not let the CPU read: it is read back from the
+        // GPU instead (TryReadSlot). Off everywhere else, so no building already looked at gains a window.
+        public bool ShellGlassFromGpu;
+
         // Windows, by the building's window index, too tall to clean all the way up: a clean wipes only the
         // lowest third (CLEAN_REACH_FRACTION) of the glass, and the rest stays frosted. The clean box covers
         // only that third. The record is the same cleaned flag as every other window; only what it clears
@@ -874,6 +878,19 @@ namespace SeamlessInteriors
                     RoomTurnDegrees = 10.65f,
                     // The two ground-floor room windows carry their glass in slot 1 beside the frame.
                     RoomGlassSlotObjects = new[] { "STR_LighthouseWindowInteriorA_Prefab" },
+                }
+            },
+            // Iron Road lighthouse keeper cabin. The building's glass is one unreadable object holding every window
+            // (the measure found none: the windows showed the world from the parked room's height, 80 m up), and the
+            // room's windows are the lighthouse's own prefabs, whose glass is not STR_WindowGlassMix (2026-11-06).
+            {
+                "STR_IronRoad_LighthouseKeeperCabin", new BuildingWindowOverride
+                {
+                    ShellGlassObjects = new[] { "STR_IronRoad_LighthouseKeeperCabin_Windows" },
+                    ShellGlassFromGpu = true,
+                    GlassSlotJoinWithinCm = 40f,
+                    // Only the cabin's own: the lighthouse's switched-off rooms in the scene carry the same names.
+                    RoomGlassSlotObjects = new[] { "STR_IronRoad_LighthouseKeeperCabin_Int/STR_LighthouseB_IntWindow_" },
                 }
             },
             // Whaling warehouse. Room glass wears STR_DamControlRoomGlass, so the rule found no window. Panes

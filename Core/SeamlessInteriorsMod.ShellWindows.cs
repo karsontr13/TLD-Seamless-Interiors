@@ -370,6 +370,8 @@ namespace SeamlessInteriors
             var owners = new List<Transform>(); var ownerMesh = new List<Mesh>(); var ownerMeshT = new List<Transform>();
             var ownerSubmesh = new List<int>(); var ownerTriangles = new List<int>();
             int unreadable = 0;
+            BuildingWindowOverride gpuRow;
+            bool fromGpu = TryGetBuildingWindowOverride(shellName, out gpuRow) && gpuRow.ShellGlassFromGpu;
 
             for (int i = 0; i < renderers.Length; i++)
             {
@@ -401,7 +403,11 @@ namespace SeamlessInteriors
                     bool glass = materials[k].name.IndexOf("SeamlessInteriors_HiddenPane", System.StringComparison.Ordinal) >= 0
                               || IsShellGlassMaterial(materials[k]);
                     if (!glass) continue;
-                    if (!filter.sharedMesh.isReadable) { unreadable++; continue; }
+                    if (!filter.sharedMesh.isReadable)
+                    {
+                        unreadable++;
+                        if (!fromGpu) continue;
+                    }
 
                     int count = filter.sharedMesh.GetSubMesh(k).indexCount / 3;
                     int at = owners.IndexOf(owner);
@@ -420,8 +426,8 @@ namespace SeamlessInteriors
             int glassTriangles = 0;
             for (int o = 0; o < owners.Count; o++)
             {
-                Vector3[] vertices = ownerMesh[o].vertices;
-                int[] triangles = ownerMesh[o].GetTriangles(ownerSubmesh[o]);
+                Vector3[] vertices; int[] triangles;
+                if (!TryReadSlot(ownerMesh[o], ownerSubmesh[o], out vertices, out triangles)) continue;
                 Transform meshT = ownerMeshT[o];
 
                 // The row asks for the object's panes one by one: cut as the room's slot glass is.
