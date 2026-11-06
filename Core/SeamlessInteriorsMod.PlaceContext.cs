@@ -56,6 +56,7 @@ namespace SeamlessInteriors
         private static object s_TemperatureHook;
         private static object s_TemperatureNoHeatHook;
         private static object s_DeltaTimeHook;
+        private static object s_WindOcclusionHook;
         private static readonly Dictionary<Type, ModComponentKind> s_ModComponentKinds = new Dictionary<Type, ModComponentKind>();
         private static readonly List<object> s_NewModComponents = new List<object>();
         private static readonly HashSet<object> s_KnownModComponents = new HashSet<object>();
@@ -125,6 +126,7 @@ namespace SeamlessInteriors
                     s_TemperatureHook = HookWith(hookCtor, typeof(Weather).GetMethod("GetCurrentTemperature", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null), nameof(TemperatureInPlace));
                     s_TemperatureNoHeatHook = HookWith(hookCtor, typeof(Weather).GetMethod("GetCurrentTemperatureWithoutHeatSources", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null), nameof(TemperatureInPlace));
                     s_DeltaTimeHook = HookWith(hookCtor, PropertyAccessor(typeof(Time), "deltaTime", BindingFlags.Static, false), nameof(DeltaTimeInPlace));
+                    s_WindOcclusionHook = HookWith(hookCtor, typeof(Wind).GetMethod("IsPositionOccludedFromWind", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(Vector3) }, null), nameof(WindOccludedInPlace));
                 }
 
                 s_PlaceContextInstalled = true;
@@ -204,6 +206,12 @@ namespace SeamlessInteriors
         private static float DeltaTimeInPlace(Func<float> orig)
         {
             return InPlaceTick ? s_TickDeltaTime : orig();
+        }
+
+        // No wind reaches a building the player is not in; Candlelight's candles put themselves out (issue #7).
+        private static bool WindOccludedInPlace(Func<Wind, Vector3, bool> orig, Wind self, Vector3 pos)
+        {
+            return InPlaceTick && s_TickPlace.Indoor || orig(self, pos);
         }
 
         // ─── Per frame ───
