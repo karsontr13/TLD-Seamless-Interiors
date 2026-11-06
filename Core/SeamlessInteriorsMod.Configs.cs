@@ -2715,6 +2715,135 @@ namespace SeamlessInteriors
                 RotationOffset = new Vector3(0f, 35.7f, 0f),
             },
 
+            //PORTREMNANTREGION:
+
+            // 1. ChurchCIronRoad (SIConfigTool 2026-11-06: 1 door(s), lift 1.40 m)
+            new InteriorConfig
+            {
+                InstanceId = "ChurchCIronRoad_1",
+                ExteriorSceneName = "PortRemnantRegion",
+                InteriorSceneBaseName = "ChurchCIronRoad",
+                ExteriorShellPrefabName = "IronRoad_STR_ChurchC_Exterior_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(-536.6653f, 66.3586f, -322.8517f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear", "FX_LightShaft_E" },
+                ObjectsToDisable = new List<string> { },
+                RotationOffset = new Vector3(0f, 339.33f, 0f),
+            },
+
+            // 2. MountainPassCabinAIronRoad (SIConfigTool 2026-11-06: 1 door(s), lift 2.00 m)
+            new InteriorConfig
+            {
+                InstanceId = "MountainPassCabinAIronRoad_1",
+                ExteriorSceneName = "PortRemnantRegion",
+                InteriorSceneBaseName = "MountainPassCabinAIronRoad",
+                ExteriorShellPrefabName = "STR_MountainPassCabinA_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(-53.953f, 55.3089f, -785.6963f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear", "FX_LightShaft_B", "Day Lights" },
+                ObjectsToDisable = new List<string> { },
+                RotationOffset = new Vector3(0f, 41.67f, 0f),
+                // review by hand: DLM_MountainPassCabinA_IronRoad_LGT_Prefab
+            },
+
+            // 3. WoodCabinAIronRoad (SIConfigTool 2026-11-06: 1 door(s), lift 0.00 m)
+            new InteriorConfig
+            {
+                InstanceId = "WoodCabinAIronRoad_1",
+                ExteriorSceneName = "PortRemnantRegion",
+                InteriorSceneBaseName = "WoodCabinAIronRoad",
+                ExteriorShellPrefabName = "STR_WoodCabinA_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(-400.1743f, 21.0799f, 61.6628f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear", "DLM_WoodCabinA_IronRoad_Lighting_Prefab" },
+                ObjectsToDisable = new List<string> { },
+                RotationOffset = new Vector3(0f, 353.93f, 0f),
+            },
+            // 4. LighthouseKeeperCabin (SIConfigTool 2026-11-06: 1 door(s), lift 1.60 m)
+            new InteriorConfig
+            {
+                InstanceId = "LighthouseKeeperCabin_1",
+                ExteriorSceneName = "PortRemnantRegion",
+                InteriorSceneBaseName = "LighthouseKeeperCabin",
+                ExteriorShellPrefabName = "STR_IronRoad_LighthouseKeeperCabin",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(266.35f, 36.4232f, 668.78f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear", "Day Lights" },
+                ObjectsToDisable = new List<string> { "STR_LighthouseB_WindowGlow_Prefab" },
+                RotationOffset = new Vector3(0f, 173.04f, 0f),
+                // review by hand: DLM_LighthouseKeeperCabin_IronRoad_LGT_Prefab
+            },
+
+
+            //ISLANDATRACKSECTION1:
+
+            // 1. LakeCabinDIronRoad (SIConfigTool 2026-11-06: 1 door(s), lift 0.35 m)
+            new InteriorConfig
+            {
+                InstanceId = "LakeCabinDIronRoad_1",
+                ExteriorSceneName = "IslandATrackSection1",
+                InteriorSceneBaseName = "LakeCabinDIronRoad",
+                ExteriorShellPrefabName = "STR_Lake_Cabin_P_Wilds_C_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(1468.458f, 150.2035f, 285.1194f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "InteriorLightingManager_Prefab", "FX_LightShaft_E", "CONTAINER_InaccessibleGear", "WindowLightGroup", "Daylight" },
+                ObjectsToDisable = new List<string> { "OBJ_LakeCabinInteriorWindow" },
+                RotationOffset = new Vector3(0f, 315.84f, 0f),
+            },
+
+            //ISLANDATRACKSECTION3:
+
+            // 1. WoodCabinCIronRoad (SIConfigTool 2026-11-06: 1 door(s), lift 0.05 m)
+            new InteriorConfig
+            {
+                InstanceId = "WoodCabinCIronRoad_1",
+                ExteriorSceneName = "IslandATrackSection3",
+                InteriorSceneBaseName = "WoodCabinCIronRoad",
+                ExteriorShellPrefabName = "STR_WoodCabinC_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(1539.312f, 123.4669f, 406.6285f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear", "FX_LightShaft_B", "FX_LightShaft_E" },
+                ObjectsToDisable = new List<string> { },
+                RotationOffset = new Vector3(0f, 268.48f, 0f),
+            },
+
+            //ISLANDATRACKSECTION5:
+
+            // 1. CoastalHouseH1IronRoad (SIConfigTool 2026-11-06: 2 door(s), lift 1.35 m)
+            new InteriorConfig
+            {
+                InstanceId = "CoastalHouseH1IronRoad_1",
+                ExteriorSceneName = "IslandATrackSection5",
+                InteriorSceneBaseName = "CoastalHouseH1IronRoad",
+                ExteriorShellPrefabName = "STR_HouseExteriorHMilton_Prefab",
+                YOffset = 0f,
+                ScaleAdjustment = new Vector3(1f, 1f, 1f),
+                FallbackPosition = new Vector3(-1102.078f, 123.3459f, 377.7935f),
+                ForceExactPosition = true,
+
+                ObjectsToDestroy = new List<string> { "CONTAINER_InaccessibleGear", "Midday", "FX_LightShaft_B", "Daytime", "CoastalHouseH_IronRoad_Lighting_Prefab" },
+                ObjectsToDisable = new List<string> { "STR_CoastalHouseHWindowGlow_Prefab" },
+                RotationOffset = new Vector3(0f, 255f, 0f),
+            },
+
         };
     }
 }
