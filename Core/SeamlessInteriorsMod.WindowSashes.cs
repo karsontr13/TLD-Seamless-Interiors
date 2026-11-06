@@ -63,6 +63,7 @@ namespace SeamlessInteriors
             public float Slide;         // metres
             public float EdgeLeft, EdgeRight, EdgeBottom;   // the sash's outer edges, from the glass centre; its pane stays inside them
             public float RailTop;       // the frame's meeting rail's top, from the glass centre
+            public float SeamShare = -1f;   // glass-only windows: the seam's height as a share of the glass, bottom 0
             public float Shown = -1f;   // 0 closed .. 1 open
             public float AnimFrom, AnimStart = -1f;
             public bool NoGameGlass;    // its pane is drawn by a cover layer instead of the game's glass
@@ -253,7 +254,109 @@ namespace SeamlessInteriors
         {
             if (IsSlideRightWindowModel(opening)) return BuildPaneSash(opening, index, false, out why);
             if (IsWindowModel(opening, PANE_SLIDE_UP_WINDOW_MODELS)) return BuildPaneSash(opening, index, true, out why);
+            if (IsWindowModel(opening, GLASS_ONLY_SLIDE_UP_MODELS)) return BuildGlassOnlySash(opening, index, out why);
             return BuildSlideUpSash(opening, index, cutFrame, out why);
+        }
+
+        // Window objects that are only glass, two panes meeting edge to edge, their frame part of the room's walls
+        // (Iron Road lighthouse keeper cabin, 2026-11-06). The lower pane rides up on a sash on the room side; the
+        // walls are not cut. The glass may be unreadable: it is cut from a copy read back from the GPU.
+        private static WindowSash BuildGlassOnlySash(InteriorWindowOpening opening, int index, out string why)
+        {
+            why = null;
+            Transform pr = opening.PaneRoot;
+            if (pr == null) { why = "no window object"; return null; }
+            if (pr.Find("SI_Sash") != null) { why = "already has one"; return null; }
+            MeshRenderer glassRenderer = opening.Glass != null && opening.Glass.Count > 0 ? opening.Glass[0] as MeshRenderer : null;
+            MeshFilter glassMf = glassRenderer != null ? glassRenderer.GetComponent<MeshFilter>() : null;
+            if (glassMf == null || glassMf.sharedMesh == null) { why = "no glass"; return null; }
+            Mesh own = glassMf.sharedMesh;
+            Mesh source = own.isReadable ? own : ReadableCopyFromGpu(own, 1);
+            if (source == null) { why = "glass could not be read"; return null; }
+
+            try
+            {
+                Vector3 origin = opening.GlassCenter, R = opening.Right, U = opening.Up, O = opening.Outward;
+                var verts = source.vertices;
+                var tris = source.triangles;
+                var spans = new List<Vector2>();
+                float rL = float.MaxValue, rR = float.MinValue;
+                for (int i = 0; i + 2 < tris.Length; i += 3)
+                {
+                    float lo = float.MaxValue, hi = float.MinValue;
+                    for (int c = 0; c < 3; c++)
+                    {
+                        Vector3 p = glassMf.transform.TransformPoint(verts[tris[i + c]]) - origin;
+                        float u = Vector3.Dot(p, U), r = Vector3.Dot(p, R);
+                        lo = Mathf.Min(lo, u); hi = Mathf.Max(hi, u);
+                        rL = Mathf.Min(rL, r); rR = Mathf.Max(rR, r);
+                    }
+                    spans.Add(new Vector2(lo, hi));
+                }
+                if (spans.Count == 0) { why = "no glass triangles"; return null; }
+                spans.Sort((x, y) => x.x.CompareTo(y.x));
+                // The seam: where the lower pane's top meets the next pane's bottom, a gap or edge to edge.
+                float bottom = spans[0].x, reached = spans[0].y, seam = float.NaN, top = float.MinValue;
+                foreach (var sp in spans) top = Mathf.Max(top, sp.y);
+                foreach (var sp in spans)
+                {
+                    if (float.IsNaN(seam) && sp.x >= reached - GLASS_ONLY_SEAM_TOUCH && sp.x - bottom > 0.15f && top - sp.x > 0.15f) seam = sp.x;
+                    reached = Mathf.Max(reached, sp.y);
+                }
+                if (float.IsNaN(seam)) { why = "not two panes"; return null; }
+                float seamShare = (seam - bottom) / Mathf.Max(top - bottom, 0.01f);
+
+                // The frame's look: the room's walls round the window, which hold it.
+                MeshRenderer walls = null; float wallsSize = 0f;
+                if (pr.parent != null)
+                    foreach (var r in pr.parent.GetComponentsInChildren<MeshRenderer>(true))
+                    {
+                        if (r == glassRenderer || r.transform.IsChildOf(pr) || r.sharedMaterial == null || !r.bounds.Contains(origin)) continue;
+                        float size = r.bounds.size.sqrMagnitude;
+                        if (size > wallsSize) { wallsSize = size; walls = r; }
+                    }
+                if (walls == null) { why = "no walls round the window"; return null; }
+
+                const float OVER = 0.03f;
+                var sash = new WindowSash { Opening = index, PaneRoot = pr, Up = U, Right = R, Outward = O, Seam = seam, SeamShare = seamShare };
+                float o1 = -GLASS_ONLY_SASH_IN, o0 = o1 - 0.024f;
+                sash.SashMid = (o0 + o1) * 0.5f;
+                sash.EdgeLeft = rL - OVER; sash.EdgeRight = rR + OVER; sash.EdgeBottom = bottom - OVER;
+                sash.RailTop = seam + OVER;
+                // Up until its bottom rail meets the seam.
+                sash.Slide = seam - sash.EdgeBottom;
+
+                sash.Go = new GameObject("SI_Sash");
+                sash.Go.layer = walls.gameObject.layer;
+                sash.Go.transform.SetParent(pr, false);
+                sash.SashMesh = BuildSashMesh(pr, origin, R, U, O, sash.EdgeLeft, sash.EdgeRight, sash.EdgeBottom, sash.RailTop, o0, o1);
+                sash.Go.AddComponent<MeshFilter>().sharedMesh = sash.SashMesh;
+                var sashRenderer = sash.Go.AddComponent<MeshRenderer>();
+                sashRenderer.sharedMaterial = walls.sharedMaterial;
+                sashRenderer.lightProbeUsage = walls.lightProbeUsage;
+
+                sash.GlassMf = glassMf;
+                sash.GlassRenderer = glassRenderer;
+                sash.GlassOwn = own;
+                sash.GlassUpper = CutMeshAtSeam(source, glassMf.transform, origin, U, seam, true);
+                sash.GlassLower = CutMeshAtSeam(source, glassMf.transform, origin, U, seam, false);
+                KeepInsideSash(sash.GlassLower, glassMf.transform, origin, R, U, sash);
+                glassMf.sharedMesh = sash.GlassUpper;
+                var lowGlassGo = new GameObject("SI_SashGlass");
+                lowGlassGo.layer = glassMf.gameObject.layer;
+                lowGlassGo.transform.SetParent(sash.Go.transform, false);
+                lowGlassGo.transform.position = glassMf.transform.position + O * sash.SashMid;
+                lowGlassGo.transform.rotation = glassMf.transform.rotation;
+                lowGlassGo.transform.localScale = glassMf.transform.localScale;
+                lowGlassGo.AddComponent<MeshFilter>().sharedMesh = sash.GlassLower;
+                sash.LowGlass = lowGlassGo.AddComponent<MeshRenderer>();
+                FollowGlass(sash);
+                return sash;
+            }
+            finally
+            {
+                if (source != own) Object.Destroy(source);
+            }
         }
 
         // Windows with a pane per sash and the frame in the building's window mesh (Coastal Highway): the
@@ -1248,7 +1351,7 @@ namespace SeamlessInteriors
                         {
                             bool wantCut = open;
                             bool cut = s_OutsideOpenCuts.ContainsKey(layer);
-                            if (wantCut && !cut) CutOutsideFrost(layer);
+                            if (wantCut && !cut) CutOutsideFrost(layer, OutsideSeamShare(b.InstanceId, room));
                             else if (!wantCut && cut) UncutOutsideFrost(layer);
                             if (sashHere) KeepSashCover(b.InstanceId, room, layer);
                         }
@@ -1290,6 +1393,10 @@ namespace SeamlessInteriors
         private static readonly string[] SLIDE_RIGHT_WINDOW_MODELS = { "STR_GlassPane_Single" };
         // Two panes one over the other, a pane per sash; the lower one slides up (owner, 2026-10-18).
         private static readonly string[] PANE_SLIDE_UP_WINDOW_MODELS = { "STR_GlassPaneVertical_Single" };
+        // Glass-only windows whose frame is the room's walls; see BuildGlassOnlySash (owner, 2026-11-06).
+        private static readonly string[] GLASS_ONLY_SLIDE_UP_MODELS = { "STR_LighthouseB_IntWindow" };
+        // Panes this close count as meeting edge to edge; the sash stands this far into the room off the glass.
+        private const float GLASS_ONLY_SEAM_TOUCH = 0.003f, GLASS_ONLY_SASH_IN = 0.01f;
 
         private static bool IsSlideUpWindowModel(InteriorWindowOpening opening) { return IsWindowModel(opening, SLIDE_UP_WINDOW_MODELS); }
         private static bool IsSlideRightWindowModel(InteriorWindowOpening opening) { return IsWindowModel(opening, SLIDE_RIGHT_WINDOW_MODELS); }
@@ -1317,7 +1424,8 @@ namespace SeamlessInteriors
         private static bool IsOpenableWindow(BuildingWindowOverride row, int roomWindow, InteriorWindowOpening opening)
         {
             if (opening.ViewOutOnly) return false;
-            if (IsSlideUpWindowModel(opening) || IsSlideRightWindowModel(opening) || IsWindowModel(opening, PANE_SLIDE_UP_WINDOW_MODELS) || IsHingedWindow(opening)) return true;
+            if (IsSlideUpWindowModel(opening) || IsSlideRightWindowModel(opening) || IsWindowModel(opening, PANE_SLIDE_UP_WINDOW_MODELS)
+                || IsWindowModel(opening, GLASS_ONLY_SLIDE_UP_MODELS) || IsHingedWindow(opening)) return true;
             if (row == null || row.OpenableWindows == null) return false;
             foreach (var entry in row.OpenableWindows) if (entry != null && entry.RoomWindow == roomWindow) return true;
             return false;
@@ -1439,18 +1547,31 @@ namespace SeamlessInteriors
         }
 
         // Between the building's lower and upper pane, as the outside layer measured them; nothing for one pane.
-        private static void CutOutsideFrost(WindowCoverLayer layer)
+        // The seam of the borrowed room's glass-only sash as a share of its glass; -1 for any other window.
+        private static float OutsideSeamShare(string instanceId, int roomWindow)
         {
-            if (layer.Panes == null || layer.Panes.Count < 2) return;
-            float lowest = float.MaxValue;
-            foreach (var p in layer.Panes) lowest = Mathf.Min(lowest, p[2]);
-            float upperBottom = float.MaxValue;
-            foreach (var p in layer.Panes) if (p[2] > lowest + 0.1f) upperBottom = Mathf.Min(upperBottom, p[2]);
-            if (upperBottom == float.MaxValue) return;
-            float lowerTop = float.MinValue;
-            foreach (var p in layer.Panes) if (p[3] < upperBottom + 0.01f) lowerTop = Mathf.Max(lowerTop, p[3]);
-            if (lowerTop == float.MinValue) return;
-            float seam = (lowerTop + upperBottom) * 0.5f;
+            foreach (var held in s_OutsideSashes)
+                if (held.InstanceId == instanceId && held.RoomWindow == roomWindow && held.Sash != null) return held.Sash.SeamShare;
+            return -1f;
+        }
+
+        // seamShare: where the panes meet edge to edge the shell's panes merge into one and give no seam; the
+        // room's sash then says where it is, as a share of the glass (keeper cabin, 2026-11-06).
+        private static void CutOutsideFrost(WindowCoverLayer layer, float seamShare = -1f)
+        {
+            float seam = float.NaN;
+            if (layer.Panes != null && layer.Panes.Count >= 2)
+            {
+                float lowest = float.MaxValue;
+                foreach (var p in layer.Panes) lowest = Mathf.Min(lowest, p[2]);
+                float upperBottom = float.MaxValue;
+                foreach (var p in layer.Panes) if (p[2] > lowest + 0.1f) upperBottom = Mathf.Min(upperBottom, p[2]);
+                float lowerTop = float.MinValue;
+                if (upperBottom != float.MaxValue)
+                    foreach (var p in layer.Panes) if (p[3] < upperBottom + 0.01f) lowerTop = Mathf.Max(lowerTop, p[3]);
+                if (lowerTop != float.MinValue) seam = (lowerTop + upperBottom) * 0.5f;
+            }
+            if (float.IsNaN(seam) && !(seamShare > 0f && seamShare < 1f)) return;
 
             var mf = layer.FrostGo.GetComponent<MeshFilter>();
             if (mf == null || mf.sharedMesh == null) return;
@@ -1458,6 +1579,7 @@ namespace SeamlessInteriors
             if (v.Length != 4) return;
             Transform t = mf.transform;
             float ub = Vector3.Dot(t.TransformPoint(v[0]) - layer.Center, layer.Up), ut = Vector3.Dot(t.TransformPoint(v[2]) - layer.Center, layer.Up);
+            if (float.IsNaN(seam)) seam = ub + seamShare * (ut - ub);
             float f = (seam - ub) / (ut - ub);
             if (f <= 0.01f || f >= 0.99f) return;
 
