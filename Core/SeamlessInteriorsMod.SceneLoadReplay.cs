@@ -41,6 +41,10 @@ namespace SeamlessInteriors
 
         private const string LOAD_TAG = "[BINA-YUKLEME]";
         private const string MOD_VISIT_CONTENT = "SI_ModVisitContent";
+
+        // During a building load: the region's roots before it. Newer ones are the building's, at scene coordinates
+        // until adopted, and the root view shows them (House Lights looks for the switches it just placed, issue #7).
+        private static HashSet<int> s_LoadRootsBefore;
         private const string MOD_FIRST_CONTENT = "SI_ModFirstContent";
         private const float ADOPT_INSIDE_PADDING = 2f;
         private static readonly object[] s_NoArgs = new object[0];
@@ -260,6 +264,7 @@ namespace SeamlessInteriors
                 if (root != null) before.Add(root.GetInstanceID());
 
             s_ReplayRecord = record;
+            s_LoadRootsBefore = before;
             InvalidateRootViewCache();
             try
             {
@@ -270,6 +275,7 @@ namespace SeamlessInteriors
             finally
             {
                 s_ReplayRecord = null;
+                s_LoadRootsBefore = null;
                 InvalidateRootViewCache();
             }
 

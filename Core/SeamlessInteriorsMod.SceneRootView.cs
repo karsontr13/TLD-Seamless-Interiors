@@ -257,8 +257,9 @@ namespace SeamlessInteriors
                 s_RootsCacheBuilding = building;
             }
 
+            // A building load adds roots between two questions in one frame: no cache while it runs.
             GameObject[] view;
-            if (s_RootsCache.TryGetValue(scene.handle, out view)) return view;
+            if (s_LoadRootsBefore == null && s_RootsCache.TryGetValue(scene.handle, out view)) return view;
 
             // Asked before the bypass: with it on, the scene view reads as off and every building as outdoors.
             SeamlessInteriorInstance inside = RootViewInstance();
@@ -312,7 +313,8 @@ namespace SeamlessInteriors
                 if (root == null) continue;
                 int id = root.transform.GetInstanceID();
                 if (s_ViewCloneRoots.ContainsKey(id)) continue;
-                if (s_ViewSystemRoots.Contains(id) || inside.IsPositionInVolume(root.transform.position)) roots.Add(root);
+                if (s_ViewSystemRoots.Contains(id) || inside.IsPositionInVolume(root.transform.position)
+                    || s_LoadRootsBefore != null && !s_LoadRootsBefore.Contains(root.GetInstanceID())) roots.Add(root);
             }
             return roots.ToArray();
         }
