@@ -108,7 +108,10 @@ namespace SeamlessInteriors
                     GameObject go = FindSCPlusOriginal(instance.MasterInterior, name, original);
                     if (go == null || !go.activeSelf) continue;
 
-                    if (IsSCPlusPickupable(name)) { go.SetActive(false); hidden++; }
+                    // SC+ stands a pickup-able object up again itself; if it failed to (its stove code throws on some
+                    // game versions), hiding the original would lose the object, so the original is moved instead.
+                    Vector3 current = JsonVector(record, "currentPos");
+                    if (IsSCPlusPickupable(name) && HasSCPlusCopy(name, current)) { go.SetActive(false); hidden++; }
                     else
                     {
                         Vector3 rot = JsonVector(record, "currentRot");
@@ -465,6 +468,20 @@ namespace SeamlessInteriors
                     return go;
             }
             return null;
+        }
+
+        // The copy SC+ rebuilt of a moved object: under the game's placement root, at the recorded spot.
+        private static bool HasSCPlusCopy(string name, Vector3 current)
+        {
+            GameObject root = GameObject.Find(SeamlessInteriorsMod.PlacementRootName());
+            if (root == null) return false;
+            foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (child == null || (child.position - current).sqrMagnitude > 1f) continue;
+                if (string.Equals(s_SCPlusSanitize.Invoke(null, new object[] { child.name }) as string, name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         private static bool IsSCPlusPickupable(string name)

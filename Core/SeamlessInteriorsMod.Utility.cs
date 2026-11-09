@@ -249,7 +249,7 @@ namespace SeamlessInteriors
         // Read once: under IL2CPP each read of a static string property allocates.
         private static string s_PlacementRootName;
 
-        private static string PlacementRootName()
+        internal static string PlacementRootName()
         {
             if (s_PlacementRootName != null) return s_PlacementRootName;
 
