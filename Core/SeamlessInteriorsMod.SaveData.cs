@@ -911,6 +911,14 @@ namespace SeamlessInteriors
 
                 if (!guidToPosRot.ContainsKey(p.m_Guid))
                 {
+                    // Carried over from this building into another one whose room was restored first.
+                    if (s_UnclaimedMoves.TryGetValue(p.m_Guid, out var claim) && claim.Key != instance && claim.Key.MasterInterior != null)
+                    {
+                        s_UnclaimedMoves.Remove(p.m_Guid);
+                        MoveIntoInstance(claim.Key, p, claim.Value);
+                        continue;
+                    }
+
                     // A SPAWNED OBJECT IS NEVER SWITCHED OFF HERE.
                     //
                     // The rule below is about the scene TEMPLATE's own furniture: the
@@ -1029,6 +1037,10 @@ namespace SeamlessInteriors
                     Vector3 oldWorldPos = p.transform.position;
                     float dist = Vector3.Distance(oldWorldPos, targetWorldPos);
 
+                    // Still a child of the building it was taken from: it must follow this one's visibility now.
+                    if (!p.transform.IsChildOf(interiorT) && IsUnderAnyMasterInterior(p.transform))
+                        p.transform.SetParent(interiorT, true);
+
                     p.transform.position = targetWorldPos;
                     p.transform.rotation = targetWorldRot;
                     // Zero means "no scale recorded" - never shrink an object to nothing.
@@ -1047,6 +1059,11 @@ namespace SeamlessInteriors
                 }
             }
 
+            // Not found anywhere: it may sit in a building whose room is not built yet (taken from there, put down here).
+            foreach (var kv in guidToPosRot)
+                if (!restoredGuids.Contains(kv.Key))
+                    s_UnclaimedMoves[kv.Key] = new KeyValuePair<SeamlessInteriorInstance, PlaceableEntry>(instance, kv.Value);
+
             if (protectedUnstable > 0)
                 MelonLogger.Msg($"[PLACEABLE-LOAD] {instance.Config.ResolvedInstanceId}: eski kayitta kimligi tutmayan {protectedUnstable} obje kapatilmadi.");
 
@@ -1054,6 +1071,46 @@ namespace SeamlessInteriors
                 MelonLogger.Msg($"[PLACEABLE-LOAD] {instance.Config.InteriorSceneBaseName}: {restoredCount}/{guidToPosRot.Count} Placeable geri yuklendi " +
                                 $"({changedCount} degismis, {protectedSpawned} yerlestirilmis obje kapatilmaktan korundu, " +
                                 $"{carriedHidden} obje oyuncunun cantasinda oldugu icin gizlendi).");
+        }
+
+        // Records of objects another building's room should hold, not found when that room was restored.
+        private static readonly Dictionary<string, KeyValuePair<SeamlessInteriorInstance, PlaceableEntry>> s_UnclaimedMoves =
+            new Dictionary<string, KeyValuePair<SeamlessInteriorInstance, PlaceableEntry>>();
+
+        // A room just built holds objects that another, already restored room is waiting for: hand them over now,
+        // not when this room's content is loaded (which waits until the player comes near).
+        internal static void ClaimWaitingMoves(SeamlessInteriorInstance instance)
+        {
+            if (s_UnclaimedMoves.Count == 0 || instance == null || instance.MasterInterior == null) return;
+            foreach (var p in InteriorScan.Placeables(instance.MasterInterior))
+            {
+                if (p == null || string.IsNullOrEmpty(p.m_Guid)) continue;
+                if (!s_UnclaimedMoves.TryGetValue(p.m_Guid, out var claim)) continue;
+                if (claim.Key == instance || claim.Key.MasterInterior == null) continue;
+                s_UnclaimedMoves.Remove(p.m_Guid);
+                MoveIntoInstance(claim.Key, p, claim.Value);
+            }
+        }
+
+        // The object was found late, inside the building it was taken from: it goes to the room it was put down in.
+        private static void MoveIntoInstance(SeamlessInteriorInstance target, Il2CppTLD.Placement.Placeable p, PlaceableEntry entry)
+        {
+            Transform t = target.MasterInterior.transform;
+            p.transform.SetParent(t, true);
+            p.transform.position = t.TransformPoint(entry.position);
+            p.transform.rotation = t.rotation * entry.rotation;
+            if (entry.scale.sqrMagnitude > 1e-8f) p.transform.localScale = entry.scale;
+            p.gameObject.SetActive(entry.active);
+            p.m_Invalidated = false;
+
+            if (entry.active && target.MasterInterior.activeSelf)
+            {
+                SetObjectVisualState(p.gameObject, true);
+                target.BoxSectorsSynced = false;
+                SyncBoxSectors(target);
+            }
+
+            MelonLogger.Msg($"[PLACEABLE-LOAD] {target.Config.ResolvedInstanceId}: '{p.gameObject.name}' was taken from another building and put down here; moved over.");
         }
 
         private class PlaceableEntry

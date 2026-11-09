@@ -2094,6 +2094,7 @@ namespace SeamlessInteriors
             // UpdateGlobalEnvironment call.
             instance.IsCloningRoutineActive = false;
             instance.RunCompleted = true;
+            GuardedCall(() => ClaimWaitingMoves(instance), instance.Config.ResolvedInstanceId, "tasinmis nesne devri");
             UpdateVanillaFacts(instance);
 
             // Check whether all instances are ready; if so, run the batched environment fix.
